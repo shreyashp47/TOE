@@ -36,8 +36,9 @@ Worth knowing when judging severity:
 
 ## What is already handled
 
-- Public users can **create** orders and **read** the menu. Nothing else. See
-  `firestore.rules`. (Until issue #30 there was one more thing: a
+- Public users can **create** orders and **read** the menu. Nothing else, apart
+  from the throttle stamp on their own `/orderThrottle/{uid}` that must accompany
+  each order (below). See `firestore.rules`. (Until issue #30 there was one more thing: a
   world-writable `/meta/counters` order counter. It is gone; the display number
   is derived from the order id, and `/meta` is denied to everyone.)
 - `status` is pinned to `preparing` on create, `createdAt` is required to equal
@@ -48,6 +49,16 @@ Worth knowing when judging severity:
 - **Not handled:** the order `total` is client-supplied and is not re-derived
   server-side. See the money bullet above — this is a known, accepted gap, not an
   oversight.
+- Order creation is throttled to **one order per anonymous uid per 30 seconds**.
+  The order must be written in the same batch as a stamp on
+  `/orderThrottle/{uid}` naming that order, and the rules refuse the stamp inside
+  the gap. The stamp cannot be deleted, backdated, or written for somebody
+  else's uid, and one stamp cannot carry two orders.
+- **Not handled:** a script that mints a fresh anonymous uid for every order is
+  only slowed by Firebase Auth's per-IP limit on new accounts, not stopped. The
+  purpose-built fix is Firebase App Check, which needs the Blaze plan and is not
+  enabled. A bypass of the per-uid throttle that does not involve minting new
+  uids is in scope.
 - Completed orders are immutable, so history cannot be rewritten.
 - The Firebase SDK is never loaded unless the Firebase env block is set, and it
   is never used to hold a secret — the config values are public by design.

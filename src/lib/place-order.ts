@@ -9,6 +9,12 @@
 
 import { loadBundle } from "./data";
 import { priceCart } from "./money";
+import {
+  OrderThrottled,
+  readLastOrderAt,
+  recordOrderPlaced,
+  secondsUntilNextOrder,
+} from "./order-throttle";
 import type { CartLine, MenuItem, Order } from "./types";
 
 export interface PlaceOrderArgs {
@@ -51,17 +57,26 @@ export async function placeOrder({
     throw new OrderRejected(check.blocking);
   }
 
+  // One order per customer per ORDER_GAP_SECONDS (issue #32). The rules enforce
+  // it; this just tells an honest customer how long to wait, instead of letting
+  // the server's bare permission-denied become "we couldn't send that".
+  const wait = secondsUntilNextOrder(readLastOrderAt(), Date.now());
+  if (wait > 0) throw new OrderThrottled(wait);
+
   const bundle = await loadBundle();
 
   try {
-    return await bundle.orders.create({
+    const order = await bundle.orders.create({
       tableNumber,
       items: check.lines,
       total: check.total,
       notes: notes?.trim() || undefined,
       paymentMethod,
     });
+    recordOrderPlaced(Date.now());
+    return order;
   } catch (err) {
+    if (err instanceof OrderThrottled) throw err;
     throw new Error(friendlyError(err));
   }
 }

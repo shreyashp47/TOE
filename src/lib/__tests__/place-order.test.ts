@@ -1,7 +1,12 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getDemoStaffPin, getTableNumbers, isDemoMode } from "@/lib/config";
 import { OrderRejected, placeOrder } from "@/lib/place-order";
+import {
+  ORDER_GAP_SECONDS,
+  OrderThrottled,
+  forgetLastOrder,
+} from "@/lib/order-throttle";
 import {
   forgetSessionOrder,
   readSessionOrderId,
@@ -183,6 +188,7 @@ describe("placeOrder", () => {
     });
     expect(withNote.notes).toBe("extra hot");
 
+    forgetLastOrder(); // a second order straight away is the throttle's business
     const without = await placeOrder({
       tableNumber: 1,
       cartLines: [line()],
@@ -190,5 +196,49 @@ describe("placeOrder", () => {
       notes: "   ",
     });
     expect(without.notes).toBeUndefined();
+  });
+
+  describe("one order per customer per 30 seconds (issue #32)", () => {
+    const place = () =>
+      placeOrder({ tableNumber: 3, cartLines: [line()], menu: [item()] });
+    const T0 = Date.parse("2026-09-27T10:00:00Z");
+
+    it("lets a customer place one order", async () => {
+      await expect(place()).resolves.toMatchObject({ tableNumber: 3 });
+    });
+
+    it("refuses a second order straight away, and says how long to wait", async () => {
+      vi.useFakeTimers({ now: T0 });
+      await place();
+      vi.setSystemTime(T0 + 5_000);
+      const second = place();
+      await expect(second).rejects.toBeInstanceOf(OrderThrottled);
+      await expect(second).rejects.toThrow(/another in 25 seconds/);
+    });
+
+    it("words the refusal for a customer, not a developer", async () => {
+      vi.useFakeTimers({ now: T0 });
+      await place();
+      const err = await place().catch((e: unknown) => e);
+      expect((err as Error).message).not.toMatch(/permission|firebase|denied/i);
+    });
+
+    it("allows the next order once the gap has passed", async () => {
+      vi.useFakeTimers({ now: T0 });
+      await place();
+      vi.setSystemTime(T0 + ORDER_GAP_SECONDS * 1000);
+      await expect(place()).resolves.toMatchObject({ tableNumber: 3 });
+    });
+
+    it("does not start the clock on an order that was refused", async () => {
+      await expect(
+        placeOrder({
+          tableNumber: 3,
+          cartLines: [line()],
+          menu: [item({ available: false })],
+        }),
+      ).rejects.toBeInstanceOf(OrderRejected);
+      await expect(place()).resolves.toBeTruthy();
+    });
   });
 });

@@ -28,6 +28,7 @@ import {
   getAuth,
   signInWithEmailAndPassword,
   signInAnonymously,
+  signOut,
 } from "firebase/auth";
 import {
   connectFirestoreEmulator,
@@ -38,7 +39,9 @@ import {
   setDoc,
   getDocs,
   getDoc,
+  deleteDoc,
   serverTimestamp,
+  writeBatch,
 } from "firebase/firestore";
 
 const PROJECT = process.env.FIRESTORE_EMULATOR_PROJECT ?? "demo-cafe";
@@ -197,18 +200,60 @@ const order = (o = {}) => ({
   paymentMethod: "counter",
   ...o,
 });
-// Mirrors customerUid() in src/lib/data/firestore.ts: sign in anonymously, and
-// pin that uid to the order.
-const placeAs = async (c, o) => {
-  const { user } = c.user ? { user: c.user } : await signInAnonymously(c.auth);
-  return addDoc(
-    collection(c.db, "orders"),
-    order({ customerUid: user.uid, ...o }),
-  );
+// Mirrors firestoreOrderRepo.create() in src/lib/data/firestore.ts: the order,
+// pinned to the caller's anonymous uid, and the caller's throttle stamp, in one
+// batch (issue #32). `stamp` overrides let a test forge the stamp.
+const commitOrder = async (c, o = {}, stamp = {}) => {
+  const uid = c.auth.currentUser.uid;
+  const ref = doc(collection(c.db, "orders"));
+  const batch = writeBatch(c.db);
+  batch.set(ref, order({ customerUid: uid, ...o }));
+  batch.set(doc(c.db, "orderThrottle", uid), {
+    lastOrderAt: serverTimestamp(),
+    lastOrderId: ref.id,
+    ...stamp,
+  });
+  await batch.commit();
+  return ref;
 };
-const addOrder = (o) => addDoc(collection(publicC.db, "orders"), order(o));
-const firstOrderId = async (c) =>
-  (await getDocs(collection(c, "orders"))).docs[0].id;
+// A brand-new anonymous customer per order, so the 30-second throttle is never
+// the reason a shape test passes or fails. signInAnonymously() hands back the
+// existing anonymous user if there is one, hence the sign-out first. The
+// throttle has its own section below, which keeps one uid on purpose.
+const freshCustomer = async (c) => {
+  await signOut(c.auth);
+  return (await signInAnonymously(c.auth)).user;
+};
+const placeAs = async (c, o) => {
+  await freshCustomer(c);
+  return commitOrder(c, o);
+};
+// Plants a throttle stamp as if the customer's last order were `secondsAgo` in
+// the past, over REST with the emulator's admin token. The alternative is a
+// test that sleeps for half a minute on every run.
+const seedStamp = async (uid, secondsAgo) => {
+  const r = await fetch(
+    `http://${HOST}:${FS_PORT}/v1/projects/${PROJECT}/databases/(default)/documents/orderThrottle/${uid}`,
+    {
+      method: "PATCH",
+      headers: {
+        Authorization: "Bearer owner",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        fields: {
+          lastOrderAt: {
+            timestampValue: new Date(
+              Date.now() - secondsAgo * 1000,
+            ).toISOString(),
+          },
+          lastOrderId: { stringValue: "seeded" },
+        },
+      }),
+    },
+  );
+  if (!r.ok) throw new Error(`could not seed a stamp: ${r.status}`);
+};
 
 console.log(`\nfirestore.rules vs the emulators (${PROJECT})\n`);
 console.log(" anonymous customer (an anonymous uid, not an account)");
@@ -291,8 +336,10 @@ await t(
 await t(
   "cannot rewrite a placed order",
   denied(async () => {
+    // Its own order, so the refusal is about rewriting, not about ownership.
+    const mine = await placeAs(publicC);
     await setDoc(
-      doc(publicC.db, "orders", await firstOrderId(publicC.db)),
+      doc(publicC.db, "orders", mine.id),
       { total: 1 },
       { merge: true },
     );
@@ -355,6 +402,125 @@ await t(
   denied(() =>
     addDoc(collection(nobodyC.db, "orders"), order({ customerUid: "x" })),
   ),
+);
+
+// Issue #32: one order per anonymous uid per 30 seconds. Unlike placeAs(), these
+// deliberately keep ONE customer across tests, because the clock is the subject.
+console.log("\n order throttle (one customer, one uid)");
+const throttleC = app("throttle");
+const loner = app("throttle-forger");
+const throttleUid = (await freshCustomer(throttleC)).uid;
+await t(
+  "a first order from a new customer goes through",
+  allowed(() => commitOrder(throttleC)),
+);
+await t(
+  "a second order seconds later is refused",
+  denied(() => commitOrder(throttleC)),
+);
+await t(
+  "a customer can read their own throttle stamp",
+  allowed(async () => {
+    const snap = await getDoc(doc(throttleC.db, "orderThrottle", throttleUid));
+    if (!snap.exists()) throw new Error("the stamp was not written");
+  }),
+);
+await t(
+  "cannot delete their own stamp to reset the clock",
+  denied(() => deleteDoc(doc(throttleC.db, "orderThrottle", throttleUid))),
+);
+await t(
+  "still refused 25 seconds after the last order",
+  denied(async () => {
+    await seedStamp(throttleUid, 25);
+    await commitOrder(throttleC);
+  }),
+);
+await t(
+  "allowed again once 31 seconds have passed",
+  allowed(async () => {
+    await seedStamp(throttleUid, 31);
+    await commitOrder(throttleC);
+  }),
+);
+await t(
+  "and refused again straight after that one",
+  denied(() => commitOrder(throttleC)),
+);
+if (process.env.RULES_TEST_REAL_WAIT) {
+  // The seeded tests above trust the emulator's clock arithmetic. This one
+  // actually waits, for anyone who does not.
+  console.log("        (waiting 31 s of real time...)");
+  await new Promise((r) => setTimeout(r, 31_000));
+  await t(
+    "allowed after a real 31-second wait",
+    allowed(() => commitOrder(throttleC)),
+  );
+}
+await t(
+  "an order with no throttle stamp is refused",
+  denied(async () => {
+    const { uid } = await freshCustomer(loner);
+    await addDoc(collection(loner.db, "orders"), order({ customerUid: uid }));
+  }),
+);
+await t(
+  "a stamp naming a different order is refused",
+  denied(async () => {
+    await freshCustomer(loner);
+    await commitOrder(loner, {}, { lastOrderId: "some-other-order" });
+  }),
+);
+await t(
+  "a backdated stamp is refused",
+  denied(async () => {
+    await freshCustomer(loner);
+    await commitOrder(loner, {}, { lastOrderAt: new Date(2020, 0, 1) });
+  }),
+);
+await t(
+  "a stamp with an extra field is refused",
+  denied(async () => {
+    await freshCustomer(loner);
+    await commitOrder(loner, {}, { lastOrderAt: serverTimestamp(), n: 1 });
+  }),
+);
+await t(
+  "one stamp cannot carry two orders in one batch",
+  denied(async () => {
+    const { uid } = await freshCustomer(loner);
+    const a = doc(collection(loner.db, "orders"));
+    const b = doc(collection(loner.db, "orders"));
+    const batch = writeBatch(loner.db);
+    batch.set(a, order({ customerUid: uid }));
+    batch.set(b, order({ customerUid: uid }));
+    batch.set(doc(loner.db, "orderThrottle", uid), {
+      lastOrderAt: serverTimestamp(),
+      lastOrderId: a.id,
+    });
+    await batch.commit();
+  }),
+);
+await t(
+  "cannot stamp another customer's throttle document",
+  denied(async () => {
+    await freshCustomer(loner);
+    await setDoc(doc(loner.db, "orderThrottle", throttleUid), {
+      lastOrderAt: serverTimestamp(),
+      lastOrderId: "x",
+    });
+  }),
+);
+await t(
+  "cannot read another customer's throttle stamp",
+  denied(() => getDoc(doc(loner.db, "orderThrottle", throttleUid))),
+);
+await t(
+  "a different customer is not held up by someone else's order",
+  allowed(async () => {
+    await freshCustomer(loner);
+    await commitOrder(loner);
+  }),
 );
 
 console.log("\n signed-in barista (no role document)");
@@ -507,8 +673,15 @@ await t(
 console.log(`\n${pass} passed, ${failures.length} failed`);
 for (const f of failures) console.log(`  - ${f}`);
 await Promise.all(
-  [publicC.a, nobodyC.a, otherCustomerC.a, tempC.a, staffC.a, ownerC.a].map(
-    deleteApp,
-  ),
+  [
+    publicC.a,
+    nobodyC.a,
+    otherCustomerC.a,
+    throttleC.a,
+    loner.a,
+    tempC.a,
+    staffC.a,
+    ownerC.a,
+  ].map(deleteApp),
 );
 process.exit(failures.length ? 1 : 0);
