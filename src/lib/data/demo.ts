@@ -1,0 +1,193 @@
+/**
+ * Demo-mode implementation of the storage contracts.
+ *
+ * Note the shape: every `subscribe*` returns an unsubscribe and fires
+ * synchronously with the current value, so a React consumer can `useSyncExternalStore`
+ * on it without a loading flash.
+ */
+
+import { getDemoStaffPin } from "../config";
+import type { MenuItem, Order, SpecialOffer, Unsubscribe } from "../types";
+import * as store from "./demo-store";
+import { DEMO_CREDENTIALS, DEMO_OWNER_USER, DEMO_STAFF_USER } from "./seed";
+import type {
+  AuthRepository,
+  ConfigRepository,
+  MenuRepository,
+  MenuWriteInput,
+  NewOrderInput,
+  OrderRepository,
+  StaffUser,
+} from "./types";
+
+const SESSION_KEY = "cafe-qr-order.session.v1";
+
+function readSession(): StaffUser | null {
+  try {
+    const raw = globalThis.localStorage?.getItem(SESSION_KEY);
+    if (!raw) return null;
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return null;
+    const user = parsed as Partial<StaffUser>;
+    if (typeof user.uid !== "string" || typeof user.role !== "string") return null;
+    return {
+      uid: user.uid,
+      email: typeof user.email === "string" ? user.email : "",
+      role: user.role === "owner" ? "owner" : "staff",
+      displayName:
+        typeof user.displayName === "string" ? user.displayName : "Staff",
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeSession(user: StaffUser | null) {
+  try {
+    if (user) globalThis.localStorage?.setItem(SESSION_KEY, JSON.stringify(user));
+    else globalThis.localStorage?.removeItem(SESSION_KEY);
+  } catch {
+    /* storage unavailable: session simply won't survive a reload */
+  }
+}
+
+const sessionListeners = new Set<(user: StaffUser | null) => void>();
+
+function emitSession() {
+  const user = readSession();
+  for (const listener of sessionListeners) listener(user);
+}
+
+export const demoMenuRepo: MenuRepository = {
+  subscribe(listener, onError) {
+    try {
+      return store.subscribeState((state) => listener(store.selectMenu(state)));
+    } catch (error) {
+      onError?.(error instanceof Error ? error : new Error(String(error)));
+      return () => {};
+    }
+  },
+
+  async list() {
+    return store.selectMenu(store.loadDemoState());
+  },
+
+  async create(input: MenuWriteInput): Promise<MenuItem> {
+    return store.demoCreateMenu({
+      name: input.name,
+      description: input.description ?? "",
+      price: input.price,
+      category: input.category,
+      available: input.available ?? true,
+      art: input.art,
+    });
+  },
+
+  async update(id, patch) {
+    store.demoWriteMenu(id, patch);
+  },
+
+  async remove(id) {
+    store.demoDeleteMenu(id);
+  },
+
+  async reorder(items) {
+    store.demoReplaceMenu(
+      items.map((item, index) => ({ ...item, sortOrder: (index + 1) * 10 })),
+    );
+  },
+
+  async replaceAll(items) {
+    store.demoReplaceMenu(items);
+  },
+};
+
+export const demoOrderRepo: OrderRepository = {
+  subscribeActive(listener, onError) {
+    try {
+      return store.subscribeState((state) =>
+        listener(store.selectActiveOrders(state)),
+      );
+    } catch (error) {
+      onError?.(error instanceof Error ? error : new Error(String(error)));
+      return () => {};
+    }
+  },
+
+  subscribeOrder(id, listener, onError) {
+    try {
+      return store.subscribeState((state) =>
+        listener(store.selectOrder(state, id)),
+      );
+    } catch (error) {
+      onError?.(error instanceof Error ? error : new Error(String(error)));
+      return () => {};
+    }
+  },
+
+  async create(input: NewOrderInput): Promise<Order> {
+    return store.demoCreateOrder(input);
+  },
+
+  async setStatus(id, status) {
+    store.demoSetStatus(id, status);
+  },
+
+  async listRange(fromMs, toMs) {
+    return store.selectOrdersInRange(store.loadDemoState(), fromMs, toMs);
+  },
+};
+
+export const demoAuthRepo: AuthRepository = {
+  async signIn(email, password) {
+    const match =
+      (email.trim().toLowerCase() === DEMO_CREDENTIALS.staff.email &&
+        password === DEMO_CREDENTIALS.staff.password) ||
+      (email.trim().toLowerCase() === DEMO_CREDENTIALS.owner.email &&
+        password === DEMO_CREDENTIALS.owner.password);
+
+    if (!match) {
+      throw new Error("That email and password do not match.");
+    }
+    const isOwner = email.trim().toLowerCase() === DEMO_CREDENTIALS.owner.email;
+    writeSession(isOwner ? { ...DEMO_OWNER_USER } : { ...DEMO_STAFF_USER });
+    emitSession();
+  },
+
+  async signInWithPin(pin) {
+    if (pin !== getDemoStaffPin()) {
+      throw new Error("Wrong PIN. Ask the counter for today's code.");
+    }
+    writeSession({ ...DEMO_STAFF_USER });
+    emitSession();
+  },
+
+  async signOut() {
+    writeSession(null);
+    emitSession();
+  },
+
+  subscribe(listener): Unsubscribe {
+    sessionListeners.add(listener);
+    listener(readSession());
+    return () => {
+      sessionListeners.delete(listener);
+    };
+  },
+
+  current() {
+    return readSession();
+  },
+};
+
+export const demoConfigRepo: ConfigRepository = {
+  subscribe(listener) {
+    return store.subscribeState((state) => listener(store.selectOffer(state)));
+  },
+  async save(offer: SpecialOffer) {
+    store.demoSaveOffer({
+      enabled: offer.enabled,
+      text: offer.text.trim().slice(0, 140),
+    });
+  },
+};

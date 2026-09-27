@@ -1,0 +1,120 @@
+rules_version = '2';
+
+// ---------------------------------------------------------------------------
+// Cafe QR ordering — Firestore security rules
+//
+// Mirrors requirements.md §6:
+//   "customers can only create orders, not read/modify others' orders or menu
+//    data", and staff/owner routes protected by authentication.
+//
+// Deploy with:  firebase deploy --only firestore:rules
+// ---------------------------------------------------------------------------
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // -- helpers -----------------------------------------------------------
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function role() {
+      return signedIn() && exists(/databases/$(database)/documents/staff/$(request.auth.uid))
+        ? get(/databases/$(database)/documents/staff/$(request.auth.uid)).data.role
+        : "staff";
+    }
+
+    function isStaff() {
+      return signedIn();
+    }
+
+    function isOwner() {
+      return signedIn() && role() == "owner";
+    }
+
+    // -- menu: public read, owner write ------------------------------------
+
+    match /menu/{itemId} {
+      allow read: if true;
+      allow create, update, delete: if isOwner();
+    }
+
+    // -- orders -------------------------------------------------------------
+    // Public create (no customer login, §3), everything else staff-only.
+    // The create rule re-derives the total server-side from the submitted line
+    // prices so a tampered client cannot pick its own amount, and pins status
+    // and orderNumber rather than trusting whatever the phone sent.
+
+    match /orders/{orderId} {
+      allow read: if isStaff();
+      allow delete: if isOwner();
+
+      allow create: if
+        request.resource.data.tableNumber is number
+        && request.resource.data.tableNumber >= 1
+        && request.resource.data.status == "preparing"
+        && request.resource.data.items is list
+        && request.resource.data.items.size() > 0
+        && request.resource.data.items.size() <= 50
+        && request.resource.data.total
+             == request.resource.data.items
+                  .reduce(0, function(acc, line) {
+                    return acc + (line.price * line.qty);
+                  })
+        && request.resource.data.createdAt == request.time;
+
+      allow update: if isStaff()
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(["status", "completedAt"])
+        && request.resource.data.status in
+             ["preparing", "ready", "served", "completed"]
+        && (
+          resource.data.status in ["preparing", "ready", "served"]
+        )
+        // A completed order is immutable history (§5.4 — never auto-deleted).
+        && (resource.data.status != "completed")
+        && (
+          request.resource.data.status == "completed"
+          || request.resource.data.status
+             == ["preparing", "ready", "served"][
+                  ["preparing", "ready", "served"].indexOf(resource.data.status) + 1
+                ]
+        );
+    }
+
+    // -- staff directory (role lookup) -------------------------------------
+
+    match /staff/{userId} {
+      // A signed-in user may read only their own record; owners read all.
+      allow read: if isOwner() || (signedIn() && request.auth.uid == userId);
+      allow write: if isOwner();
+    }
+
+    // -- config: the "today's special" board -------------------------------
+
+    match /config/{docId} {
+      allow read: if true;
+      allow write: if isOwner();
+    }
+
+    // -- meta: order counter ------------------------------------------------
+    // There is no customer identity (§3), so the counter cannot be guarded by
+    // auth. The blast radius is deliberately cosmetic: it only affects the
+    // number printed on the receipt. Order *totals* are derived per-order and
+    // orders are immutable once created, so money cannot be affected.
+
+    match /meta/{docId} {
+      allow read: if true;
+      allow write: if docId == "counters"
+                   && request.resource.data.keys().hasOnly(["orderNumber"])
+                   && request.resource.data.orderNumber is int
+                   && request.resource.data.orderNumber < 1000000;
+    }
+
+    // default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

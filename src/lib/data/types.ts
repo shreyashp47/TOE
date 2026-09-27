@@ -1,0 +1,94 @@
+/**
+ * Storage contracts. Two implementations satisfy these — Firestore and the
+ * localStorage demo store — which is what lets the app run with zero config
+ * while still being production-shaped (see docs/decisions.md).
+ */
+
+import type {
+  MenuItem,
+  Order,
+  OrderLine,
+  SpecialOffer,
+  Unsubscribe,
+} from "../types";
+
+export type Listener<T> = (value: T) => void;
+export type ErrorListener = (error: Error) => void;
+
+export interface NewOrderInput {
+  tableNumber: number;
+  items: OrderLine[];
+  total: number;
+  notes?: string;
+  paymentMethod?: Order["paymentMethod"];
+}
+
+export interface MenuWriteInput {
+  name: string;
+  description?: string;
+  price: number;
+  category: string;
+  available?: boolean;
+  art?: string;
+}
+
+export interface MenuRepository {
+  /** Live menu. Fires immediately with the current value. */
+  subscribe(listener: Listener<MenuItem[]>, onError?: ErrorListener): Unsubscribe;
+  list(): Promise<MenuItem[]>;
+  create(input: MenuWriteInput): Promise<MenuItem>;
+  update(id: string, patch: Partial<MenuWriteInput>): Promise<void>;
+  remove(id: string): Promise<void>;
+  /** Persist a whole new ordering (drag-to-reorder in /admin). */
+  reorder(items: MenuItem[]): Promise<void>;
+  /** Replace the menu wholesale (used by the seed button in demo mode). */
+  replaceAll(items: MenuItem[]): Promise<void>;
+}
+
+export interface OrderRepository {
+  /** Live active board: received/preparing/ready/served, oldest first. */
+  subscribeActive(
+    listener: Listener<Order[]>,
+    onError?: ErrorListener,
+  ): Unsubscribe;
+  /** Live single order, for the customer's status screen. */
+  subscribeOrder(
+    id: string,
+    listener: Listener<Order | null>,
+    onError?: ErrorListener,
+  ): Unsubscribe;
+  create(input: NewOrderInput): Promise<Order>;
+  setStatus(id: string, status: Order["status"]): Promise<void>;
+  /** Bounded range query — keeps Firestore reads inside the free tier. */
+  listRange(fromMs: number, toMs: number): Promise<Order[]>;
+}
+
+export interface StaffUser {
+  uid: string;
+  email: string;
+  role: "staff" | "owner";
+  displayName: string;
+}
+
+export interface AuthRepository {
+  /** Real Firebase Auth. `pin` is demo-mode only. */
+  signIn(email: string, password: string): Promise<void>;
+  signInWithPin(pin: string): Promise<void>;
+  signOut(): Promise<void>;
+  subscribe(listener: Listener<StaffUser | null>): Unsubscribe;
+  current(): StaffUser | null;
+}
+
+export interface ConfigRepository {
+  subscribe(listener: Listener<SpecialOffer>): Unsubscribe;
+  save(offer: SpecialOffer): Promise<void>;
+}
+
+export interface DataBundle {
+  menu: MenuRepository;
+  orders: OrderRepository;
+  auth: AuthRepository;
+  config: ConfigRepository;
+  /** True when backed by the localStorage demo store. */
+  isDemo: boolean;
+}

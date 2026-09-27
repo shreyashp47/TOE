@@ -1,0 +1,20 @@
+{
+  "indexes": [
+    {
+      "//": "Staff board: status != completed, oldest first (requirements.md §5.3).",
+      "collectionGroup": "orders",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "//": "Reports: bounded createdAt range so reads stay inside the free tier (§5.4).",
+      "collectionGroup": "orders",
+      "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "createdAt", "order": "ASCENDING" }]
+    }
+  ],
+  "fieldOverrides": []
+}

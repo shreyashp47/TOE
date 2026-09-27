@@ -1,0 +1,537 @@
+"use client";
+
+import Link from "next/link";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
+import { Icon } from "@/components/icons";
+import { InstallHint } from "@/components/Pwa";
+import { Mascot } from "@/components/Mascot";
+import {
+  DataProvider,
+  useActiveOrders,
+  useIsDemo,
+  useStaffSession,
+} from "@/components/providers/DataProvider";
+import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
+import { EmptyState, Loading } from "@/components/ui/Loading";
+import { StatusBadge } from "@/components/ui/StatusBadge";
+import { useOrderChime } from "@/hooks/useOrderChime";
+import { getCafeName } from "@/lib/config";
+import { formatINR, formatWait, lineSubtotal } from "@/lib/money";
+import { actionsFor, transition, type OrderStatus } from "@/lib/order-status";
+import type { Order } from "@/lib/types";
+import { DEMO_CREDENTIALS } from "@/lib/data/seed";
+
+export default function StaffPage() {
+  return (
+    <DataProvider>
+      <StaffScreen />
+    </DataProvider>
+  );
+}
+
+function StaffScreen() {
+  const { user, loading, signIn, signInWithPin, signOut } = useStaffSession();
+  const isDemo = useIsDemo();
+  const { muted, setMuted, armed, unlock, chime, buzz } = useOrderChime();
+  const { orders, loading: ordersLoading, error } = useActiveOrders();
+  const [tableFilter, setTableFilter] = useState<number | "all">("all");
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  const known = useRef<Set<string>>(new Set());
+  const primed = useRef(false);
+  const [freshIds, setFreshIds] = useState<Set<string>>(new Set());
+
+  // New-order alert: sound + vibration, once per unseen order id
+  // (requirements.md §5.3, theme doc §5 — not just a toast).
+  useEffect(() => {
+    if (ordersLoading) return;
+
+    if (!primed.current) {
+      // First snapshot: adopt whatever is already in flight without alarming.
+      orders.forEach((o) => known.current.add(o.id));
+      primed.current = true;
+      return;
+    }
+
+    const fresh = orders.filter((o) => !known.current.has(o.id));
+    orders.forEach((o) => known.current.add(o.id));
+    if (fresh.length === 0) return;
+
+    setFreshIds(new Set(fresh.map((o) => o.id)));
+    const timer = setTimeout(
+      () => setFreshIds(new Set()),
+      4200,
+    );
+    chime();
+    buzz();
+    return () => clearTimeout(timer);
+  }, [orders, ordersLoading, chime, buzz]);
+
+  // Browsers only allow audio after a gesture; arm on the first interaction.
+  useEffect(() => {
+    const onFirst = () => unlock();
+    window.addEventListener("pointerdown", onFirst, { once: true });
+    window.addEventListener("keydown", onFirst, { once: true });
+    return () => {
+      window.removeEventListener("pointerdown", onFirst);
+      window.removeEventListener("keydown", onFirst);
+    };
+  }, [unlock]);
+
+  const tables = useMemo(
+    () => [...new Set(orders.map((o) => o.tableNumber))].sort((a, b) => a - b),
+    [orders],
+  );
+  const visible = useMemo(
+    () =>
+      tableFilter === "all"
+        ? orders
+        : orders.filter((o) => o.tableNumber === tableFilter),
+    [orders, tableFilter],
+  );
+
+  const advance = useCallback(
+    async (order: Order, to: OrderStatus) => {
+      setBusyId(order.id);
+      try {
+        // Guard the transition client-side too; the Firestore rules are the
+        // real enforcement, this keeps the UI honest in demo mode.
+        if (!transition(order.status, to)) return;
+        const { loadBundle } = await import("@/lib/data");
+        const bundle = await loadBundle();
+        await bundle.orders.setStatus(order.id, to);
+      } finally {
+        setBusyId(null);
+      }
+    },
+    [],
+  );
+
+  if (loading) return <Loading label="Checking your badge…" />;
+
+  if (!user) {
+    return (
+      <StaffLogin
+        signIn={signIn}
+        signInWithPin={signInWithPin}
+        isDemo={isDemo}
+        onFirstGesture={unlock}
+      />
+    );
+  }
+
+  return (
+    <div className="min-h-svh pb-10">
+      <header className="safe-t sticky top-0 z-30 border-b-2 border-line-soft bg-cream/95 backdrop-blur">
+        <div className="shell-wide flex items-center gap-2.5 py-2.5">
+          <Mascot size={40} className="shrink-0" />
+          <div className="min-w-0 flex-1">
+            <h1 className="truncate text-lg leading-tight">Order board</h1>
+            <p className="truncate text-2xs font-semibold uppercase tracking-[0.12em] text-muted">
+              {getCafeName()} · {user.displayName}
+              {user.role === "owner" ? " (owner)" : ""}
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setMuted(!muted)}
+            aria-pressed={muted}
+            aria-label={muted ? "Unmute new order sound" : "Mute new order sound"}
+            title={muted ? "Sound off" : "Sound on"}
+            className={[
+              "grid size-11 shrink-0 place-items-center rounded-pill border-2 transition-colors",
+              muted
+                ? "border-line bg-tan text-muted"
+                : "border-primary bg-paper text-primary",
+            ].join(" ")}
+          >
+            <Icon name={muted ? "mute" : "sound"} size={20} />
+          </button>
+
+          {user.role === "owner" ? (
+            <Link
+              href="/admin"
+              aria-label="Owner dashboard"
+              className="grid size-11 shrink-0 place-items-center rounded-pill border-2 border-primary bg-paper text-primary"
+            >
+              <Icon name="chart" size={20} />
+            </Link>
+          ) : null}
+
+          <button
+            type="button"
+            onClick={() => void signOut()}
+            aria-label="Sign out"
+            className="grid size-11 shrink-0 place-items-center rounded-pill border-2 border-line bg-paper text-muted"
+          >
+            <Icon name="logout" size={20} />
+          </button>
+        </div>
+
+        {!armed && !muted ? (
+          <p className="shell-wide pb-2 text-2xs font-semibold text-secondary">
+            Tap anywhere to switch the order sound on.
+          </p>
+        ) : null}
+      </header>
+
+      <InstallHint appName={getCafeName()} />
+
+      <main className="shell-wide pt-4">
+        {error ? (
+          <p
+            role="alert"
+            className="mb-3 rounded-md border-2 border-berry bg-paper px-3 py-2 text-sm text-berry"
+          >
+            Live updates dropped: {error.message}
+          </p>
+        ) : null}
+
+        <div className="mb-3 flex items-center gap-2 overflow-x-auto pb-1">
+          <FilterChip
+            active={tableFilter === "all"}
+            onClick={() => setTableFilter("all")}
+          >
+            All ({orders.length})
+          </FilterChip>
+          {tables.map((n) => (
+            <FilterChip
+              key={n}
+              active={tableFilter === n}
+              onClick={() => setTableFilter(n)}
+            >
+              T{n} ({orders.filter((o) => o.tableNumber === n).length})
+            </FilterChip>
+          ))}
+        </div>
+
+        {ordersLoading ? (
+          <Loading label="Listening for orders…" />
+        ) : visible.length === 0 ? (
+          <EmptyState
+            mood="sleepy"
+            title={orders.length === 0 ? "All caught up" : "Nothing on that table"}
+            body={
+              orders.length === 0
+                ? "New orders appear here the moment a customer taps Place order."
+                : undefined
+            }
+          />
+        ) : (
+          <ul className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {visible.map((order) => (
+              <OrderTicket
+                key={order.id}
+                order={order}
+                isFresh={freshIds.has(order.id)}
+                busy={busyId === order.id}
+                onAdvance={(to) => void advance(order, to)}
+              />
+            ))}
+          </ul>
+        )}
+      </main>
+    </div>
+  );
+}
+
+function FilterChip({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={[
+        "min-h-11 shrink-0 rounded-pill border-2 px-4 font-round text-sm transition-colors",
+        active
+          ? "border-primary bg-primary text-on-dark"
+          : "border-line bg-paper text-ink",
+      ].join(" ")}
+    >
+      {children}
+    </button>
+  );
+}
+
+function OrderTicket({
+  order,
+  isFresh,
+  busy,
+  onAdvance,
+}: {
+  order: Order;
+  isFresh: boolean;
+  busy: boolean;
+  onAdvance: (to: OrderStatus) => void;
+}) {
+  // 1s tick keeps the wait timer live without a Firestore read.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const waited = now - order.createdAt;
+  const urgent = waited > 8 * 60_000;
+  const warn = waited > 4 * 60_000;
+  const actions = actionsFor(order.status);
+
+  return (
+    <Card
+      data-order-id={order.id}
+      className={[
+        "flex flex-col overflow-hidden",
+        isFresh ? "animate-alert-flash border-berry" : "",
+      ].join(" ")}
+    >
+      <div className="flex items-center gap-3 border-b-2 border-line-soft px-3 py-2.5">
+        <div className="min-w-0 flex-1">
+          <p className="flex items-baseline gap-1.5">
+            <span className="text-2xs font-semibold uppercase tracking-[0.12em] text-muted">
+              Table
+            </span>
+            <span className="font-round text-3xl leading-none text-primary">
+              {order.tableNumber}
+            </span>
+            <span className="tnum text-sm text-muted">#{order.orderNumber}</span>
+          </p>
+        </div>
+        <div className="flex shrink-0 flex-col items-end gap-1">
+          <StatusBadge status={order.status} size="sm" />
+          <span
+            className={[
+              "tnum flex items-center gap-1 font-round text-sm",
+              urgent ? "text-berry" : warn ? "text-secondary" : "text-muted",
+            ].join(" ")}
+          >
+            <Icon name="clock" size={14} />
+            {formatWait(waited)}
+          </span>
+        </div>
+      </div>
+
+      <ul className="flex-1 divide-y divide-line-soft">
+        {order.items.map((line) => (
+          <li
+            key={`${line.menuItemId}-${line.name}`}
+            className="flex items-baseline gap-2 px-3 py-1.5"
+          >
+            <span className="tnum w-7 shrink-0 font-round text-lg text-primary">
+              {line.qty}×
+            </span>
+            <span className="min-w-0 flex-1 text-[0.95rem] leading-snug text-ink">
+              {line.name}
+            </span>
+            <span className="tnum shrink-0 text-sm text-muted">
+              {formatINR(lineSubtotal(line))}
+            </span>
+          </li>
+        ))}
+      </ul>
+
+      {order.notes ? (
+        <p className="mx-3 mb-2 rounded-sm border-2 border-dashed border-line bg-tan/60 px-2.5 py-1.5 text-sm text-body">
+          <span className="font-semibold">Note:</span> {order.notes}
+        </p>
+      ) : null}
+
+      <div className="flex items-center justify-between gap-2 border-t-2 border-line-soft px-3 py-2">
+        <span className="tnum font-round text-lg text-ink">
+          {formatINR(order.total)}
+        </span>
+        <div className="flex flex-wrap justify-end gap-2">
+          {actions.length === 0 ? (
+            <span className="text-sm text-muted">Closed</span>
+          ) : (
+            actions
+              .slice()
+              .sort((a, b) => Number(b.primary) - Number(a.primary))
+              .map((action) => (
+                <Button
+                  key={action.to}
+                  size="sm"
+                  variant={action.variant}
+                  disabled={busy}
+                  onClick={() => onAdvance(action.to)}
+                >
+                  {action.label}
+                </Button>
+              ))
+          )}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function StaffLogin({
+  signIn,
+  signInWithPin,
+  isDemo,
+  onFirstGesture,
+}: {
+  signIn: (email: string, password: string) => Promise<void>;
+  signInWithPin: (pin: string) => Promise<void>;
+  isDemo: boolean;
+  onFirstGesture: () => void;
+}) {
+  const [mode, setMode] = useState<"pin" | "password">(isDemo ? "pin" : "password");
+  const [pin, setPin] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    onFirstGesture();
+    setBusy(true);
+    setError(null);
+    try {
+      if (mode === "pin") await signInWithPin(pin);
+      else await signIn(email, password);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Sign-in failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function fillDemo(which: "staff" | "owner") {
+    const creds = DEMO_CREDENTIALS[which];
+    setMode("password");
+    setEmail(creds.email);
+    setPassword(creds.password);
+    onFirstGesture();
+  }
+
+  return (
+    <main className="relative flex min-h-svh flex-col items-center justify-center gap-4 px-5 py-10">
+      <Mascot mood="worry" size={120} />
+      <div className="text-center">
+        <h1 className="font-hand text-4xl text-primary">Staff only</h1>
+        <p className="text-sm text-muted">Counter view for {getCafeName()}</p>
+      </div>
+
+      <form
+        onSubmit={submit}
+        className="flex w-full max-w-sm flex-col gap-3 rounded-lg border-2 border-line bg-paper p-4 shadow-card"
+      >
+        {isDemo ? (
+          <div className="flex gap-2">
+            {(["pin", "password"] as const).map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => {
+                  setMode(m);
+                  setError(null);
+                }}
+                aria-pressed={mode === m}
+                className={[
+                  "min-h-11 flex-1 rounded-pill border-2 font-round text-sm capitalize",
+                  mode === m
+                    ? "border-primary bg-primary text-on-dark"
+                    : "border-line bg-cream text-ink",
+                ].join(" ")}
+              >
+                {m === "pin" ? "PIN" : "Email"}
+              </button>
+            ))}
+          </div>
+        ) : null}
+
+        {mode === "pin" ? (
+          <label className="flex flex-col gap-1.5">
+            <span className="text-sm font-semibold text-ink">
+              Today&apos;s PIN
+            </span>
+            <input
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              pattern="[0-9]*"
+              maxLength={6}
+              value={pin}
+              onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))}
+              className="tnum min-h-14 rounded-sm border-2 border-line bg-cream-soft text-center font-round text-3xl tracking-[0.5em] text-ink focus:border-primary focus:outline-none"
+              placeholder="••••"
+            />
+          </label>
+        ) : (
+          <>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-sm font-semibold text-ink">Email</span>
+              <input
+                type="email"
+                autoComplete="username"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="min-h-12 rounded-sm border-2 border-line bg-cream-soft px-3 text-ink focus:border-primary focus:outline-none"
+                placeholder="staff@cafe.com"
+              />
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-sm font-semibold text-ink">Password</span>
+              <input
+                type="password"
+                autoComplete="current-password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="min-h-12 rounded-sm border-2 border-line bg-cream-soft px-3 text-ink focus:border-primary focus:outline-none"
+                placeholder="••••••••"
+              />
+            </label>
+          </>
+        )}
+
+        {error ? (
+          <p role="alert" className="text-sm font-semibold text-berry">
+            {error}
+          </p>
+        ) : null}
+
+        <Button type="submit" size="lg" fullWidth disabled={busy}>
+          {busy ? "Signing in…" : "Sign in"}
+        </Button>
+
+        {isDemo ? (
+          <div className="rounded-sm border-2 border-dashed border-secondary/50 bg-highlight-soft/40 p-2.5 text-center text-2xs leading-relaxed text-primary-dark">
+            <p className="font-semibold">Demo accounts</p>
+            <p className="tnum">
+              PIN 1122 · staff@demo.cafe / cafe1122 · owner@demo.cafe / cafe1122
+            </p>
+            <div className="mt-1.5 flex justify-center gap-2">
+              <button
+                type="button"
+                onClick={() => fillDemo("staff")}
+                className="min-h-9 rounded-pill border-2 border-secondary px-3 font-semibold"
+              >
+                Fill staff
+              </button>
+              <button
+                type="button"
+                onClick={() => fillDemo("owner")}
+                className="min-h-9 rounded-pill border-2 border-secondary px-3 font-semibold"
+              >
+                Fill owner
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </form>
+    </main>
+  );
+}
