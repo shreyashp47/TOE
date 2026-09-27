@@ -182,7 +182,11 @@ a clock that disagrees), the adapter reads the customer's own stamp once to tell
 throttle apart from any other refusal. Demo mode runs the same client-side check.
 
 The client write went from a read-then-write transaction (for the old counter) to
-a blind two-document batch, so an order now costs two writes and no reads.
+a blind two-document batch. That does not make it free of reads: the `getAfter()`
+in the order rule is billed as a document read, so an order costs two writes and
+one read — the same read count as before, spent on the limit instead of the
+counter. A refused order costs one more read, when the phone checks its own stamp
+to word the message.
 
 **The gap, stated plainly:** the limit is per uid, and a script can sign in
 anonymously again for every order. Firebase Auth rate-limits new accounts per IP
@@ -214,7 +218,9 @@ bug; a longer number (four digits, or letters from the id) is harder to say
 across a counter; a server-assigned sequence needs Cloud Functions, which needs
 Blaze. So the number is never shown alone — the board and the confirmation screen
 both lead with the table, and a clash that matters (same table, both open) is
-roughly 1 in 900 per pair.
+roughly 1 in 900 per pair. Across the whole board it is much likelier that _some_
+two orders share a number — about 19% with 20 orders open — which is exactly why
+the table, not the number, is what tells them apart.
 
 Orders placed under the counter keep their stored `orderNumber`, so old receipts
 and exported reports do not renumber. The demo store does the same derivation, so
