@@ -102,11 +102,21 @@ async function t(label, fn) {
     console.log(`  FAIL  ${label}  -> ${msg}`);
   }
 }
+// A denial has to be the rules saying no. Accepting any error would let a
+// broken setup step (a failed sign-in, a typo'd path, a network blip) pass as
+// "denied", and the suite would stay green while testing nothing.
 const denied = (fn) => async () => {
   try {
     await fn();
-  } catch {
-    return;
+  } catch (e) {
+    if (e?.code === "permission-denied") return;
+    throw new Error(
+      `failed, but not with permission-denied: ${e?.code ?? ""} ${String(
+        e?.message ?? e,
+      )
+        .split("\n")[0]
+        .slice(0, 40)}`,
+    );
   }
   throw new Error("was ALLOWED but should have been denied");
 };
