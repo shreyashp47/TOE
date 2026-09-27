@@ -53,10 +53,15 @@ These exist because of specific problems, not taste.
    `docs/anime-theme.md` §2 and lives in CSS variables in `src/app/globals.css`.
    Add a token there; don't put a hex in a component.
 
-2. **Never trust the client for money.** Order totals are recomputed from line
-   items in `src/lib/money.ts`, and the `create` rule in `firestore.rules`
-   recomputes them server-side too. If you add a field that affects what a
-   customer pays, it needs recomputing in both places.
+2. **Never trust the client for money — and know that, today, we have to.**
+   Order totals are recomputed from line items in `src/lib/money.ts`, but that
+   runs on the customer's phone. The `create` rule in `firestore.rules` only
+   checks the total is a bounded integer; it _cannot_ recompute it (no loops, no
+   lambdas), so a doctored total is stored as sent. What catches it is
+   `src/lib/order-integrity.ts`, which the staff board runs on every ticket
+   against the live menu — detection at the counter, not prevention (issue #27;
+   the real fix needs a Blaze-plan function). If you add a field that affects
+   what a customer pays, it needs handling in `money.ts` _and_ in that check.
 
 3. **Status changes go through the machine.** Use `transition()` /
    `actionsFor()` from `src/lib/order-status.ts`, not a hand-written status
