@@ -124,7 +124,7 @@ jobs:
         env:
           BASE_URL: http://127.0.0.1:4320
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: screenshots
           path: .screenshots/
