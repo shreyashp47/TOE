@@ -15,7 +15,7 @@ Built for a 6–10 table cafe on free-tier infrastructure.
 | **Live updates** | Firestore `onSnapshot` — no polling loops, no separate realtime service |
 | **Install** | Nothing to install. Optional PWA for the staff phone. |
 | **Cost** | Free tier. A custom domain is the only expected expense (~₹500–800/year). |
-| **Docs** | [Requirements](./docs/requirements.md) · [Theme](./docs/anime-theme.md) · [Decisions](./docs/decisions.md) |
+| **Docs** | [Requirements](./docs/requirements.md) · [Theme](./docs/anime-theme.md) · [Decisions](./docs/decisions.md) · [Progress](./docs/progress.md) |
 
 ### Live deployment
 
