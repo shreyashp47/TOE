@@ -161,11 +161,12 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
 
-      # The Firestore and Auth emulators are Java programs.
+      # The Firestore and Auth emulators are Java programs, and current
+      # firebase-tools refuses to run them on anything below 21.
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: "21"
 
       - name: Install
         run: npm ci
