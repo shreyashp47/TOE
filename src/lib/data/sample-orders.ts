@@ -46,7 +46,17 @@ export function buildSampleOrders(
   // A cafe never has zero orders on the board, and the demo should not either.
   // The last few are pinned into the last few minutes so the staff board and the
   // customer's live status screen have something real to show.
+  //
+  // Their statuses cycle rather than being random: with only four open orders, a
+  // random pick leaves "preparing" absent roughly 6% of the time, which is a
+  // coin-flip flake in CI and an empty-looking board in the demo.
   const openCount = Math.max(4, Math.round(count * 0.03));
+  const OPEN_CYCLE: OrderStatus[] = [
+    "preparing",
+    "ready",
+    "served",
+    "preparing",
+  ];
   const orders: Array<Omit<Order, "id" | "orderNumber">> = [];
 
   for (let i = 0; i < count; i += 1) {
@@ -86,7 +96,7 @@ export function buildSampleOrders(
     const total = items.reduce((sum, l) => sum + l.price * l.qty, 0);
     const age = now - createdAt;
     const status: OrderStatus = isOpen
-      ? pick<OrderStatus>(["preparing", "preparing", "ready", "served"])
+      ? OPEN_CYCLE[i % OPEN_CYCLE.length]
       : age > 25 * 60_000
         ? "completed"
         : age > 12 * 60_000

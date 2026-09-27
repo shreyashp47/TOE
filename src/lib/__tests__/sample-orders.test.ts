@@ -83,10 +83,33 @@ describe("buildSampleOrders", () => {
     }
   });
 
-  it("includes at least one order of every status, so the board is realistic", () => {
-    const statuses = new Set(orders.map((o) => o.status));
-    expect(statuses.has("completed")).toBe(true);
-    expect(statuses.has("preparing")).toBe(true);
+  it("includes every status, so the board and the timeline are realistic", () => {
+    // Runs this 20x: the generator is seeded by Math.random(), and an earlier
+    // random-pick version left "preparing" absent ~6% of the time, which is a
+    // flake in CI and an empty-looking demo board.
+    for (let run = 0; run < 20; run += 1) {
+      const statuses = new Set(
+        buildSampleOrders(120, NOW).map((o) => o.status),
+      );
+      for (const expected of [
+        "completed",
+        "served",
+        "ready",
+        "preparing",
+      ] as const) {
+        expect(statuses.has(expected)).toBe(true);
+      }
+    }
+  });
+
+  it("always leaves at least a few orders open on the staff board", () => {
+    for (const count of [40, 120, 240]) {
+      const open = buildSampleOrders(count, NOW).filter(
+        (o) => o.status !== "completed",
+      );
+      expect(open.length).toBeGreaterThanOrEqual(4);
+      expect(open.length).toBeLessThan(count * 0.2);
+    }
   });
 });
 
