@@ -40,6 +40,12 @@ service cloud.firestore {
       return signedIn() && role() == "owner";
     }
 
+    // The caller's throttle document as it will stand once this commit lands.
+    // See /orderThrottle below.
+    function throttleAfter() {
+      return getAfter(/databases/$(database)/documents/orderThrottle/$(request.auth.uid)).data;
+    }
+
     // -- menu: public read, owner write ------------------------------------
 
     match /menu/{itemId} {
@@ -88,6 +94,9 @@ service cloud.firestore {
       //   - customerUid, which must equal the caller's own anonymous uid, so a
       //     customer can only ever read back the order they placed themselves
       //   - total as a bounded int
+      //   - volume: the same commit must stamp the caller's /orderThrottle doc
+      //     with this order's id, and that stamp is refused within 30 seconds of
+      //     the previous one (issue #32; see /orderThrottle below)
       //
       // What it deliberately does NOT do: recompute `total` from the line items.
       // Firestore rules have no loops and no lambdas — there is no `reduce` and
@@ -138,7 +147,14 @@ service cloud.firestore {
         && request.resource.data.items[0].qty <= 20
         && request.resource.data.items[0].price is int
         && request.resource.data.items[0].price >= 0
-        && request.resource.data.items[0].price <= 10000;
+        && request.resource.data.items[0].price <= 10000
+        // Rate limit. Matching the id means one stamp buys exactly one order:
+        // a batch cannot write the throttle doc once and 499 orders beside it,
+        // because a document can only be written once per commit. The throttle
+        // checks come last so a malformed order is refused before any document
+        // is fetched.
+        && throttleAfter().lastOrderId == orderId
+        && throttleAfter().lastOrderAt == request.time;
 
       // Staff advance the status and nothing else. Only the two legal fields may
       // change, and only to a legal next state, so a staff account cannot
@@ -159,6 +175,45 @@ service cloud.firestore {
           || (resource.data.status == "served"
             && request.resource.data.status == "completed")
         );
+    }
+
+    // -- orderThrottle: one order per customer per 30 seconds ---------------
+    // Issue #32. Order creation is the one public write, and it used to be
+    // unbounded: a script could post orders as fast as it liked, burying real
+    // ones on the staff board and burning the free-tier quota.
+    //
+    // App Check is the purpose-built answer, but it needs the Blaze plan. This
+    // is the free-tier version. Each customer holds an anonymous uid, so each
+    // one gets a document here recording when they last ordered. The order
+    // create rule requires the same batch to stamp it (lastOrderAt ==
+    // request.time, lastOrderId == the new order), and this rule refuses the
+    // stamp until 30 seconds have passed since the previous one. First order:
+    // the document does not exist yet, so it is a `create` and there is nothing
+    // to wait for.
+    //
+    // No delete, for anyone: deleting the document would reset the clock.
+    //
+    // What it does not stop: a script that signs in anonymously again for each
+    // order gets a fresh uid and a fresh clock. Firebase Auth limits how fast
+    // new accounts can be created from one IP address, which slows that down,
+    // but it is not a per-device guarantee. That gap is what App Check is for.
+    //
+    // 30 must match ORDER_GAP_SECONDS in src/lib/order-throttle.ts; a unit test
+    // reads this file to check.
+
+    function throttleStamp() {
+      return request.resource.data.keys().hasOnly(["lastOrderAt", "lastOrderId"])
+        && request.resource.data.lastOrderAt == request.time
+        && request.resource.data.lastOrderId is string;
+    }
+
+    match /orderThrottle/{uid} {
+      // The phone reads its own, only when an order is refused, to tell
+      // "throttled" apart from any other refusal.
+      allow get: if signedIn() && request.auth.uid == uid;
+      allow create: if signedIn() && request.auth.uid == uid && throttleStamp();
+      allow update: if signedIn() && request.auth.uid == uid && throttleStamp()
+        && request.time >= resource.data.lastOrderAt + duration.value(30, 's');
     }
 
     // -- staff directory (role lookup) -------------------------------------

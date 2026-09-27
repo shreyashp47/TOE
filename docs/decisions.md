@@ -136,10 +136,59 @@ a cafe uses — so it is affordable, just not free to enable. Until then, treat
 `/admin/reports` figures as self-reported by the till, and reconcile against the
 counter.
 
-`scripts/rules-test.mjs` pins the behaviour that _is_ enforceable: 46 assertions
+`scripts/rules-test.mjs` pins the behaviour that _is_ enforceable: 61 assertions
 covering the anonymous customer, a signed-out caller, a signed-in barista and a
 signed-in owner, including that a barista cannot touch the menu and cannot skip a
 status.
+
+### Order volume: a per-customer throttle in the rules, App Check later
+
+Creating an order is the one write the public can make, and until issue #32 it
+was unbounded. The create rule stopped forged statuses, injected fields and
+backdating, but nothing stopped a loop: a script could fill the staff board with
+junk a barista has to clear by hand, bury a real order in it, and burn the
+free-tier write quota doing so.
+
+The purpose-built answer is Firebase App Check, and it needs the Blaze plan. So
+does anything with Cloud Functions. The constraint here is the free tier.
+
+**Decision: throttle per anonymous uid, in `firestore.rules`, at one order per
+30 seconds.**
+
+Every customer already holds an anonymous uid (that is how they read their own
+order back), so there is something to hang a limit on. Each order is written in
+one batch with `/orderThrottle/{uid}`:
+
+- the order rule requires, via `getAfter()`, that the same commit stamps that
+  document with `lastOrderAt == request.time` and `lastOrderId ==` this order's
+  id. The id match is what makes one stamp buy exactly one order — a batch cannot
+  stamp once and write 499 orders beside it;
+- the throttle rule refuses to rewrite the stamp until
+  `resource.data.lastOrderAt + duration.value(30, 's')`, and refuses deletes, so
+  the clock cannot be reset;
+- a first order has no document yet, so it is a create with nothing to wait for.
+
+No loops and no lambdas are needed — it is two document lookups and a timestamp
+comparison — so it stays inside what the rules language can actually do (issue
+#27 is the reminder of what happens otherwise).
+
+Why 30 seconds: long enough that a loop gets two orders a minute rather than
+thousands, short enough that a customer who forgot the sugar is not stuck. The
+phone keeps its own note of when it last ordered
+([`src/lib/order-throttle.ts`](../src/lib/order-throttle.ts)) and tells the
+customer how long to wait _before_ sending, so the honest path never sees the
+server's bare "permission-denied". If the server refuses anyway (cleared storage,
+a clock that disagrees), the adapter reads the customer's own stamp once to tell a
+throttle apart from any other refusal. Demo mode runs the same client-side check.
+
+The client write went from a read-then-write transaction (for the old counter) to
+a blind two-document batch, so an order now costs two writes and no reads.
+
+**The gap, stated plainly:** the limit is per uid, and a script can sign in
+anonymously again for every order. Firebase Auth rate-limits new accounts per IP
+address, which slows that down, but it is not a per-device limit. App Check is
+the fix, when the cafe moves to Blaze; the throttle stays as a second layer and
+does not need to change.
 
 ### Order numbers are derived from the document id, not counted
 

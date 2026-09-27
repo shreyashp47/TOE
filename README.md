@@ -246,7 +246,7 @@ To confirm the database side, with the console open in another tab:
 
 ```bash
 npm run emulators    # terminal 1
-npm run test:rules   # terminal 2 — 46 assertions, 0 failures
+npm run test:rules   # terminal 2 — 61 assertions, 0 failures
 ```
 
 **Verify before you trust it** — the emulator applies the real routing and header
@@ -322,7 +322,7 @@ produced the font.
 Worth reading before you rely on the money figures.
 
 `firestore.rules` is a real boundary, not a formality: `scripts/rules-test.mjs`
-runs 46 assertions against the emulators covering the anonymous customer, a
+runs 61 assertions against the emulators covering the anonymous customer, a
 signed-out caller, a signed-in barista and a signed-in owner. A barista cannot
 edit the menu, cannot read another barista's role record, cannot skip a status
 and cannot change a price after the order is placed.
@@ -343,6 +343,23 @@ client from ever producing a wrong total. If you need it airtight, add a
 Firestore-triggered function that rewrites `total` from the stored lines. That
 requires the Blaze plan, but Cloud Functions 2nd gen includes 2M invocations a
 month free — far more than a cafe uses.
+
+**Order volume is limited per customer, not per device.** Placing an order is the
+one write the public can make, so the rules throttle it: each customer's anonymous
+uid gets an `/orderThrottle/{uid}` document, every order must be written in the
+same batch as a fresh stamp on it, and the stamp is refused until **30 seconds**
+after the previous one. A second order a minute later goes through; a double tap
+gets a plain "you can send another in 25 seconds" on the phone before anything is
+sent. A script looping on one uid gets two orders a minute.
+
+What it does not stop is a script that signs in anonymously again for every
+order, because each new uid starts with a clean clock. Firebase Auth rate-limits
+new account creation per IP address, which slows that down, but the real answer
+is **App Check**, and App Check needs the Blaze plan. It is the next step if the
+board ever fills with junk; nothing in the throttle needs to change to add it.
+The number lives in two places — `firestore.rules` and `ORDER_GAP_SECONDS` in
+[`src/lib/order-throttle.ts`](./src/lib/order-throttle.ts) — and a unit test
+fails if they disagree.
 
 ### Deploy the rules too — this is the part people skip
 

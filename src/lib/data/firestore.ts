@@ -18,6 +18,7 @@
 import { getDemoStaffPin } from "../config";
 import { orderTotal } from "../money";
 import { ACTIVE_STATUSES } from "../order-status";
+import { OrderThrottled, secondsUntilNextOrder } from "../order-throttle";
 import {
   parseMenuItem,
   parseOrder,
@@ -48,6 +49,7 @@ const ORDERS = "orders";
 const CONFIG = "config";
 const SPECIAL_DOC = "special";
 const STAFF = "staff";
+const THROTTLE = "orderThrottle";
 
 let bundle: Promise<{
   app: import("firebase/app").FirebaseApp;
@@ -99,6 +101,35 @@ async function customerUid(): Promise<string> {
     /* private mode: the session cookie still keeps this tab working */
   }
   return cred.user.uid;
+}
+
+/**
+ * Tells a throttled order apart from any other refusal.
+ *
+ * Firestore reports both as a bare "permission-denied", and the phone's own note
+ * of its last order (src/lib/order-throttle.ts) can be missing — cleared
+ * storage, a second tab, a clock that disagrees with the server's. So on a
+ * refusal, read this customer's own throttle document and, if it was stamped
+ * within the gap, say so. One read, only on the failure path.
+ */
+async function asThrottled(
+  err: unknown,
+  uid: string,
+): Promise<OrderThrottled | null> {
+  if ((err as { code?: string })?.code !== "permission-denied") return null;
+  try {
+    const { db, fs } = await dbAndFs();
+    const snap = await fs.getDoc(fs.doc(db, THROTTLE, uid));
+    const last = snap.data()?.lastOrderAt as
+      { toMillis?: () => number } | undefined;
+    const at = typeof last?.toMillis === "function" ? last.toMillis() : null;
+    // The server already refused, so err towards "throttled": a phone clock a
+    // few seconds ahead of the server's would otherwise read the gap as over.
+    const wait = secondsUntilNextOrder(at, Date.now() - 5_000);
+    return wait > 0 ? new OrderThrottled(wait) : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -286,7 +317,15 @@ export const firestoreOrderRepo: OrderRepository = {
     // /meta/counters document in a transaction, which meant that document had to
     // be writable by the public (issue #30). The number is now derived from
     // `ref.id` when the order is read — see src/lib/order-number.ts.
-    await fs.setDoc(ref, {
+    //
+    // The order and this customer's throttle document go in one batch (issue
+    // #32). The rules refuse an order unless the same commit stamps
+    // /orderThrottle/{uid} with this order's id at request.time, and refuse that
+    // stamp unless ORDER_GAP_SECONDS have passed since the previous one. Both
+    // serverTimestamp()s resolve to the commit time, which is request.time.
+    // A blind set, not a read-then-write: nothing needs reading first.
+    const batch = fs.writeBatch(db);
+    batch.set(ref, {
       tableNumber: input.tableNumber,
       items: input.items,
       total,
@@ -296,6 +335,15 @@ export const firestoreOrderRepo: OrderRepository = {
       paymentMethod: input.paymentMethod ?? "counter",
       customerUid: uid,
     });
+    batch.set(fs.doc(db, THROTTLE, uid), {
+      lastOrderAt: fs.serverTimestamp(),
+      lastOrderId: ref.id,
+    });
+    try {
+      await batch.commit();
+    } catch (err) {
+      throw (await asThrottled(err, uid)) ?? err;
+    }
 
     return parseOrder({
       id: ref.id,
