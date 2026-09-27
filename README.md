@@ -17,6 +17,23 @@ Built for a 6–10 table cafe on free-tier infrastructure.
 | **Cost** | Free tier. A custom domain is the only expected expense (~₹500–800/year). |
 | **Docs** | [Requirements](./docs/requirements.md) · [Theme](./docs/anime-theme.md) · [Decisions](./docs/decisions.md) |
 
+### Live deployment
+
+**https://toi-cafe.web.app** — Firebase project `toi-cafe`, Firestore in
+`asia-south1`, 12 menu items seeded.
+
+| Screen             | URL                                     | State                                       |
+| ------------------ | --------------------------------------- | ------------------------------------------- |
+| Customer menu      | `/order?table=1` … `/order?table=6`     | Working — browse, order, live status        |
+| Table picker       | `/`                                     | Working                                     |
+| Order confirmation | `/order/confirmation?table=3&id=…`      | Working                                     |
+| Staff board        | `/staff`                                | Needs Email/Password + a `/staff/{uid}` doc |
+| Owner              | `/admin`, `/admin/reports`, `/admin/qr` | Needs the same                              |
+| Offline            | `/offline`                              | Working                                     |
+
+The customer half needs no account and is usable as-is. The staff half is
+blocked on two console steps — see [Going live](#going-live-with-firebase).
+
 ---
 
 ## Quickstart
@@ -99,6 +116,11 @@ Everything below is a real screenshot at phone width, from the demo build.
 The app is designed so this step cannot break the build: no code changes, six
 environment variables.
 
+> **For the `toi-cafe` deployment in this repo, sections 1, 2 and 5 are already
+> done** — the project, the database, the web app, the hosted site and the
+> deployed rules. What is left is the Auth setup in section 3, and the accounts in
+> section 4. Start at section 3 if you are working on this deployment.
+
 ### 1. Create the project
 
 1. [Firebase console](https://console.firebase.google.com) → **Add project** (the
@@ -106,7 +128,13 @@ environment variables.
 2. **Build → Firestore Database → Create database.**
    - Start in **production mode** — the rules in this repo are the real ones.
    - Choose a region **near the cafe** (asia-south1 for India).
-3. **Build → Authentication → Get started → Email/Password.**
+3. **Build → Authentication → Get started.** Enable **Anonymous** and
+   **Email/Password** — both are required, and the reasons are not obvious.
+   - **Anonymous** is what lets a customer read their own order back. The rules
+     scope reads to `resource.data.customerUid == request.auth.uid`, and without
+     it a customer who places an order is shown "we can't find that order" — see
+     the note in section 3.
+   - **Email/Password** is for staff and owners.
 4. **Project settings → Your apps → Web →** copy the six `firebaseConfig` values.
 
 ### 2. Point the app at it
@@ -192,6 +220,30 @@ firebase deploy            # hosting + firestore rules + indexes
 
 You land on `https://<project-id>.web.app`. `firebase.json` sets `cleanUrls`, so
 `/order` is served from `out/order.html` and the printed QR URLs work unchanged.
+
+#### Check the live site, not just the deploy output
+
+`firebase deploy` reporting success does not mean the app works — a rule that
+refuses a read, or a query missing an index, both fail silently at the browser.
+Drive the real thing:
+
+```bash
+BASE_URL=https://toi-cafe.web.app npm run test:entry   # every way a customer reaches the menu
+BASE_URL=https://toi-cafe.web.app npm run flow          # order -> staff board -> live status
+BASE_URL=https://toi-cafe.web.app npm run audit         # contrast + WebKit, both engines
+```
+
+`test:entry` is the one that catches the class of bug that hides best. Tapping a
+table number is a client-side navigation, so a hook that reads the query string
+once on mount will look correct for every scanned QR code and wrong for every
+tap. Both used to end on the same URL and show different screens.
+
+To confirm the database side, with the console open in another tab:
+
+```bash
+npm run emulators    # terminal 1
+npm run test:rules   # terminal 2 — 35 assertions, 0 failures
+```
 
 **Verify before you trust it** — the emulator applies the real routing and header
 rules from `firebase.json`, with no account needed:
