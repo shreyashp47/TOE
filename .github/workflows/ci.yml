@@ -77,7 +77,7 @@ jobs:
   visual:
     name: mobile layout smoke test
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
     if: github.ref == 'refs/heads/main'
 
     steps:
@@ -93,10 +93,28 @@ jobs:
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
 
+      # A production build, not `next dev`: every route is prerendered, so the
+      # 24 screenshots take seconds instead of recompiling the app 8 times.
+      - name: Build
+        run: npm run build
+
+      - name: Start the server
+        run: |
+          npx next start --port 4320 &
+          for i in $(seq 1 60); do
+            if curl -sf -o /dev/null http://127.0.0.1:4320/; then
+              echo "server up"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "server never came up"
+          exit 1
+
       - name: Check every screen at phone widths
-        run: node scripts/screenshot.mjs
+        run: node scripts/screenshot.mjs --quick
         env:
-          NEXT_PUBLIC_CAFE_NAME: Mochi & Beans
+          BASE_URL: http://127.0.0.1:4320
 
       - uses: actions/upload-artifact@v4
         with:

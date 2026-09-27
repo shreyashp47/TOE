@@ -3,9 +3,10 @@
  * walks the key screens at several phone widths plus one desktop width, and
  * writes PNGs to .screenshots/ so the UI can be eyeballed without a device.
  *
- *   node scripts/screenshot.mjs                # all routes, iPhone-ish widths
- *   node scripts/screenshot.mjs /order         # one route
- *   BASE_URL=https://x.web.app node scripts/... # against a deployed build
+ *   node scripts/screenshot.mjs                     # all routes, all widths
+ *   node scripts/screenshot.mjs /order              # one route
+ *   node scripts/screenshot.mjs --quick             # 3 widths (what CI runs)
+ *   BASE_URL=https://x.web.app node scripts/...      # against a deployed build
  */
 import { mkdir, rm } from "node:fs/promises";
 import { spawn } from "node:child_process";
@@ -16,13 +17,22 @@ const OUT = ".screenshots";
 const PORT = 4310;
 const BASE = process.env.BASE_URL ?? `http://127.0.0.1:${PORT}`;
 
-const VIEWPORTS = [
+const ALL_VIEWPORTS = [
   { name: "iphone-se", width: 320, height: 640, dpr: 2 },
   { name: "iphone-13", width: 390, height: 844, dpr: 3 },
   { name: "iphone-max", width: 430, height: 932, dpr: 3 },
   { name: "tablet", width: 768, height: 1024, dpr: 2 },
   { name: "desktop", width: 1280, height: 900, dpr: 2 },
 ];
+
+// `--quick` drops the two widths that overlap, which is what CI needs to stay
+// inside its time budget. Locally, run the full set.
+const quick = process.argv.includes("--quick");
+const VIEWPORTS = quick
+  ? ALL_VIEWPORTS.filter((v) =>
+      ["iphone-se", "iphone-13", "tablet"].includes(v.name),
+    )
+  : ALL_VIEWPORTS;
 
 const ROUTES = [
   { path: "/", name: "home" },
