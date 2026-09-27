@@ -4,25 +4,38 @@ Where the project stands, what is in flight, and what is waiting on a decision.
 Updated as work lands, so a fresh contributor — or a fresh session — can pick up
 from here without reading the git log.
 
-_Last updated: 2026-09-27_
+_Last updated: 2026-09-28_
 
 ## Live
 
 **https://toi-cafe.web.app** — Firebase project `toi-cafe`.
 
-Verified end to end on the live site on 2026-09-27, in a real browser at phone
-width:
+**v0.2.0** deployed on 2026-09-28, rules and hosting together (service-worker
+cache version `727acf676c24`). See the [changelog](../CHANGELOG.md) for what
+changed and the upgrade steps.
 
-- Customer: table picker → menu → cart → order → confirmation with live status
-- Staff: email sign-in → new orders arrive on the board in ~2 s with no reload →
-  _Mark ready_ and _Mark served_ reach the customer's screen live
-- Owner: menu edits reach customers immediately; reports match the orders; all
-  six table QR codes decode to the right `/order?table=N` URL
-- Signed-out visitors see no orders; one customer cannot read another's order;
-  no console errors and no Firestore permission errors
+v0.2.0 was verified on the live site on 2026-09-28 at phone width, as a customer
+and a signed-out visitor:
 
-One owner account exists. Baristas each need an account and a `/staff/{uid}`
-document — see the README.
+- Order on Table 6 → confirmation with live status; no console or permission
+  errors; `sw.js` carries the stamped cache version
+- A second order within 30 s is refused with a countdown; after 30 s it goes
+  through (#32)
+- `meta/counters` cannot be read or written; an order carrying its own number,
+  or skipping the throttle stamp, is refused; signed-out and anonymous visitors
+  cannot list orders or read another customer's (#30)
+- `/staff` and `/admin` show only sign-in screens when signed out
+
+**Not yet checked live:** the staff board and owner screens signed in (the new
+3-digit numbers, the total-mismatch flag, the no-role message). Needs someone
+with a staff or owner login.
+
+v0.1.0 was verified end to end on the live site on 2026-09-27: customer order
+to confirmation with live status, staff board receiving orders in ~2 s, owner
+menu edits, reports and QR codes, and no cross-customer reads.
+
+One owner account exists. Baristas each need an account and a role document:
+`npm run seed:staff -- --email=… --role=staff` — see the README.
 
 ## In flight
 
@@ -30,35 +43,19 @@ Work is built on a branch, checked by a separate tester (locally, then on the
 live site after deploy), and only then merged to `main`. Branches are pushed to
 GitHub as they go, so nothing lives only on one machine.
 
-| Branch               | Covers                    | State              |
-| -------------------- | ------------------------- | ------------------ |
-| `wip/rules-security` | #30, #32                  | Built — in testing |
-| `wip/app-fixes`      | #29, #33, #27, #31, + bug | Building           |
-
-- **#30** — the order counter is publicly writable. Moving to an order number
-  that needs no shared writable document.
-- **#32** — no limit on order creation. A per-customer throttle in the rules,
-  using the anonymous uid. App Check is the Blaze-plan follow-up.
-- **#29** — the service-worker cache version never changes. Stamped per build.
-- **#33** — a signed-in account with no role sees an empty board. It will say so,
-  and `npm run seed:staff` will create staff in one command.
-- **#27** — the order total comes from the phone. The staff board will flag any
-  order whose total does not match its lines. This is detection, not prevention;
-  the issue stays open for the server-side fix.
-- **#31** — six-month retention is not implemented. Reclassified as an operational
-  practice, with an owner-run `npm run cleanup:orders` that dry-runs by default.
-- **Bug** — _Complete_ on a _Ready_ ticket silently does nothing (the status
-  machine offers a transition it then refuses). Found in live testing.
+| Branch         | Covers           | State                                             |
+| -------------- | ---------------- | ------------------------------------------------- |
+| `feat/stage-2` | UPI pay-at-table | Built, uncommitted — waiting on the cafe's UPI ID |
 
 ## Next
 
-1. Merge the two branches above, deploy rules and hosting, re-test live
-2. Dependabot majors (#22–#26): Next 16, TypeScript 7, ESLint 10, jsdom 30,
-   Vitest coverage 5 — one at a time, each through the full checks
-3. Phase 2 features that fit the free tier:
-   - UPI pay-at-table (a `upi://` link and QR with the amount filled in)
-   - Report export — CSV, and a print layout that saves as PDF
+1. Dependabot majors ([#34](https://github.com/shreyashp47/TOE/issues/34)) —
+   Next 16, TypeScript 7, ESLint 10, jsdom 30, Vitest coverage 5 — one at a
+   time, each through the full checks
+2. The rest of Phase 2 that fits the free tier:
+   - Report print layout that saves as PDF
    - Keep the staff phone's screen awake while the board is open
+3. UPI pay-at-table, once the cafe's UPI ID arrives
 
 ## Waiting on the owner
 
@@ -72,8 +69,16 @@ GitHub as they go, so nothing lives only on one machine.
 Four test orders on Table 6 (#102–#105, ₹960 total) are completed and **count
 in the September 2026 report**. Three older orders (Table 3 #101 and #102,
 Table 5 #101) were still open at the time of testing; two share #101 because the
-counter had been reset — the problem #30 fixes.
+old counter had been reset. Those keep their stored numbers. Orders placed since
+v0.2.0 use a 3-digit number derived from the order id, which is not unique —
+use the table, or the _Order ID_ column in the CSV, to tell orders apart.
+
+Three more test orders on Table 6 from the 2026-09-28 live test (#826, #315,
+#156; one Cappuccino each, ₹540 total) are still _preparing_. Complete or delete
+them from the owner account before relying on the September report.
 
 ## Done
 
+- 2026-09-28 — v0.2.0 live: #29 #30 #32 #33 closed; #27 detection shipped, #31
+  owner-run cleanup
 - 2026-09-27 — Staff and owner screens live; README updated (#28 closed)
