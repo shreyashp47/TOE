@@ -53,11 +53,50 @@ export async function placeOrder({
 
   const bundle = await loadBundle();
 
-  return bundle.orders.create({
-    tableNumber,
-    items: check.lines,
-    total: check.total,
-    notes: notes?.trim() || undefined,
-    paymentMethod,
-  });
+  try {
+    return await bundle.orders.create({
+      tableNumber,
+      items: check.lines,
+      total: check.total,
+      notes: notes?.trim() || undefined,
+      paymentMethod,
+    });
+  } catch (err) {
+    throw new Error(friendlyError(err));
+  }
+}
+
+/**
+ * Turns a backend failure into something a person at table 4 can act on.
+ *
+ * The alternative is what this did before: the raw Firebase string. "Firebase:
+ * Error (auth/configuration-not-found)" in the middle of a checkout tells a
+ * customer nothing and tells the cafe owner nothing except that the order was
+ * lost. The one that matters most here is the not-configured case, because it
+ * looks like a broken app rather than a half-finished setup step.
+ */
+export function friendlyError(err: unknown): string {
+  const raw =
+    err instanceof Error ? err.message : typeof err === "string" ? err : "";
+  const code = /\(([a-z0-9/-]+)\)/i.exec(raw)?.[1] ?? "";
+
+  if (code.startsWith("auth/")) {
+    if (code.includes("configuration-not-found"))
+      return "Ordering is not switched on yet. Please tell the counter.";
+    if (code.includes("network"))
+      return "No connection right now. Check the wifi and try again.";
+    if (code.includes("blocked"))
+      return "This device is not allowed to order. Please scan the code again.";
+    if (code.includes("unauthorized-domain"))
+      return "Ordering is not switched on for this address. Please tell the counter.";
+    return "We couldn't confirm who you are. Please tell the counter.";
+  }
+  if (code.startsWith("permission-denied"))
+    return "We couldn't send that order. Please tell the counter.";
+  if (code.startsWith("unavailable"))
+    return "The kitchen system is busy. Please try again in a moment.";
+  if (code.startsWith("deadline-exceeded"))
+    return "That took too long. Please try again.";
+  if (raw.trim()) return raw;
+  return "We couldn't send that. Please try again.";
 }
