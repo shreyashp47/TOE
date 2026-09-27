@@ -25,6 +25,11 @@ Worth knowing when judging severity:
 - **Staff and owner accounts.** Email + password via Firebase Authentication,
   with the role read from `/staff/{uid}` and enforced by `firestore.rules`.
   A privilege-escalation path from `staff` to `owner` is high severity.
+- **Anonymous customers.** A customer signs in anonymously and the order rules
+  scope reads to `resource.data.customerUid == request.auth.uid`. So the customer
+  read path is a real security boundary: any change that makes `isStaff()` true
+  for an anonymous user exposes the entire order book. Membership is by presence
+  of a `/staff/{uid}` document, so the default is closed.
 - **Customer order history.** Kept in `localStorage` per table, never synced. Not
   sensitive in the way a customer account would be, but it is still somebody's
   order.

@@ -153,9 +153,20 @@ Then give the owner their role, which is what `firestore.rules` checks:
 { "name": "Cafe Owner", "role": "owner" }
 ```
 
-Any user without that document is treated as `staff` — a barista can work the
-board but cannot touch the menu or the reports. A missing document is a safe
-default, not a lockout.
+**Every account needs a document here, not just owners.** A missing document now
+means "not staff", and that is deliberate: customers sign in anonymously so the
+rules can let each one read back its own order, and a rule that treated "any
+signed-in user" as staff would hand the whole order book to everyone who scans a
+QR code. So add a `/staff/{uid}` document for each barista too:
+
+```json
+// /staff/{uid}
+{ "name": "Asha", "role": "staff" }
+```
+
+`role` may be `staff` (works the board) or `owner` (also edits the menu and sees
+the reports). An account with no document can sign in but sees nothing — a
+closed default, which is the right way round for a database of orders.
 
 ### 4. Seed the menu
 

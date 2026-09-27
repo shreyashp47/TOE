@@ -25,8 +25,15 @@ service cloud.firestore {
         : "staff";
     }
 
+    // A staff account is one that has a document in /staff. It used to be simply
+    // `signedIn()`, which was safe while the only people who ever signed in were
+    // staff. It is no longer: customers sign in anonymously so that the order
+    // rules can give each one read access to its own order, and `signedIn()` on
+    // its own would hand the entire order book to every customer who scans a QR
+    // code. Membership is now explicit, and the default is closed.
     function isStaff() {
-      return signedIn();
+      return signedIn()
+        && exists(/databases/$(database)/documents/staff/$(request.auth.uid));
     }
 
     function isOwner() {
@@ -47,7 +54,12 @@ service cloud.firestore {
     // and orderNumber rather than trusting whatever the phone sent.
 
     match /orders/{orderId} {
-      allow read: if isStaff();
+      // Staff see the whole board. A customer sees only the order they placed,
+      // which is what the confirmation and live-status screens need — they are
+      // unauthenticated in every other sense, but they do hold an anonymous uid
+      // that the create rule pins to the document.
+      allow read: if isStaff()
+        || (signedIn() && resource.data.customerUid == request.auth.uid);
       allow delete: if isOwner();
 
       // This is the only write any member of the public can perform, so it is
@@ -62,6 +74,8 @@ service cloud.firestore {
       //     backdate an order out of today's takings
       //   - orderNumber as an int, bounded, so the counter cannot be pushed to
       //     something absurd
+      //   - customerUid, which must equal the caller's own anonymous uid, so a
+      //     customer can only ever read back the order they placed themselves
       //   - total as a bounded int
       //
       // What it deliberately does NOT do: recompute `total` from the line items.
@@ -79,8 +93,10 @@ service cloud.firestore {
           "status",
           "createdAt",
           "notes",
-          "paymentMethod"
+          "paymentMethod",
+          "customerUid"
         ])
+        && request.resource.data.customerUid == request.auth.uid
         && request.resource.data.tableNumber is int
         && request.resource.data.tableNumber >= 1
         && request.resource.data.tableNumber <= 50

@@ -71,6 +71,35 @@ async function dbAndFs(): Promise<{ db: Firestore; fs: FsModule }> {
 }
 
 /**
+ * The identity a customer order is pinned to.
+ *
+ * A customer has no account (requirements §3), but "no account" cannot mean "no
+ * identity" if the order rules are to let somebody read back their own order: an
+ * unauthenticated caller is indistinguishable from any other anonymous caller.
+ * So a customer signs in anonymously, which costs no sign-up and no prompt, and
+ * the uid goes on the order document. The rule then reads
+ * `resource.data.customerUid == request.auth.uid`, which means a customer can
+ * read exactly the orders they placed and no one else's — which is the property
+ * the rule was always supposed to have.
+ *
+ * The uid is persisted to localStorage purely so a page reload does not mint a
+ * new identity and orphan the order being tracked.
+ */
+async function customerUid(): Promise<string> {
+  const KEY = "toe.customerUid";
+  const { auth } = await getBundle();
+  if (auth.currentUser) return auth.currentUser.uid;
+  const { signInAnonymously } = await import("firebase/auth");
+  const cred = await signInAnonymously(auth);
+  try {
+    localStorage.setItem(KEY, cred.user.uid);
+  } catch {
+    /* private mode: the session cookie still keeps this tab working */
+  }
+  return cred.user.uid;
+}
+
+/**
  * Bridges the async module load to the synchronous `Unsubscribe` contract: if
  * the component unmounts before the SDK finishes loading, the listener is torn
  * down as soon as it exists.
@@ -240,6 +269,7 @@ export const firestoreOrderRepo: OrderRepository = {
 
   async create(input: NewOrderInput): Promise<Order> {
     const { db, fs } = await dbAndFs();
+    const uid = await customerUid();
     const ref = fs.doc(fs.collection(db, ORDERS));
     const total = orderTotal(input.items);
     // The display number is allocated in a transaction so two phones placing an
@@ -260,6 +290,7 @@ export const firestoreOrderRepo: OrderRepository = {
         createdAt: fs.serverTimestamp(),
         notes: input.notes ?? "",
         paymentMethod: input.paymentMethod ?? "counter",
+        customerUid: uid,
       });
     });
 
