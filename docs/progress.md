@@ -30,10 +30,10 @@ Work is built on a branch, checked by a separate tester (locally, then on the
 live site after deploy), and only then merged to `main`. Branches are pushed to
 GitHub as they go, so nothing lives only on one machine.
 
-| Branch               | Covers                    | State    |
-| -------------------- | ------------------------- | -------- |
-| `wip/rules-security` | #30, #32                  | Building |
-| `wip/app-fixes`      | #29, #33, #27, #31, + bug | Building |
+| Branch               | Covers                    | State              |
+| -------------------- | ------------------------- | ------------------ |
+| `wip/rules-security` | #30, #32                  | Built — in testing |
+| `wip/app-fixes`      | #29, #33, #27, #31, + bug | Building           |
 
 - **#30** — the order counter is publicly writable. Moving to an order number
   that needs no shared writable document.
