@@ -10,7 +10,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { Icon } from "@/components/icons";
-import { useIsDemo, useOrderRepo } from "@/components/providers/DataProvider";
+import {
+  useIsDemo,
+  useMenu,
+  useOrderRepo,
+} from "@/components/providers/DataProvider";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Field, Input } from "@/components/ui/Input";
@@ -18,6 +22,7 @@ import { EmptyState, Loading } from "@/components/ui/Loading";
 import { demoSeedOrders } from "@/lib/data/demo-store";
 import { buildSampleOrders } from "@/lib/data/sample-orders";
 import { formatINR } from "@/lib/money";
+import { summariseIntegrity } from "@/lib/order-integrity";
 import {
   buildReport,
   currentMonth,
@@ -99,6 +104,16 @@ export default function ReportsPage() {
   const report = useMemo(
     () => (range ? buildReport(orders, range) : null),
     [orders, range],
+  );
+
+  // Issue #27: order totals are written by the customer's phone. The figures
+  // above are already summed from the line items, not the stored totals, but an
+  // order whose stored total disagrees with its own items is one the counter may
+  // have charged wrongly, so it is listed for the owner to reconcile.
+  const { items: menu } = useMenu();
+  const integrity = useMemo(
+    () => summariseIntegrity(orders, menu),
+    [orders, menu],
   );
 
   function downloadCsv() {
@@ -238,6 +253,8 @@ export default function ReportsPage() {
               icon="sparkle"
             />
           </ul>
+
+          <IntegrityNotice {...integrity} />
 
           <Card className="p-4">
             <h2 className="text-lg">Revenue by day</h2>
@@ -423,5 +440,44 @@ function RevenueChart({
         </span>
       </p>
     </>
+  );
+}
+
+function orderNumbers(orders: Order[]): string {
+  const shown = orders.slice(0, 12).map((o) => `#${o.orderNumber}`);
+  const more = orders.length - shown.length;
+  return more > 0 ? `${shown.join(", ")} and ${more} more` : shown.join(", ");
+}
+
+function IntegrityNotice({
+  totalMismatch,
+  differsFromMenu,
+}: ReturnType<typeof summariseIntegrity>) {
+  if (totalMismatch.length === 0 && differsFromMenu.length === 0) return null;
+  return (
+    <Card className="flex flex-col gap-2 p-4 text-sm" data-integrity="report">
+      {totalMismatch.length > 0 ? (
+        <p role="alert" className="text-berry-deep">
+          <span className="font-semibold">
+            {totalMismatch.length === 1
+              ? "1 order has a total that doesn't match its items"
+              : `${totalMismatch.length} orders have a total that doesn't match their items`}
+          </span>{" "}
+          ({orderNumbers(totalMismatch)}). The revenue above is added up from
+          the items, not those totals — check these against what the till
+          actually took.
+        </p>
+      ) : null}
+      {differsFromMenu.length > 0 ? (
+        <p className="text-muted">
+          {differsFromMenu.length === 1
+            ? "1 order has items"
+            : `${differsFromMenu.length} orders have items`}{" "}
+          priced or named differently from today&apos;s menu (
+          {orderNumbers(differsFromMenu)}). Usually that is a menu change since
+          they were placed; if the menu has not changed, look at them.
+        </p>
+      ) : null}
+    </Card>
   );
 }

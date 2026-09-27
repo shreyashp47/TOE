@@ -132,9 +132,38 @@ the adversarial one.
 The fix is a trusted backend, not a cleverer rule: a Firestore-triggered function
 that rewrites `total` from the stored lines. That needs the Blaze plan, though
 Cloud Functions 2nd gen includes 2M invocations/month free, which is far more than
-a cafe uses — so it is affordable, just not free to enable. Until then, treat
-`/admin/reports` figures as self-reported by the till, and reconcile against the
-counter.
+a cafe uses — so it is affordable, just not free to enable. It remains open as
+issue #27.
+
+**What the free tier does instead: detection at the counter, not prevention.**
+[`src/lib/order-integrity.ts`](../src/lib/order-integrity.ts) re-derives an order
+from what is stored, and the staff board runs it on every ticket against the live
+menu:
+
+- `total` against the sum of the stored lines. The honest client always writes
+  exactly that sum, so a mismatch has no innocent explanation.
+- each line's unit price and name against the menu item it points at, and any
+  line whose item is not on the menu at all.
+
+A ticket that fails gets a red _"Total doesn't match menu — check before
+charging"_ box listing what is wrong, the stored total struck through, and the
+basket priced at today's menu — the figure to charge. Nothing is rewritten; the
+forged order stays in the database as it was sent.
+
+Why compare against the _current_ menu when lines deliberately store the price at
+order time? Because the stored line price is exactly as untrusted as the total:
+a forger who lowers both, consistently, passes the first check. The menu is the
+only trusted price source the browser has. The cost is a false positive when the
+owner edits a price while an order is on the board; that window is minutes, and
+the message names both prices so the barista can tell a price change from a
+forgery. Blocking or auto-correcting would be wrong for the same reason.
+
+`/admin/reports` already adds revenue up from the line items, not the stored
+totals, so a forged `total` alone does not move the figures. It lists any order
+in the period whose total disagrees with its own items — the ones the counter may
+have charged wrongly — and, as a softer hint, orders whose items differ from
+today's menu, which for old orders is usually just a price change since. Until
+the Blaze fix, reconcile those against the till.
 
 `scripts/rules-test.mjs` pins the behaviour that _is_ enforceable: 61 assertions
 covering the anonymous customer, a signed-out caller, a signed-in barista and a

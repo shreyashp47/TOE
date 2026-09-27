@@ -11,17 +11,20 @@ import {
   DataProvider,
   useActiveOrders,
   useIsDemo,
+  useMenu,
   useStaffSession,
 } from "@/components/providers/DataProvider";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState, Loading } from "@/components/ui/Loading";
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { TicketTotal, TotalWarning } from "@/components/TotalWarning";
 import { useOrderChime } from "@/hooks/useOrderChime";
 import { getCafeName } from "@/lib/config";
 import { formatINR, formatWait, lineSubtotal } from "@/lib/money";
+import { checkOrderIntegrity } from "@/lib/order-integrity";
 import { actionsFor, transition, type OrderStatus } from "@/lib/order-status";
-import type { Order } from "@/lib/types";
+import type { MenuItem, Order } from "@/lib/types";
 import { DEMO_CREDENTIALS } from "@/lib/data/seed";
 
 export default function StaffPage() {
@@ -41,6 +44,9 @@ function StaffScreen() {
   // document — just guarantees a permission error.
   const canWork = Boolean(user) && user?.role !== "unassigned";
   const { orders, loading: ordersLoading, error } = useActiveOrders(canWork);
+  // The live menu, to re-price every ticket against (issue #27). Menu reads are
+  // public and it is one small collection, so this is one cheap listener.
+  const { items: menu } = useMenu();
   const [tableFilter, setTableFilter] = useState<number | "all">("all");
   const [busyId, setBusyId] = useState<string | null>(null);
 
@@ -233,6 +239,7 @@ function StaffScreen() {
               <OrderTicket
                 key={order.id}
                 order={order}
+                menu={menu}
                 isFresh={freshIds.has(order.id)}
                 busy={busyId === order.id}
                 onAdvance={(to) => void advance(order, to)}
@@ -273,11 +280,13 @@ function FilterChip({
 
 function OrderTicket({
   order,
+  menu,
   isFresh,
   busy,
   onAdvance,
 }: {
   order: Order;
+  menu: MenuItem[];
   isFresh: boolean;
   busy: boolean;
   onAdvance: (to: OrderStatus) => void;
@@ -293,6 +302,9 @@ function OrderTicket({
   const urgent = waited > 8 * 60_000;
   const warn = waited > 4 * 60_000;
   const actions = actionsFor(order.status);
+  // The total on the order came from the customer's phone. Re-derive it here,
+  // where the money is taken, so a doctored one cannot slip past the counter.
+  const check = useMemo(() => checkOrderIntegrity(order, menu), [order, menu]);
 
   return (
     <Card
@@ -359,10 +371,10 @@ function OrderTicket({
         </p>
       ) : null}
 
+      <TotalWarning check={check} />
+
       <div className="border-line-soft flex items-center justify-between gap-2 border-t-2 px-3 py-2">
-        <span className="tnum font-round text-ink text-lg">
-          {formatINR(order.total)}
-        </span>
+        <TicketTotal check={check} />
         <div className="flex flex-wrap justify-end gap-2">
           {actions.length === 0 ? (
             <span className="text-muted text-sm">Closed</span>
