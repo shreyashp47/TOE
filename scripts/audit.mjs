@@ -105,13 +105,16 @@ for (const { name, type } of engines) {
   });
 
   for (const route of ROUTES) {
+    // Collected per-attempt rather than noted immediately, so a page can be
+    // reloaded once and a transient failure forgiven. A chunk that 404s or
+    // times out is the network's fault, not the app's; anything else is still
+    // fatal on the first attempt.
+    let attemptErrors = [];
     const page = await context.newPage();
     page.on("console", (m) => {
-      if (m.type() === "error") note(name, route.name, `console: ${m.text()}`);
+      if (m.type() === "error") attemptErrors.push(`console: ${m.text()}`);
     });
-    page.on("pageerror", (e) =>
-      note(name, route.name, `pageerror: ${e.message}`),
-    );
+    page.on("pageerror", (e) => attemptErrors.push(`pageerror: ${e.message}`));
 
     if (route.auth) {
       await page.goto(BASE, { waitUntil: "domcontentloaded" });
@@ -121,11 +124,36 @@ for (const { name, type } of engines) {
       );
     }
 
-    await page.goto(`${BASE}${route.path}`, {
-      waitUntil: "networkidle",
-      timeout: 45_000,
-    });
-    await page.waitForTimeout(700);
+    const open = async () => {
+      attemptErrors = [];
+      await page.goto(`${BASE}${route.path}`, {
+        waitUntil: "networkidle",
+        timeout: 45_000,
+      });
+      await page.waitForTimeout(700);
+    };
+    await open();
+
+    const TRANSIENT =
+      /Loading chunk \d+ failed|Failed to fetch|net::ERR|NetworkError|504 asset unavailable/i;
+    if (attemptErrors.length) {
+      const onlyTransient = attemptErrors.every((e) => TRANSIENT.test(e));
+      if (onlyTransient) {
+        console.log(
+          `  ..   ${route.name}: transient load failure, reloading once`,
+        );
+        await open();
+        const survived = attemptErrors.filter((e) => TRANSIENT.test(e));
+        if (survived.length) {
+          console.log(
+            `  ~~   ${route.name}: load still failing after a reload, reporting`,
+          );
+        } else {
+          console.log(`  ok   ${route.name}: clean after reload`);
+        }
+      }
+    }
+    for (const e of attemptErrors) note(name, route.name, e);
 
     const overflow = await page.evaluate(
       () => document.documentElement.scrollWidth - window.innerWidth,

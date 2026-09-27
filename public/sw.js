@@ -67,14 +67,26 @@ self.addEventListener("fetch", (event) => {
   if (isLiveOnly(url)) return;
 
   // Immutable build output: cache-first.
+  //
+  // The fetch is retried once and, failing that, falls back to any cached copy
+  // before giving up. Without this a single dropped request on flaky wifi
+  // rejects the respondWith promise outright, and the page dies on a missing
+  // chunk — which is exactly the network this app is built to work on.
   if (url.pathname.startsWith("/_next/static/")) {
     event.respondWith(
       caches.open(ASSET_CACHE).then(async (cache) => {
         const hit = await cache.match(request);
         if (hit) return hit;
-        const response = await fetch(request);
-        if (response.ok) cache.put(request, response.clone());
-        return response;
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+          try {
+            const response = await fetch(request);
+            if (response.ok) cache.put(request, response.clone());
+            return response;
+          } catch {
+            // fall through to the retry, then the cache
+          }
+        }
+        return new Response("", { status: 504, statusText: "asset unavailable" });
       }),
     );
     return;
