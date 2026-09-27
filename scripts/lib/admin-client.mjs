@@ -166,9 +166,16 @@ export function createAdminClient({
     });
     if (res.status === 404 && method === "GET") return null;
     const text = await res.text();
-    const json = text ? JSON.parse(text) : {};
+    let json = {};
+    try {
+      json = text ? JSON.parse(text) : {};
+    } catch {
+      /* an HTML error page; the raw text is reported below */
+    }
     if (!res.ok) {
-      const message = json?.error?.message ?? text.slice(0, 200);
+      // Query endpoints stream an array, so their error arrives as [{ error }].
+      const error = Array.isArray(json) ? json[0]?.error : json?.error;
+      const message = error?.message ?? text.slice(0, 200);
       throw new Error(`${method} ${url} failed (${res.status}): ${message}`);
     }
     return json;
@@ -238,25 +245,24 @@ export function createAdminClient({
       });
     },
 
-    /** Count and summed total of orders created before `cutoff`. */
-    async summariseOrdersBefore(cutoff) {
+    /**
+     * How many orders were created before `cutoff`. A count aggregation costs
+     * one read per thousand matches, so a dry run is cheap even on a big
+     * collection. (No `sum(total)`: that needs a composite createdAt+total
+     * index, and a count is all the decision needs.)
+     */
+    async countOrdersBefore(cutoff) {
       const res = await fs(`${docsRoot}:runAggregationQuery`, {
         method: "POST",
         body: {
           structuredAggregationQuery: {
             structuredQuery: ordersBefore(cutoff),
-            aggregations: [
-              { alias: "n", count: {} },
-              { alias: "revenue", sum: { field: { fieldPath: "total" } } },
-            ],
+            aggregations: [{ alias: "n", count: {} }],
           },
         },
       });
       const fields = res?.[0]?.result?.aggregateFields ?? {};
-      return {
-        count: decodeValue(fields.n) ?? 0,
-        revenue: decodeValue(fields.revenue) ?? 0,
-      };
+      return decodeValue(fields.n) ?? 0;
     },
 
     /** Oldest-first orders before `cutoff`: document name and createdAt only. */

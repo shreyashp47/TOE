@@ -28,11 +28,13 @@ Worth knowing when judging severity:
 - **Staff and owner accounts.** Email + password via Firebase Authentication,
   with the role read from `/staff/{uid}` and enforced by `firestore.rules`.
   A privilege-escalation path from `staff` to `owner` is high severity.
-- **Owner scripts.** `npm run seed:staff` runs on the owner's own machine with
-  the OAuth token from their `firebase login`, so it acts as the project's owner
-  over IAM and `firestore.rules` does not apply to it. It is only as safe as that
-  laptop's login. Nothing in it ships to a browser, and it stores neither a
-  credential nor the password it generates.
+- **Owner scripts.** `npm run seed:staff` and `npm run cleanup:orders` run on the
+  owner's own machine with the OAuth token from their `firebase login`, so they
+  act as the project's owner over IAM and `firestore.rules` does not apply to
+  them. They are only as safe as that laptop's login. Nothing in them ships to a
+  browser, and they store neither a credential nor a generated password.
+  `cleanup:orders` is a dry run unless given `--confirm`, and refuses to delete
+  anything under six months old.
 - **Anonymous customers.** A customer signs in anonymously and the order rules
   scope reads to `resource.data.customerUid == request.auth.uid`. So the customer
   read path is a real security boundary: any change that makes `isStaff()` true
