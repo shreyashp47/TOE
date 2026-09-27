@@ -166,39 +166,58 @@ the `/menu/{itemId}` document from the requirements.
 
 ### 5. Deploy the app
 
-**Use Vercel.** It detects Next.js, runs `next build`, and serves the app
-directly — no code changes, no config file, and the `headers()` block in
-`next.config.ts` (nosniff, frame options, Permissions-Policy) is honoured.
-
-1. Push the repo to GitHub (already done).
-2. [vercel.com/new](https://vercel.com/new) → import the repo → deploy.
-3. Add the same six `NEXT_PUBLIC_FIREBASE_*` values under **Settings →
-   Environment Variables**, for all three environments. Redeploy — Vercel only
-   bakes `NEXT_PUBLIC_*` in at build time, so editing them later needs a
-   redeploy, not just a restart.
-4. Put the production URL in `NEXT_PUBLIC_BASE_URL` before generating the QR
-   table cards, so the printed codes point at the real domain.
-
-> **Why not Firebase Hosting?** It would need `output: "export"` in
-> `next.config.ts`, and that path is a dead end here: the build errors on
-> `/manifest.webmanifest` until that route is marked `force-static`, and Next
-> **silently discards every entry in `headers()`** when exporting — you would
-> lose the security headers without a warning. Firebase is still the right tool
-> for Firestore and Auth; it just should not serve the app.
-
-Then deploy the database rules, which is a separate command and the part people
-skip:
+The app is a **static export** (`output: "export"` in `next.config.ts`), so it can
+be served by Firebase Hosting with no Node runtime. That is safe here: there are
+no route handlers, no server actions and no dynamic rendering, so all nine routes
+prerender to plain HTML and every piece of data is fetched in the browser.
 
 ```bash
 npm i -g firebase-tools
 firebase login
-firebase deploy --only firestore:rules,firestore:indexes
+firebase use --add          # pick your project; this writes .firebaserc
+npm run build              # emits ./out
+firebase deploy            # hosting + firestore rules + indexes
 ```
 
-To attach a custom domain later, add it in Vercel under **Settings → Domains**.
-The QR codes do not need regenerating as long as `/order?table=N` keeps working,
-which is why `NEXT_PUBLIC_BASE_URL` exists if you want to print cards against a
-staging address first.
+You land on `https://<project-id>.web.app`. `firebase.json` sets `cleanUrls`, so
+`/order` is served from `out/order.html` and the printed QR URLs work unchanged.
+
+**Verify before you trust it** — the emulator applies the real routing and header
+rules from `firebase.json`, with no account needed:
+
+```bash
+npm run build
+firebase emulators:start --only hosting
+```
+
+Then check that `/`, `/order?table=3`, `/staff`, `/admin/reports` and `/sw.js` all
+return 200, and that a 404 still returns 404.
+
+To attach a custom domain later, add it under **Hosting → Add custom domain**. The
+QR codes do not need regenerating as long as `/order?table=N` keeps working, which
+is why `NEXT_PUBLIC_BASE_URL` exists if you want to print cards against a staging
+address first.
+
+> **The security headers are declared twice, on purpose.** `next.config.ts` has the
+> `headers()` block for `next start`, and `firebase.json` re-declares the same
+> values, because Next _silently discards_ `headers()` when exporting. It prints a
+> warning during the build but ships the site without them. Firebase sends
+> `no-store` for everything by default too, which would re-download every hashed
+> chunk on each visit and defeat the 103 kB budget — so `firebase.json` also pins
+> `/_next/static/**` to `max-age=31536000, immutable`. If you change a header in one
+> place, change it in both.
+
+<details>
+<summary>Vercel instead (one-line alternative)</summary>
+
+Push the repo, import it at [vercel.com/new](https://vercel.com/new), and add the
+same six `NEXT_PUBLIC_FIREBASE_*` values under **Settings → Environment Variables**
+for all three environments. Vercel runs the Next.js runtime, so it honours
+`headers()` directly and `output: "export"` is simply ignored. Note that
+`NEXT_PUBLIC_*` values are baked in at build time, so editing one later needs a
+redeploy, not just a restart.
+
+</details>
 
 ### "A tree hydrated but some attributes of the server rendered HTML didn't match"
 

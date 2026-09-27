@@ -2,6 +2,16 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+
+  // Static export, so the app can be served by Firebase Hosting (or any plain
+  // static host) with no Node runtime. It is safe here: there are no route
+  // handlers, no server actions and no dynamic rendering — all data is fetched
+  // client-side from Firestore or localStorage, and every route prerenders.
+  //
+  // The cost is that `headers()` below is ignored on export. The same headers
+  // are declared in firebase.json so they still ship; see the comment there.
+  output: "export",
+
   poweredByHeader: false,
 
   async headers() {

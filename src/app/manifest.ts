@@ -2,6 +2,11 @@ import type { MetadataRoute } from "next";
 
 import { getCafeName, getCafeTagline } from "@/lib/config";
 
+// Required by `output: "export"`: a metadata route has no request to read, so it
+// has to be told explicitly to render at build time. Without this the static
+// export fails on this one route.
+export const dynamic = "force-static";
+
 /**
  * Web app manifest (docs/requirements.md §3, §7).
  *

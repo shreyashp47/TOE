@@ -17,6 +17,7 @@ coverage
 tsconfig.tsbuildinfo
 
 # local visual-check output (see scripts/screenshot.mjs)
+.screenshots/
 
 # misc
 .DS_Store
@@ -24,16 +25,8 @@ tsconfig.tsbuildinfo
 .vscode
 .idea
 
-# firebase
+# firebase (out/ is already ignored above, under # next)
 .firebase
 firebase-debug.log
 firestore-debug.log
 ui-debug.log
-.firebase/
-
-# env
-*.local
-.firebase/
-
-# visual-check output
-.screenshots/
