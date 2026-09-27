@@ -236,6 +236,19 @@ describe("ordersToCsv", () => {
     expect(rows[1].startsWith("2,")).toBe(true);
   });
 
+  it("keeps two orders that share a display number apart by their id", () => {
+    const csv = ordersToCsv([
+      order({ id: "abc123", orderNumber: 417, createdAt: base }),
+      order({ id: "xyz789", orderNumber: 417, createdAt: base + hour }),
+    ]);
+    const [header, ...rows] = csv.split("\n");
+    expect(header.split(",").slice(0, 2)).toEqual(["Order #", "Order ID"]);
+    expect(rows.map((r) => r.split(",").slice(0, 2))).toEqual([
+      ["417", "abc123"],
+      ["417", "xyz789"],
+    ]);
+  });
+
   it("produces just a header for no orders", () => {
     expect(ordersToCsv([]).split("\n")).toHaveLength(1);
   });

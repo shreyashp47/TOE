@@ -169,10 +169,17 @@ function csvCell(value: unknown): string {
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
-/** Order-line level CSV — what an accountant actually wants. */
+/**
+ * Order-line level CSV — what an accountant actually wants.
+ *
+ * "Order ID" is the database id, and it is the column to group lines by. The
+ * "Order #" is the short number printed for the customer, and it is not unique:
+ * two orders in a month can share one, so grouping on it would merge them.
+ */
 export function ordersToCsv(orders: Order[]): string {
   const header = [
     "Order #",
+    "Order ID",
     "Table",
     "Placed at",
     "Status",
@@ -195,6 +202,7 @@ export function ordersToCsv(orders: Order[]): string {
       rows.push(
         [
           order.orderNumber,
+          order.id,
           order.tableNumber,
           fmt(order.createdAt),
           order.status,
