@@ -17,9 +17,11 @@ Worth knowing when judging severity:
 - **Unauthenticated writes.** Customers place orders with no login, by design
   (`docs/requirements.md` §3). Anything reachable without a session is in scope
   for a hostile user, not just a careless one.
-- **Money.** Order totals are recomputed from line items in two independent
-  places — the app (`src/lib/money.ts`) and the Firestore `create` rule — because
-  the sending device is not trusted. A bug in either is a high-severity finding.
+- **Money.** `src/lib/money.ts` re-prices every basket against the live menu, and
+  `firestore.rules` type-checks and bounds the total. But the rules language cannot
+  recompute a total (no loops, no lambdas), so a tampered client **can** post a
+  false `total` and have it accepted. A bug in the pricing maths, or a report built
+  on a forged total, is high severity.
 - **Staff and owner accounts.** Email + password via Firebase Authentication,
   with the role read from `/staff/{uid}` and enforced by `firestore.rules`.
   A privilege-escalation path from `staff` to `owner` is high severity.
@@ -31,9 +33,14 @@ Worth knowing when judging severity:
 
 - Public users can **create** orders and **read** the menu. Nothing else. See
   `firestore.rules`.
-- Order totals are re-derived server-side; `status` is pinned to `preparing` and
-  `createdAt` is required to equal `request.time`, so a phone cannot backdate an
-  order out of a reporting month or write a status directly.
+- `status` is pinned to `preparing` on create, `createdAt` is required to equal
+  `request.time` so a phone cannot backdate an order out of a reporting month, and
+  the document is restricted to an exact field set.
+- Status transitions are enumerated in the rules, so a staff account cannot skip a
+  state or edit a price after the order is placed.
+- **Not handled:** the order `total` is client-supplied and is not re-derived
+  server-side. See the money bullet above — this is a known, accepted gap, not an
+  oversight.
 - Completed orders are immutable, so history cannot be rewritten.
 - The Firebase SDK is never loaded unless the Firebase env block is set, and it
   is never used to hold a secret — the config values are public by design.

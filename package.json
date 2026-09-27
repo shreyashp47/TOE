@@ -2,7 +2,7 @@
   "name": "cafe-qr-order",
   "version": "0.1.0",
   "private": true,
-  "description": "QR cafe ordering system — customers order from their phone, staff get live order alerts, owner gets reports. Next.js + Firebase, anime-cafe themed.",
+  "description": "QR cafe ordering system \u2014 customers order from their phone, staff get live order alerts, owner gets reports. Next.js + Firebase, anime-cafe themed.",
   "license": "MIT",
   "engines": {
     "node": ">=20.9.0"
@@ -10,6 +10,7 @@
   "scripts": {
     "dev": "next dev",
     "preview": "serve out --listen 4320",
+    "emulators": "firebase emulators:start",
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
@@ -18,6 +19,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
+    "test:rules": "node scripts/rules-test.mjs",
     "verify": "npm run lint && npm run typecheck && npm run test && npm run build",
     "format": "prettier --write .",
     "format:check": "prettier --check ."

@@ -98,15 +98,15 @@ in [`src/lib/order-status.ts`](../src/lib/order-status.ts). Transitions are
 forward-only and single-step, enforced in three independent places:
 
 1. `transition()` in the app, so the UI cannot offer an illegal move;
-2. `firestore.rules`, which re-derives the legal next status from the stored
-   document rather than trusting the client;
+2. `firestore.rules`, which enumerates the legal next status explicitly from the
+   stored document rather than trusting the client;
 3. the test suite, which walks the whole chain and asserts each hop.
 
 `completed` is terminal and immutable. That is what satisfies §5.3's "keeps it in
 the database for history — not deleted" and §5.4's six-month retention, and it is
 why completed orders still appear in reports after they leave the staff board.
 
-### Order totals are recomputed, never trusted
+### Order totals: checked in the app, bounded in the rules, and not re-derived
 
 Customers are unauthenticated (§3), so the phone sending the order is untrusted.
 Two independent defences:
@@ -117,13 +117,28 @@ Two independent defences:
   stranding a customer mid-checkout over ₹30 is worse than charging the current
   price. Totals are integer rupees — the cafe has no paise, and float sums on a
   menu are a rounding bug waiting to happen.
-- **Server**, in `firestore.rules`: the `create` rule recomputes the total from
-  the submitted lines with a `reduce()` and requires it to match, pins `status` to
-  `preparing`, and requires `createdAt == request.time` so a phone cannot backdate
-  an order out of a reporting month.
+- **Server**, in `firestore.rules`: the `create` rule pins `status` to
+  `preparing`, requires `createdAt == request.time` so a phone cannot backdate an
+  order out of a reporting month, restricts the document to an exact field set so
+  nothing extra can be injected, and requires `total` to be a bounded integer.
 
-A test asserts the _recomputed_ value wins over a tampered one, and CI
-deliberately breaks the money maths on `main` to prove the suite catches it.
+**The gap, stated plainly:** the rules cannot recompute the total. Firestore rules
+have no loops, no lambdas and no `reduce`, so there is no way to sum a
+variable-length basket in a rule, and an earlier version of this file claimed
+otherwise. A customer with devtools can post `total: 1` for a real basket, and the
+order will be accepted at that figure. `priceCart()` protects the honest path, not
+the adversarial one.
+
+The fix is a trusted backend, not a cleverer rule: a Firestore-triggered function
+that rewrites `total` from the stored lines. That needs the Blaze plan, though
+Cloud Functions 2nd gen includes 2M invocations/month free, which is far more than
+a cafe uses — so it is affordable, just not free to enable. Until then, treat
+`/admin/reports` figures as self-reported by the till, and reconcile against the
+counter.
+
+`scripts/rules-test.mjs` pins the behaviour that _is_ enforceable: 28 assertions
+covering the anonymous customer, a signed-in barista and a signed-in owner,
+including that a barista cannot touch the menu and cannot skip a status.
 
 ### A hand-written QR encoder
 

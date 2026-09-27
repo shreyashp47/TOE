@@ -142,3 +142,56 @@ jobs:
           name: screenshots
           path: .screenshots/
           retention-days: 14
+
+  # firestore.rules is not TypeScript, so nothing else in this pipeline can see a
+  # mistake in it. It shipped once with a lambda in it — `reduce(0, function(){})`
+  # — that the rules language has no support for, and the only thing that noticed
+  # was `firebase deploy`, on the maintainer's machine, after a customer-facing
+  # release was already planned. This job is the check that should have existed.
+  rules:
+    name: firestore security rules
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      # The Firestore and Auth emulators are Java programs.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install
+        run: npm ci
+
+      - name: Start the emulators
+        run: |
+          npx firebase-tools emulators:start --project demo-cafe \
+            --only firestore,auth > /tmp/emulators.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -sf -o /dev/null "http://127.0.0.1:8080/" \
+              && curl -sf -o /dev/null "http://127.0.0.1:9099/"; then
+              echo "emulators up"
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "emulators never came up"
+          cat /tmp/emulators.log
+          exit 1
+
+      - name: Attack the rules
+        run: node scripts/rules-test.mjs
+
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: emulator-log
+          path: /tmp/emulators.log
+          retention-days: 7

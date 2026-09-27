@@ -50,36 +50,85 @@ service cloud.firestore {
       allow read: if isStaff();
       allow delete: if isOwner();
 
+      // This is the only write any member of the public can perform, so it is
+      // written to be hostile: the client chooses the table, the items and the
+      // notes, and nothing else.
+      //
+      // What this rule pins down:
+      //   - the exact set of fields, so nothing extra can be injected
+      //   - status, which a customer could otherwise set to "completed" and
+      //     make an unpaid order look settled
+      //   - createdAt == request.time, so a phone with a wrong clock cannot
+      //     backdate an order out of today's takings
+      //   - orderNumber as an int, bounded, so the counter cannot be pushed to
+      //     something absurd
+      //   - total as a bounded int
+      //
+      // What it deliberately does NOT do: recompute `total` from the line items.
+      // Firestore rules have no loops and no lambdas — there is no `reduce` and
+      // no `function` expression — so an arbitrary-length list cannot be summed
+      // here. `total` is therefore client-supplied and a customer with devtools
+      // could post a cheap total. See docs/decisions.md and the README; the fix
+      // is a trusted backend, not a cleverer rule.
       allow create: if
-        request.resource.data.tableNumber is number
+        request.resource.data.keys().hasOnly([
+          "orderNumber",
+          "tableNumber",
+          "items",
+          "total",
+          "status",
+          "createdAt",
+          "notes",
+          "paymentMethod"
+        ])
+        && request.resource.data.tableNumber is int
         && request.resource.data.tableNumber >= 1
+        && request.resource.data.tableNumber <= 50
         && request.resource.data.status == "preparing"
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.orderNumber is int
+        && request.resource.data.orderNumber >= 0
+        && request.resource.data.orderNumber < 1000000
+        && request.resource.data.total is int
+        && request.resource.data.total >= 0
+        && request.resource.data.total <= 100000
+        && request.resource.data.notes is string
+        && request.resource.data.notes.size() <= 280
+        && request.resource.data.paymentMethod in ["counter", "online"]
         && request.resource.data.items is list
         && request.resource.data.items.size() > 0
         && request.resource.data.items.size() <= 50
-        && request.resource.data.total
-             == request.resource.data.items
-                  .reduce(0, function(acc, line) {
-                    return acc + (line.price * line.qty);
-                  })
-        && request.resource.data.createdAt == request.time;
+        // The rules language cannot loop, so only the first line can be shape
+        // checked. size() > 0 above guarantees this index exists.
+        && request.resource.data.items[0] is map
+        && request.resource.data.items[0].name is string
+        && request.resource.data.items[0].name.size() > 0
+        && request.resource.data.items[0].name.size() <= 80
+        && request.resource.data.items[0].qty is int
+        && request.resource.data.items[0].qty >= 1
+        && request.resource.data.items[0].qty <= 20
+        && request.resource.data.items[0].price is int
+        && request.resource.data.items[0].price >= 0
+        && request.resource.data.items[0].price <= 10000;
 
+      // Staff advance the status and nothing else. Only the two legal fields may
+      // change, and only to a legal next state, so a staff account cannot
+      // silently rewrite an order's contents after the fact.
+      //
+      // The transitions are spelled out rather than computed. The obvious
+      // `list[list.indexOf(current) + 1]` does not work: the rules language has
+      // no `indexOf`, and it fails at *runtime* as a permission error, not at
+      // compile time, so a status that should be allowed is silently refused.
       allow update: if isStaff()
         && request.resource.data.diff(resource.data).affectedKeys()
              .hasOnly(["status", "completedAt"])
-        && request.resource.data.status in
-             ["preparing", "ready", "served", "completed"]
         && (
-          resource.data.status in ["preparing", "ready", "served"]
-        )
-        // A completed order is immutable history (§5.4 — never auto-deleted).
-        && (resource.data.status != "completed")
-        && (
-          request.resource.data.status == "completed"
-          || request.resource.data.status
-             == ["preparing", "ready", "served"][
-                  ["preparing", "ready", "served"].indexOf(resource.data.status) + 1
-                ]
+          (resource.data.status == "preparing"
+            && request.resource.data.status == "ready")
+          || (resource.data.status == "ready"
+            && request.resource.data.status == "served")
+          || (resource.data.status == "served"
+            && request.resource.data.status == "completed")
         );
     }
 

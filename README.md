@@ -250,6 +250,33 @@ calls in `src/app/layout.tsx` for `next/font/local`. The CSS variables and every
 component stay exactly as they are — nothing else in the app knows which loader
 produced the font.
 
+### What the rules cannot do
+
+Worth reading before you rely on the money figures.
+
+`firestore.rules` is a real boundary, not a formality: `scripts/rules-test.mjs`
+runs 28 assertions against the emulators covering the anonymous customer, a
+signed-in barista and a signed-in owner. A barista cannot edit the menu, cannot
+read another barista's role record, cannot skip a status and cannot change a
+price after the order is placed.
+
+But the rules language has **no loops and no lambdas** — there is no `reduce` and
+no `function` expression. So a rule cannot sum a variable-length basket, which
+means:
+
+- `status`, `createdAt`, the field set and the shape of every line **are** enforced
+  server-side.
+- The `total` is **not**. It is checked to be a bounded integer, not to be correct.
+  A customer with devtools could post `total: 1` for a real basket and it would be
+  accepted.
+
+For a single cafe the exposure is small: the attacker can only understate what
+they owe, it is visible on the staff board, and `priceCart()` stops the honest
+client from ever producing a wrong total. If you need it airtight, add a
+Firestore-triggered function that rewrites `total` from the stored lines. That
+requires the Blaze plan, but Cloud Functions 2nd gen includes 2M invocations a
+month free — far more than a cafe uses.
+
 ### Deploy the rules too — this is the part people skip
 
 ```bash
@@ -299,8 +326,11 @@ Two rules worth knowing before you change anything:
 1. **Never hardcode a colour.** The palette is locked by
    [`docs/anime-theme.md`](./docs/anime-theme.md) §2 and lives in CSS variables.
    Add a token; don't add a hex to a component.
-2. **Never trust the client for money.** Totals are recomputed from line items,
-   in the app _and_ in the security rules.
+2. **Money is only partly server-checked, and you should know where the gap is.**
+   `firestore.rules` can bound and type-check a total but **cannot recompute it**
+   — the rules language has no loops and no lambdas, so an arbitrary-length
+   basket cannot be summed server-side. The total is therefore client-supplied.
+   See [the limits section](#what-the-rules-cannot-do) before you rely on it.
 
 ---
 
@@ -314,6 +344,7 @@ npm run verify     # lint → typecheck → test → build
 | ----------------------- | ---------------------------------------------------- |
 | `npm run dev`           | Dev server                                           |
 | `npm run preview`       | Serve the production export exactly as Firebase does |
+| `npm run test:rules`    | Attack `firestore.rules` (needs `npm run emulators`) |
 | `npm run lint`          | ESLint 9, `next/core-web-vitals` + TypeScript rules  |
 | `npm run typecheck`     | `tsc --noEmit`, `strict`                             |
 | `npm test`              | Vitest + Testing Library, 189 tests                  |
