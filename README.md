@@ -253,9 +253,14 @@ Drive the real thing:
 
 ```bash
 BASE_URL=https://toi-cafe.web.app npm run test:entry   # every way a customer reaches the menu
-BASE_URL=https://toi-cafe.web.app npm run flow          # order -> staff board -> live status
 BASE_URL=https://toi-cafe.web.app npm run audit         # contrast + WebKit, both engines
 ```
+
+`npm run audit` is this project's script, not npm's built-in `npm audit`; the
+`run` matters. Against a live site it checks the staff and owner screens as a
+signed-out visitor would see them. `npm run flow` is not in this list on
+purpose: it signs in with the demo PIN, so it only works in demo mode (see
+below), and pointed at a live site it would place a real order.
 
 `test:entry` is the one that catches the class of bug that hides best. Tapping a
 table number is a client-side navigation, so a hook that reads the query string
@@ -536,24 +541,33 @@ npm run verify     # lint → typecheck → test → build
 | Command                  | What it does                                                 |
 | ------------------------ | ------------------------------------------------------------ |
 | `npm run dev`            | Dev server                                                   |
-| `npm run preview`        | Serve the production export exactly as Firebase does         |
+| `npm run preview`        | Serve `./out` on port 4320, with clean URLs as Firebase does |
+| `npm run flow`           | Customer → staff → customer, end to end (demo mode only)     |
+| `npm run audit`          | WCAG A/AA in Chromium and WebKit (not `npm audit`)           |
 | `npm run test:rules`     | Attack `firestore.rules` (needs `npm run emulators`)         |
 | `npm run seed:staff`     | Create a staff/owner account and its role document           |
 | `npm run cleanup:orders` | Count (or with `--confirm`, delete) orders over 6 months old |
 | `npm run lint`           | ESLint 9, `next/core-web-vitals` + TypeScript rules          |
 | `npm run typecheck`      | `tsc --noEmit`, `strict`                                     |
-| `npm test`               | Vitest + Testing Library, 189 tests                          |
+| `npm test`               | Vitest + Testing Library, 354 tests                          |
 | `npm run test:coverage`  | Coverage, fails below 70% on all four metrics                |
 | `npm run build`          | Production build, then stamps the `sw.js` version            |
 | `npm run format`         | Prettier, incl. Tailwind class sorting                       |
 
-There are also three Playwright scripts for checking things a unit test cannot:
+There are also three Playwright scripts for checking things a unit test cannot.
+Each starts `next dev` itself, or uses `BASE_URL` if set:
 
 ```bash
 node scripts/screenshot.mjs            # every screen at 320/390/430/768/1280 px
-node scripts/audit.mjs                 # WCAG A/AA + WebKit (Safari/iOS)
-node scripts/flow.mjs                  # customer → staff → customer, end to end
+npm run audit                          # WCAG A/AA + WebKit (Safari/iOS)
+npm run audit -- --engine=webkit       # WebKit only
+npm run flow                           # customer → staff → customer, end to end
 ```
+
+`npm run flow` needs demo mode: it signs staff in with the demo PIN, and the dev
+server it starts reads `.env.local`, so with Firebase keys there it would talk to
+the real project. Move `.env.local` aside (or run in a checkout without one)
+first.
 
 - **`screenshot.mjs`** fails on any console error **and** on horizontal overflow
   at any width — the failure mode that actually matters on a phone.
