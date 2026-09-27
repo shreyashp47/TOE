@@ -43,6 +43,30 @@ describe("friendlyError", () => {
     ).toMatch(/too long/i);
   });
 
+  it("reads the code off a Firestore error, whose message has none", () => {
+    // The shape FirestoreError actually has: the code is a property, and the
+    // message is prose. Every phone still on the old app after the rules change
+    // gets exactly this, and must not see the raw text.
+    const denied = Object.assign(
+      new Error("Missing or insufficient permissions."),
+      { code: "permission-denied", name: "FirebaseError" },
+    );
+    expect(friendlyError(denied)).toBe(
+      "We couldn't send that order. Please tell the counter.",
+    );
+    const busy = Object.assign(new Error("The service is unavailable."), {
+      code: "unavailable",
+    });
+    expect(friendlyError(busy)).toMatch(/busy/i);
+  });
+
+  it("still reads an auth code carried on the error", () => {
+    const err = Object.assign(new Error("Firebase: Error."), {
+      code: "auth/network-request-failed",
+    });
+    expect(friendlyError(err)).toMatch(/no connection/i);
+  });
+
   it("does not swallow a message that is already meant for a person", () => {
     // OrderRejected produces these, and they are written to be read by a customer.
     expect(friendlyError(new Error("One for the road? is sold out."))).toBe(
