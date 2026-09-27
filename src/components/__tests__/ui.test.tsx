@@ -13,6 +13,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { Icon } from "@/components/icons";
 import { Mascot } from "@/components/Mascot";
+import { UpdateBar } from "@/components/Pwa";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Button } from "@/components/ui/Button";
 import { Sheet } from "@/components/ui/Sheet";
@@ -429,5 +430,18 @@ describe("demo store isolation between tests", () => {
     expect(order.id).toBeTruthy();
     resetDemoStore();
     expect(loadDemoState().orders).toEqual([]);
+  });
+});
+
+describe("service worker update bar", () => {
+  it("offers a reload and lets the person decline it", async () => {
+    const onDismiss = vi.fn();
+    render(<UpdateBar onDismiss={onDismiss} />);
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "A new version is ready.",
+    );
+    expect(screen.getByRole("button", { name: "Reload" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Not now" }));
+    expect(onDismiss).toHaveBeenCalledOnce();
   });
 });
