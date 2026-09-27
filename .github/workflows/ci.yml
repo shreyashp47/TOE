@@ -108,9 +108,12 @@ jobs:
             npm run build
           }
 
+      # `next start` refuses to run under `output: "export"`, so the export in
+      # ./out is served instead — which is also closer to what Firebase Hosting
+      # actually serves, since that is a static host too.
       - name: Start the server
         run: |
-          npx next start --port 4320 &
+          npx --yes serve@latest out --listen 4320 --no-clipboard &
           for i in $(seq 1 60); do
             if curl -sf -o /dev/null http://127.0.0.1:4320/; then
               echo "server up"

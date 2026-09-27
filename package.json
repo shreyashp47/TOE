@@ -9,6 +9,7 @@
   },
   "scripts": {
     "dev": "next dev",
+    "preview": "serve out --listen 4320",
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",

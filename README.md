@@ -310,15 +310,16 @@ Two rules worth knowing before you change anything:
 npm run verify     # lint → typecheck → test → build
 ```
 
-| Command                 | What it does                                        |
-| ----------------------- | --------------------------------------------------- |
-| `npm run dev`           | Dev server                                          |
-| `npm run lint`          | ESLint 9, `next/core-web-vitals` + TypeScript rules |
-| `npm run typecheck`     | `tsc --noEmit`, `strict`                            |
-| `npm test`              | Vitest + Testing Library, 189 tests                 |
-| `npm run test:coverage` | Coverage, fails below 70% on all four metrics       |
-| `npm run build`         | Production build                                    |
-| `npm run format`        | Prettier, incl. Tailwind class sorting              |
+| Command                 | What it does                                         |
+| ----------------------- | ---------------------------------------------------- |
+| `npm run dev`           | Dev server                                           |
+| `npm run preview`       | Serve the production export exactly as Firebase does |
+| `npm run lint`          | ESLint 9, `next/core-web-vitals` + TypeScript rules  |
+| `npm run typecheck`     | `tsc --noEmit`, `strict`                             |
+| `npm test`              | Vitest + Testing Library, 189 tests                  |
+| `npm run test:coverage` | Coverage, fails below 70% on all four metrics        |
+| `npm run build`         | Production build                                     |
+| `npm run format`        | Prettier, incl. Tailwind class sorting               |
 
 There are also three Playwright scripts for checking things a unit test cannot:
 
