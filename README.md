@@ -164,23 +164,56 @@ Create your first item in `/admin`, or add a temporary seeding snippet in
 `name`, `description`, `price`, `category`, `available`, `sortOrder` — is exactly
 the `/menu/{itemId}` document from the requirements.
 
-### 5. Deploy
+### 5. Deploy the app
+
+**Use Vercel.** It detects Next.js, runs `next build`, and serves the app
+directly — no code changes, no config file, and the `headers()` block in
+`next.config.ts` (nosniff, frame options, Permissions-Policy) is honoured.
+
+1. Push the repo to GitHub (already done).
+2. [vercel.com/new](https://vercel.com/new) → import the repo → deploy.
+3. Add the same six `NEXT_PUBLIC_FIREBASE_*` values under **Settings →
+   Environment Variables**, for all three environments. Redeploy — Vercel only
+   bakes `NEXT_PUBLIC_*` in at build time, so editing them later needs a
+   redeploy, not just a restart.
+4. Put the production URL in `NEXT_PUBLIC_BASE_URL` before generating the QR
+   table cards, so the printed codes point at the real domain.
+
+> **Why not Firebase Hosting?** It would need `output: "export"` in
+> `next.config.ts`, and that path is a dead end here: the build errors on
+> `/manifest.webmanifest` until that route is marked `force-static`, and Next
+> **silently discards every entry in `headers()`** when exporting — you would
+> lose the security headers without a warning. Firebase is still the right tool
+> for Firestore and Auth; it just should not serve the app.
+
+Then deploy the database rules, which is a separate command and the part people
+skip:
 
 ```bash
 npm i -g firebase-tools
 firebase login
-firebase init hosting    # public dir: dist, single-page app: No
+firebase deploy --only firestore:rules,firestore:indexes
 ```
 
-```bash
-npm run build
-firebase deploy --only hosting,firestore:rules,firestore:indexes
-```
+To attach a custom domain later, add it in Vercel under **Settings → Domains**.
+The QR codes do not need regenerating as long as `/order?table=N` keeps working,
+which is why `NEXT_PUBLIC_BASE_URL` exists if you want to print cards against a
+staging address first.
 
-You land on `https://<project-id>.web.app`. To attach a custom domain later, add
-it under **Hosting → Add custom domain** — the QR codes do not need regenerating
-as long as `/order?table=N` keeps working, which is why `NEXT_PUBLIC_BASE_URL`
-exists if you want to print cards against a staging address first.
+### "A tree hydrated but some attributes of the server rendered HTML didn't match"
+
+Look at the attributes in the error before changing any code. If you see
+`data-gr-ext-installed` or `data-new-gr-c-s-check-loaded`, that is **Grammarly**,
+not this app. Writing extensions stamp helper attributes onto `<body>` before
+React hydrates, and React cannot patch attributes it did not render.
+
+It only ever appears in `npm run dev`, as a red overlay. A production build with
+the same extension installed serves the page with no error at all.
+
+Turn the extension off for `localhost` (Grammarly → Settings → More Settings →
+Application exclusions) or use a private window. No code change is needed, and
+none should be made: suppressing it would also hide genuine server/client
+mismatches, which are worth seeing.
 
 ### If the build fails with "An error occurred in `next/font`"
 
