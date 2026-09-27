@@ -93,7 +93,14 @@ export async function placeOrder({
 export function friendlyError(err: unknown): string {
   const raw =
     err instanceof Error ? err.message : typeof err === "string" ? err : "";
-  const code = /\(([a-z0-9/-]+)\)/i.exec(raw)?.[1] ?? "";
+  // Firestore puts the code on `err.code` and leaves it out of the message
+  // ("Missing or insufficient permissions."), so read that first. Auth errors
+  // carry it in both; a plain Error only in the "(code)" of its message.
+  const own = (err as { code?: unknown } | null)?.code;
+  const code =
+    (typeof own === "string" && own) ||
+    /\(([a-z0-9/-]+)\)/i.exec(raw)?.[1] ||
+    "";
 
   if (code.startsWith("auth/")) {
     if (code.includes("configuration-not-found"))
