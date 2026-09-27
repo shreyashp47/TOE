@@ -133,33 +133,67 @@ step(1, "Land on / — should land on the order page");
 // -- 2. Tapping a table number ----------------------------------------------------
 // This is the one that was broken. The link is fine and the URL changes; the page
 // then re-renders the picker, so the tap looks inert.
-step(2, "Tap table 3 on the picker — should show the menu");
+step(2, "Tap each table number — every one should show its own menu");
 {
-  const page = await context.newPage();
-  const errors = [];
-  page.on("pageerror", (e) => errors.push(e.message));
-  page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
-  await page.goto(`${BASE}/`, { waitUntil: "domcontentloaded" });
-  await page.waitForURL(/\/order/, { timeout: 10_000 }).catch(() => {});
-  await settle(page);
+  // Every tile, not just the first. The first tile is table 1, so a test that
+  // only ever clicks it cannot tell a correct mapping from one that is stuck on
+  // table 1 — which is exactly the shape of a bug that would survive here.
+  const labels = await (async () => {
+    const page = await context.newPage();
+    await page.goto(`${BASE}/`, { waitUntil: "domcontentloaded" });
+    await page.waitForURL(/\/order/, { timeout: 15_000 }).catch(() => {});
+    await settle(page);
+    const found = [];
+    for (const t of await page.locator('a[href*="table="]').all()) {
+      found.push({
+        label: (await t.innerText()).trim(),
+        href: await t.getAttribute("href"),
+      });
+    }
+    await page.close();
+    return found;
+  })();
 
-  const tile = page.locator('a[href*="table="]').first();
-  check("the picker offers tappable tables", (await tile.count()) > 0);
+  check(
+    "the picker offers tappable tables",
+    labels.length > 0,
+    `${labels.length} tiles`,
+  );
 
-  const before = page.url();
-  await tile.click();
-  await page.waitForURL(/table=/, { timeout: 10_000 }).catch(() => {});
-  await waitForMenu(page);
-  await settle(page);
+  for (const { label, href } of labels) {
+    const page = await context.newPage();
+    const errors = [];
+    page.on("pageerror", (e) => errors.push(e.message));
+    page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
 
-  const after = page.url();
-  const shown = await classify(page);
-  console.log(`  url ${before} -> ${after}`);
-  console.log(`  screen shows: ${shown}`);
-  check("tapping a table changes the URL", after !== before);
-  check("tapping a table shows the menu", shown === "menu", `got "${shown}"`);
-  check("no console errors", errors.length === 0, errors.join("; "));
-  await page.close();
+    await page.goto(`${BASE}/`, { waitUntil: "domcontentloaded" });
+    await page.waitForURL(/\/order/, { timeout: 15_000 }).catch(() => {});
+    await settle(page);
+    await page.locator(`a[href="${href}"]`).first().click();
+    await page
+      .waitForURL(new RegExp(`table=${label}\\b`), { timeout: 10_000 })
+      .catch(() => {});
+    await waitForMenu(page);
+    await settle(page);
+
+    const shown = await classify(page);
+    // The header is the thing that proves the tap landed on the right table
+    // rather than merely on some table.
+    const header = (await page.locator("body").innerText())
+      .replace(/\s+/g, " ")
+      .match(/GOOD COFFEE, BETTER DAYS\s+(\S+)/)?.[1];
+    console.log(
+      `  tile ${label} -> ${page.url().replace(/^https?:\/\/[^/]+/, "")}  header "Table ${header}"  screen: ${shown}`,
+    );
+    check(
+      `  tile ${label} opens table ${label}`,
+      header === label,
+      `header said "${header}"`,
+    );
+    check(`  tile ${label} shows the menu`, shown === "menu", `got "${shown}"`);
+    check(`  tile ${label} is clean`, errors.length === 0, errors.join("; "));
+    await page.close();
+  }
 }
 
 // -- 3. The QR code path ----------------------------------------------------------
