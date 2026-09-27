@@ -22,17 +22,20 @@ Built for a 6–10 table cafe on free-tier infrastructure.
 **https://toi-cafe.web.app** — Firebase project `toi-cafe`, Firestore in
 `asia-south1`, 12 menu items seeded.
 
-| Screen             | URL                                     | State                                       |
-| ------------------ | --------------------------------------- | ------------------------------------------- |
-| Customer menu      | `/order?table=1` … `/order?table=6`     | Working — browse, order, live status        |
-| Table picker       | `/`                                     | Working                                     |
-| Order confirmation | `/order/confirmation?table=3&id=…`      | Working                                     |
-| Staff board        | `/staff`                                | Needs Email/Password + a `/staff/{uid}` doc |
-| Owner              | `/admin`, `/admin/reports`, `/admin/qr` | Needs the same                              |
-| Offline            | `/offline`                              | Working                                     |
+| Screen             | URL                                     | State                                |
+| ------------------ | --------------------------------------- | ------------------------------------ |
+| Customer menu      | `/order?table=1` … `/order?table=6`     | Working — browse, order, live status |
+| Table picker       | `/`                                     | Working                              |
+| Order confirmation | `/order/confirmation?table=3&id=…`      | Working                              |
+| Staff board        | `/staff`                                | Working — sign in with an account    |
+| Owner              | `/admin`, `/admin/reports`, `/admin/qr` | Working — owner account              |
+| Offline            | `/offline`                              | Working                              |
 
-The customer half needs no account and is usable as-is. The staff half is
-blocked on two console steps — see [Going live](#going-live-with-firebase).
+The customer half needs no account and is usable as-is. The staff half needs an
+email and password: Email/Password and Anonymous sign-in are both enabled, and
+one owner account exists with its `/staff/{uid}` document. Baristas each need
+their own account and document — see
+[section 3](#3-create-staff-and-owner-accounts).
 
 ---
 
@@ -116,10 +119,11 @@ Everything below is a real screenshot at phone width, from the demo build.
 The app is designed so this step cannot break the build: no code changes, six
 environment variables.
 
-> **For the `toi-cafe` deployment in this repo, sections 1, 2 and 5 are already
-> done** — the project, the database, the web app, the hosted site and the
-> deployed rules. What is left is the Auth setup in section 3, and the accounts in
-> section 4. Start at section 3 if you are working on this deployment.
+> **For the `toi-cafe` deployment in this repo, every section below is already
+> done** — the project, the database, both sign-in providers, the web app, the
+> hosted site, the deployed rules, the seeded menu and the owner account. The
+> only thing left to repeat is section 3, once for each barista who needs to
+> work the board.
 
 ### 1. Create the project
 
