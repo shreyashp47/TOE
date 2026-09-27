@@ -2,7 +2,8 @@
  * Minimal service worker for the cafe's counter phone.
  *
  * Scope is deliberately small (theme doc §6: the page must load fast on cafe
- * wifi). There is no build step and no workbox here on purpose:
+ * wifi). There is no workbox here on purpose, and the only build step is the
+ * one-line version stamp described below:
  *
  *   - navigations: network-first with an offline fallback, so staff always get
  *     live data when there is a connection and still get *something* when there
@@ -13,11 +14,27 @@
  *
  * Deliberately NOT cached: Firestore/Auth traffic (always network) and anything
  * under /staff or /admin, which must never show a stale order board.
+ *
+ * Updates: every build gets a new VERSION, so a new deploy is a byte-different
+ * sw.js, which is what makes the browser install it. It skips waiting and claims
+ * open pages straight away, and `activate` deletes every older cafe-* cache. The
+ * page is never reloaded from here — src/components/Pwa.tsx offers a reload
+ * button instead, because a silent reload on the counter phone would drop the
+ * armed order sound and whatever the barista was in the middle of tapping.
  */
 
-const VERSION = "v1";
-const SHELL_CACHE = `cafe-shell-${VERSION}`;
-const ASSET_CACHE = `cafe-assets-${VERSION}`;
+// Stamped at build time by scripts/stamp-sw.mjs, which replaces the placeholder
+// in out/sw.js with a hash of everything else in the export. It used to be a
+// hardcoded "v1" that nothing ever changed, so the cache names were constant
+// forever and the eviction in `activate` below never evicted anything.
+//
+// This file in public/ keeps the placeholder on purpose: `npm run build` is the
+// only thing that should decide the version, and the stamp script refuses to
+// finish if it cannot find the placeholder to replace.
+const VERSION = "__SW_VERSION__";
+const PREFIX = "cafe-";
+const SHELL_CACHE = `${PREFIX}shell-${VERSION}`;
+const ASSET_CACHE = `${PREFIX}assets-${VERSION}`;
 
 const PRECACHE = ["/offline", "/icon.svg", "/icon-192.png", "/icon-512.png"];
 
@@ -38,7 +55,14 @@ self.addEventListener("activate", (event) => {
       .then((keys) =>
         Promise.all(
           keys
-            .filter((key) => key !== SHELL_CACHE && key !== ASSET_CACHE)
+            // Only caches this app made. Anything else on the origin is not ours
+            // to delete.
+            .filter(
+              (key) =>
+                key.startsWith(PREFIX) &&
+                key !== SHELL_CACHE &&
+                key !== ASSET_CACHE,
+            )
             .map((key) => caches.delete(key)),
         ),
       )

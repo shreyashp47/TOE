@@ -11,7 +11,7 @@
     "dev": "next dev",
     "preview": "serve out --listen 4320",
     "emulators": "firebase emulators:start",
-    "build": "next build",
+    "build": "next build && node scripts/stamp-sw.mjs",
     "start": "next start",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",

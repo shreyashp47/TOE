@@ -214,7 +214,7 @@ prerender to plain HTML and every piece of data is fetched in the browser.
 npm i -g firebase-tools
 firebase login
 firebase use --add          # pick your project; this writes .firebaserc
-npm run build              # emits ./out
+npm run build              # emits ./out, and stamps out/sw.js with a new cache version
 firebase deploy            # hosting + firestore rules + indexes
 ```
 
@@ -255,6 +255,20 @@ firebase emulators:start --only hosting
 
 Then check that `/`, `/order?table=3`, `/staff`, `/admin/reports` and `/sw.js` all
 return 200, and that a 404 still returns 404.
+
+#### Updating a phone that already has the app
+
+Every `npm run build` writes a hash of the exported site into `out/sw.js` as its
+cache version (`scripts/stamp-sw.mjs`). A new deploy is therefore a new service
+worker: phones pick it up on their next page load, and the staff board also
+checks hourly and whenever the tab comes back into view. The new worker takes
+over straight away and deletes the previous build's caches.
+
+It does **not** reload the page by itself. A reload on the counter phone would
+silently switch the order sound off (browsers need a tap before they play audio)
+and could land mid-tap, so the page shows _"A new version is ready · Reload"_ and
+the barista chooses when. Build with `npm run build`, not a bare `next build`,
+or the version is never stamped and `public/sw.js`'s placeholder ships as-is.
 
 To attach a custom domain later, add it under **Hosting → Add custom domain**. The
 QR codes do not need regenerating as long as `/order?table=N` keeps working, which
@@ -412,7 +426,7 @@ npm run verify     # lint → typecheck → test → build
 | `npm run typecheck`     | `tsc --noEmit`, `strict`                             |
 | `npm test`              | Vitest + Testing Library, 189 tests                  |
 | `npm run test:coverage` | Coverage, fails below 70% on all four metrics        |
-| `npm run build`         | Production build                                     |
+| `npm run build`         | Production build, then stamps the `sw.js` version    |
 | `npm run format`        | Prettier, incl. Tailwind class sorting               |
 
 There are also three Playwright scripts for checking things a unit test cannot:
