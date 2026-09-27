@@ -21,16 +21,33 @@ export const ORDER_GAP_SECONDS = 30;
 
 const KEY = "toe.lastOrderAt";
 
+/**
+ * How far a phone's clock may disagree with the server's before a refusal is
+ * no longer read as a throttle. See throttleFromServerStamp().
+ */
+export const CLOCK_SKEW_ALLOWANCE_MS = 2 * 60_000;
+
 export class OrderThrottled extends Error {
-  readonly seconds: number;
-  constructor(seconds: number) {
+  /** Seconds to wait, or null when the phone's clock is too far off to say. */
+  readonly seconds: number | null;
+  constructor(seconds: number | null) {
     super(throttleMessage(seconds));
     this.name = "OrderThrottled";
     this.seconds = seconds;
   }
 }
 
-/** Whole seconds until another order is allowed; 0 means go ahead. */
+/**
+ * Whole seconds until another order is allowed, judged from the phone's own
+ * note of its last order. 0 means go ahead.
+ *
+ * Both times come from the same phone clock, so skew against the server does
+ * not matter here. What does: a note in the future. That happens when the clock
+ * was ahead when the order was placed and has since been corrected, and waiting
+ * for real time to catch up could lock the customer out for hours without ever
+ * asking the server. So a future note is treated as no note at all. The server
+ * enforces the gap regardless.
+ */
 export function secondsUntilNextOrder(
   lastOrderAt: number | null,
   now: number,
@@ -38,16 +55,51 @@ export function secondsUntilNextOrder(
 ): number {
   if (lastOrderAt === null || !Number.isFinite(lastOrderAt)) return 0;
   const elapsed = now - lastOrderAt;
-  // A last-order time in the future means the clock moved backwards. Waiting
-  // the full gap is the safe reading; the server has the real clock anyway.
-  if (elapsed < 0) return gapSeconds;
+  if (elapsed < 0) return 0;
   const remainingMs = gapSeconds * 1000 - elapsed;
   return remainingMs > 0 ? Math.ceil(remainingMs / 1000) : 0;
 }
 
-export function throttleMessage(seconds: number): string {
+/**
+ * After the server has refused an order: was it the throttle, and how long is
+ * left? `stampAt` is the server's time on the customer's /orderThrottle stamp;
+ * `now` is the phone's clock, which may be off by any amount.
+ *
+ * - no stamp: this customer has never ordered, so it was not the throttle
+ *   (returns null)
+ * - the phone's clock says the gap is still running: trust it and count down
+ * - the phone's clock says the gap is over (phone ahead of the server) or has
+ *   not started (phone behind): the server refused, so it is still running,
+ *   but the phone cannot know how much is left. Say so without a number
+ *   rather than invent one
+ * - the stamp is older than the gap plus a generous skew allowance: that is
+ *   not a clock problem, it is a different refusal (returns null)
+ */
+export function throttleFromServerStamp(
+  stampAt: number | null,
+  now: number,
+  gapSeconds: number = ORDER_GAP_SECONDS,
+  skewMs: number = CLOCK_SKEW_ALLOWANCE_MS,
+): { seconds: number | null } | null {
+  if (stampAt === null || !Number.isFinite(stampAt)) return null;
+  const elapsed = now - stampAt;
+  const gapMs = gapSeconds * 1000;
+  if (elapsed >= 0 && elapsed < gapMs) {
+    return { seconds: Math.ceil((gapMs - elapsed) / 1000) };
+  }
+  if (elapsed < 0 ? -elapsed <= skewMs : elapsed < gapMs + skewMs) {
+    return { seconds: null };
+  }
+  return null;
+}
+
+export function throttleMessage(seconds: number | null): string {
+  const lead = "Your last order has only just gone through.";
+  if (seconds === null) {
+    return `${lead} You can send another in under ${ORDER_GAP_SECONDS} seconds.`;
+  }
   const s = Math.max(1, Math.ceil(seconds));
-  return `Your last order has only just gone through. You can send another in ${s} second${s === 1 ? "" : "s"}.`;
+  return `${lead} You can send another in ${s} second${s === 1 ? "" : "s"}.`;
 }
 
 export function readLastOrderAt(): number | null {

@@ -230,6 +230,13 @@ describe("placeOrder", () => {
       await expect(place()).resolves.toMatchObject({ tableNumber: 3 });
     });
 
+    it("is not locked out by a note left while the clock was ahead", async () => {
+      vi.useFakeTimers({ now: T0 + 3 * 3600_000 }); // clock three hours fast
+      await place();
+      vi.setSystemTime(T0); // corrected
+      await expect(place()).resolves.toMatchObject({ tableNumber: 3 });
+    });
+
     it("does not start the clock on an order that was refused", async () => {
       await expect(
         placeOrder({
