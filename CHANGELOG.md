@@ -9,11 +9,88 @@ Work that is built but not yet merged is tracked in
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-09-28
+
+Closes the two open holes in the rules, and fixes the service-worker cache, the
+setup of staff accounts and the dead _Complete_ button. Deployed to
+<https://toi-cafe.web.app> on 2026-09-28, rules and hosting together.
+
+### Upgrading
+
+- **Deploy rules and hosting together**, in one `firebase deploy`, at a quiet
+  time. The shape of an order write changed: the old app against the new rules,
+  or the reverse, refuses every order.
+- **Reload the staff board** on the counter phone, and any open customer pages.
+  An old board shows new orders as #0. From now on the app offers a _Reload_ bar
+  when a new version is ready.
+- **Order numbers are now 3 digits and not unique.** They are what a barista says
+  out loud; the table is what tells two orders apart. Orders placed before this
+  release keep their old number. The report CSV gains an _Order ID_ column — group
+  by that, not by _Order #_.
+
 ### Added
 
+- The staff board flags an order whose total does not match its lines or the
+  current menu — "Total doesn't match menu — check before charging" — and
+  _/admin/reports_ lists such orders
+  ([#27](https://github.com/shreyashp47/TOE/issues/27))
+- A signed-in account with no role gets a "your account isn't set up yet" screen
+  with the exact command to fix it, and `npm run seed:staff` creates a staff or
+  owner account and its role document in one command
+  ([#33](https://github.com/shreyashp47/TOE/issues/33))
+- `npm run cleanup:orders` counts orders older than six months, and deletes them
+  with `--confirm`; it refuses any cutoff under six months
+  ([#31](https://github.com/shreyashp47/TOE/issues/31))
+- A _Reload_ bar when a new version of the app is ready, instead of a silent
+  reload that would disarm the order chime
+- An _Order ID_ column in the report CSV
 - `docs/progress.md` — what is live, what is in flight, and what is waiting on a
   decision
 - This changelog, issue and pull request templates
+
+### Changed
+
+- The order number is derived from the order's id (100–999) rather than taken
+  from a shared counter ([#30](https://github.com/shreyashp47/TOE/issues/30))
+- An order is written as one two-document batch with the customer's throttle
+  stamp, instead of a read-then-write transaction
+- The role is read from `/staff/{uid}` on every sign-in change, the same way the
+  rules read it, instead of a cached guess that defaulted to staff
+- Dependabot no longer opens a pull request per major version; majors are
+  upgraded deliberately, one at a time. Security updates still arrive
+
+### Fixed
+
+- The service worker's cache version is stamped per build, so old caches are
+  actually cleared ([#29](https://github.com/shreyashp47/TOE/issues/29))
+- _Complete_ on a _Ready_ ticket did nothing; _Ready_ now offers only _Mark
+  served_, and a failed status change says so on the ticket
+- Firestore refusals showed customers the raw "Missing or insufficient
+  permissions"; sign-in errors showed Firebase's developer text
+- The "wait before ordering again" message no longer misjudges a phone whose
+  clock disagrees with the server's
+- The rules test suite counted any error as a denial; it now only counts
+  `permission-denied`
+- Docs no longer claim the rules recompute the order total, or that an order
+  costs no reads
+
+### Security
+
+- Nobody can write the order counter any more; `/meta` is denied to everyone
+  ([#30](https://github.com/shreyashp47/TOE/issues/30))
+- Order creation is throttled in the rules to one per customer every 30 seconds
+  ([#32](https://github.com/shreyashp47/TOE/issues/32)). A script that signs in
+  afresh for each order is slowed only by Firebase Auth's limit on new accounts;
+  App Check is the Blaze-plan follow-up
+
+### Known issues
+
+- The order total is still supplied by the customer's phone. The staff board now
+  detects a mismatch, but preventing it needs a Cloud Function and so the Blaze
+  plan ([#27](https://github.com/shreyashp47/TOE/issues/27))
+- Six-month retention is an owner-run command, not automatic; a TTL policy or
+  scheduled function needs Blaze
+  ([#31](https://github.com/shreyashp47/TOE/issues/31))
 
 ## [0.1.0] — 2026-09-27
 
@@ -49,5 +126,6 @@ customer, staff and owner flows verified end to end on the live site.
   ([#30](https://github.com/shreyashp47/TOE/issues/30))
 - _Complete_ on a _Ready_ ticket does nothing
 
-[Unreleased]: https://github.com/shreyashp47/TOE/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/shreyashp47/TOE/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/shreyashp47/TOE/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/shreyashp47/TOE/releases/tag/v0.1.0
