@@ -7,6 +7,7 @@
  * rather than exploding three components deep.
  */
 
+import { resolveOrderNumber } from "./order-number";
 import { isOrderStatus, type OrderStatus } from "./order-status";
 
 export interface MenuItem {
@@ -32,7 +33,11 @@ export interface OrderLine {
 
 export interface Order {
   id: string;
-  /** Short human-facing number, e.g. 104 -> "#104". */
+  /**
+   * Short human-facing number, e.g. 417 -> "#417". Not unique on its own: it is
+   * derived from the document id (see ./order-number.ts), and always shown next
+   * to the table. Orders from before that change keep their stored number.
+   */
   orderNumber: number;
   tableNumber: number;
   items: OrderLine[];
@@ -134,7 +139,7 @@ export function parseOrder(raw: unknown): Order | null {
 
   return {
     id,
-    orderNumber: num(raw.orderNumber) ?? 0,
+    orderNumber: resolveOrderNumber(id, raw.orderNumber),
     tableNumber,
     items,
     total,

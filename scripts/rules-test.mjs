@@ -42,9 +42,22 @@ import {
 } from "firebase/firestore";
 
 const PROJECT = process.env.FIRESTORE_EMULATOR_PROJECT ?? "demo-cafe";
-const HOST = process.env.FIRESTORE_EMULATOR_HOST ?? "127.0.0.1";
-const FS_PORT = Number(process.env.FIRESTORE_EMULATOR_PORT ?? 8080);
-const AUTH_PORT = Number(process.env.FIREBASE_AUTH_EMULATOR_PORT ?? 9099);
+// `firebase emulators:exec` exports FIRESTORE_EMULATOR_HOST and
+// FIREBASE_AUTH_EMULATOR_HOST as "host:port", so split them rather than
+// gluing a second port onto the end.
+const [fsEnvHost, fsEnvPort] = (
+  process.env.FIRESTORE_EMULATOR_HOST ?? ""
+).split(":");
+const [, authEnvPort] = (process.env.FIREBASE_AUTH_EMULATOR_HOST ?? "").split(
+  ":",
+);
+const HOST = fsEnvHost || "127.0.0.1";
+const FS_PORT = Number(
+  process.env.FIRESTORE_EMULATOR_PORT || fsEnvPort || 8080,
+);
+const AUTH_PORT = Number(
+  process.env.FIREBASE_AUTH_EMULATOR_PORT || authEnvPort || 9099,
+);
 const CFG = { projectId: PROJECT, apiKey: "demo", authDomain: "demo.local" };
 
 const app = (name) => {
@@ -58,6 +71,8 @@ const app = (name) => {
   return { a, auth, db };
 };
 const publicC = app("public");
+// Never signs in at all: the caller issue #30 was about.
+const nobodyC = app("nobody");
 // A second anonymous caller stands in for "a different customer's phone": the
 // rule must let each one read their own order and nothing else.
 const otherCustomerC = app("other-customer");
@@ -170,8 +185,9 @@ const tempAcct = await account("temp@cafe.test");
 await signInWithEmailAndPassword(tempC.auth, "temp@cafe.test", "correct-horse");
 
 const line = (o = {}) => ({ name: "Espresso", qty: 2, price: 120, ...o });
+// No orderNumber: the display number is derived from the document id on read,
+// so the client has nothing to send (issue #30).
 const order = (o = {}) => ({
-  orderNumber: 101,
   tableNumber: 3,
   items: [line()],
   total: 240,
@@ -296,6 +312,50 @@ await t(
   "cannot write an unknown collection",
   denied(() => addDoc(collection(publicC.db, "secrets"), { a: 1 })),
 );
+// Issue #30: /meta/counters used to be writable by anyone. The display number is
+// derived from the order id now, so nothing needs it and nobody may write it.
+await t(
+  "cannot send an orderNumber on an order",
+  denied(() => placeAs(publicC, { orderNumber: 101 })),
+);
+await t(
+  "cannot write meta/counters (the old order counter)",
+  denied(() =>
+    setDoc(doc(publicC.db, "meta", "counters"), { orderNumber: 999999 }),
+  ),
+);
+await t(
+  "cannot reset meta/counters with a merge",
+  denied(() =>
+    setDoc(
+      doc(publicC.db, "meta", "counters"),
+      { orderNumber: 0 },
+      { merge: true },
+    ),
+  ),
+);
+await t(
+  "cannot write any other /meta document",
+  denied(() => setDoc(doc(publicC.db, "meta", "anything"), { a: 1 })),
+);
+
+console.log("\n signed-out caller (no auth at all)");
+await t(
+  "cannot write meta/counters",
+  denied(() =>
+    setDoc(doc(nobodyC.db, "meta", "counters"), { orderNumber: 999999 }),
+  ),
+);
+await t(
+  "cannot read meta/counters",
+  denied(() => getDoc(doc(nobodyC.db, "meta", "counters"))),
+);
+await t(
+  "cannot place an order without an anonymous uid",
+  denied(() =>
+    addDoc(collection(nobodyC.db, "orders"), order({ customerUid: "x" })),
+  ),
+);
 
 console.log("\n signed-in barista (no role document)");
 // Each status assertion places its own order and then drives that document, so
@@ -385,6 +445,10 @@ await t(
   }),
 );
 await t(
+  "cannot write meta/counters either",
+  denied(() => setDoc(doc(staffC.db, "meta", "counters"), { orderNumber: 1 })),
+);
+await t(
   "cannot edit the menu (barista != owner)",
   denied(() =>
     addDoc(collection(staffC.db, "menu"), { name: "Hack", price: 0 }),
@@ -442,5 +506,9 @@ await t(
 
 console.log(`\n${pass} passed, ${failures.length} failed`);
 for (const f of failures) console.log(`  - ${f}`);
-await Promise.all([publicC.a, staffC.a, ownerC.a].map(deleteApp));
+await Promise.all(
+  [publicC.a, nobodyC.a, otherCustomerC.a, tempC.a, staffC.a, ownerC.a].map(
+    deleteApp,
+  ),
+);
 process.exit(failures.length ? 1 : 0);

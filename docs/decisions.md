@@ -136,9 +136,40 @@ a cafe uses — so it is affordable, just not free to enable. Until then, treat
 `/admin/reports` figures as self-reported by the till, and reconcile against the
 counter.
 
-`scripts/rules-test.mjs` pins the behaviour that _is_ enforceable: 28 assertions
-covering the anonymous customer, a signed-in barista and a signed-in owner,
-including that a barista cannot touch the menu and cannot skip a status.
+`scripts/rules-test.mjs` pins the behaviour that _is_ enforceable: 46 assertions
+covering the anonymous customer, a signed-out caller, a signed-in barista and a
+signed-in owner, including that a barista cannot touch the menu and cannot skip a
+status.
+
+### Order numbers are derived from the document id, not counted
+
+The first version allocated `#101, #102, …` from a `/meta/counters` document in a
+transaction on the customer's phone. For the phone to bump it, the document had
+to be writable by the public, and the rule said so with a comment calling the
+blast radius "cosmetic". It was not quite: anyone could reset the counter so two
+orders shared a number, push it to 999999, or loop on it to burn the free-tier
+write quota. And every order paid a read for a number that is only decorative
+(issue #30).
+
+**Decision: derive the number from the order's document id, on read.**
+
+`displayNumberFromId()` in [`src/lib/order-number.ts`](../src/lib/order-number.ts)
+is an FNV-1a hash of the id folded into 100–999. Firestore auto ids are random, so
+the number is effectively random too, and every device computes the same one
+without talking to anybody. Nothing is written, there is no shared state, and
+`/meta` is now denied to everyone.
+
+What it gives up is uniqueness. Three digits over a day's orders will repeat. The
+alternatives were worse: a sequence needs a shared writable counter, which is the
+bug; a longer number (four digits, or letters from the id) is harder to say
+across a counter; a server-assigned sequence needs Cloud Functions, which needs
+Blaze. So the number is never shown alone — the board and the confirmation screen
+both lead with the table, and a clash that matters (same table, both open) is
+roughly 1 in 900 per pair.
+
+Orders placed under the counter keep their stored `orderNumber`, so old receipts
+and exported reports do not renumber. The demo store does the same derivation, so
+the demo no longer promises sequential numbers the real backend does not give.
 
 ### A hand-written QR encoder
 
