@@ -174,31 +174,51 @@ Restart `npm run dev`. The demo banner disappears and the app talks to Firestore
 
 ### 3. Create staff and owner accounts
 
-Authentication is email + password, so make the accounts first. The quickest
-route is a temporary sign-up screen or the Firebase console
-(**Authentication → Users → Add user**).
+Every account needs two things: an Email/Password user in Firebase Auth, and a
+`/staff/{uid}` document saying what it may do. One command does both:
 
-Then give the owner their role, which is what `firestore.rules` checks:
-
-```json
-// /staff/{uid}
-{ "name": "Cafe Owner", "role": "owner" }
+```bash
+firebase login                      # once; the script borrows this login
+npm run seed:staff -- --email=you@yourcafe.com --role=owner --name="Cafe Owner"
+npm run seed:staff -- --email=asha@yourcafe.com --role=staff --name=Asha
 ```
 
-**Every account needs a document here, not just owners.** A missing document now
-means "not staff", and that is deliberate: customers sign in anonymously so the
-rules can let each one read back its own order, and a rule that treated "any
-signed-in user" as staff would hand the whole order book to everyone who scans a
-QR code. So add a `/staff/{uid}` document for each barista too:
+For a new account it generates a password and prints it **once** — it is not
+saved anywhere, so hand it over there and then (or pass `--password=…` to choose
+one). For an existing account it leaves the password alone and only writes the
+role, so it is also how you promote a barista to owner or fix a missing role.
+Add `--dry-run` to see what it would do without writing anything, and `--help`
+for the rest.
+
+How it authenticates, since there is no service-account key in this repo: it
+reuses the refresh token that `firebase login` stored in
+`~/.config/configstore/firebase-tools.json`, and calls the Auth and Firestore
+REST APIs as that Google account — so it must be an owner or editor of the
+project. That also means it goes around `firestore.rules`, which is exactly what
+creating the first owner needs. (`firebase-admin` was the obvious alternative,
+but it wants Application Default Credentials, which means installing gcloud.)
+`FIREBASE_TOKEN` from `firebase login:ci` works too, and with
+`FIRESTORE_EMULATOR_HOST` and `FIREBASE_AUTH_EMULATOR_HOST` set it talks to the
+emulators instead.
+
+What the documents look like, if you would rather use the console
+(**Authentication → Users → Add user**, then Firestore):
 
 ```json
 // /staff/{uid}
 { "name": "Asha", "role": "staff" }
 ```
 
+**Every account needs a document here, not just owners.** A missing document
+means "not staff", and that is deliberate: customers sign in anonymously so the
+rules can let each one read back its own order, and a rule that treated "any
+signed-in user" as staff would hand the whole order book to everyone who scans a
+QR code.
+
 `role` may be `staff` (works the board) or `owner` (also edits the menu and sees
-the reports). An account with no document can sign in but sees nothing — a
-closed default, which is the right way round for a database of orders.
+the reports). An account with no document can sign in, but `/staff` and `/admin`
+then say _"Your account isn't set up yet — ask the owner"_ and show its email,
+user ID and the exact `seed:staff` command to run, instead of an empty board.
 
 ### 4. Seed the menu
 
@@ -485,6 +505,7 @@ npm run verify     # lint → typecheck → test → build
 | `npm run dev`           | Dev server                                           |
 | `npm run preview`       | Serve the production export exactly as Firebase does |
 | `npm run test:rules`    | Attack `firestore.rules` (needs `npm run emulators`) |
+| `npm run seed:staff`    | Create a staff/owner account and its role document   |
 | `npm run lint`          | ESLint 9, `next/core-web-vitals` + TypeScript rules  |
 | `npm run typecheck`     | `tsc --noEmit`, `strict`                             |
 | `npm test`              | Vitest + Testing Library, 189 tests                  |

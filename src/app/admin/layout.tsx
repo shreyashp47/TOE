@@ -15,6 +15,7 @@ import type { ReactNode } from "react";
 
 import { Icon, type IconName } from "@/components/icons";
 import { Mascot } from "@/components/Mascot";
+import { NotSetUp } from "@/components/NotSetUp";
 import {
   DataProvider,
   useStaffSession,
@@ -40,11 +41,14 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
 }
 
 function Gate({ children }: { children: ReactNode }) {
-  const { user, loading } = useStaffSession();
+  const { user, loading, signOut } = useStaffSession();
 
   if (loading) return <Loading label="Opening the till…" />;
 
   if (!user) return <SignedOut />;
+  if (user.role === "unassigned") {
+    return <NotSetUp user={user} onSignOut={() => void signOut()} />;
+  }
   if (user.role !== "owner") return <NotOwner />;
 
   return <Shell>{children}</Shell>;

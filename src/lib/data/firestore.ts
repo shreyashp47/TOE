@@ -19,6 +19,7 @@ import { getDemoStaffPin } from "../config";
 import { orderTotal } from "../money";
 import { ACTIVE_STATUSES } from "../order-status";
 import { OrderThrottled, throttleFromServerStamp } from "../order-throttle";
+import { roleFromStaffDoc, staffDisplayName } from "./roles";
 import {
   parseMenuItem,
   parseOrder,
@@ -36,7 +37,7 @@ import type {
   MenuWriteInput,
   NewOrderInput,
   OrderRepository,
-  StaffUser,
+  StaffRole,
 } from "./types";
 
 type Firestore = import("firebase/firestore").Firestore;
@@ -403,17 +404,21 @@ export const firestoreConfigRepo: ConfigRepository = {
 
 const ROLE_CACHE_KEY = "cafe-qr-order.roles.v1";
 
-function readRole(uid: string): StaffUser["role"] {
+/** The last role seen for this uid, so a reload offline still opens the board. */
+function readCachedRole(uid: string): StaffRole | null {
   try {
     const raw = globalThis.localStorage?.getItem(ROLE_CACHE_KEY);
     const map = raw ? (JSON.parse(raw) as Record<string, string>) : {};
-    return map[uid] === "owner" ? "owner" : "staff";
+    const role = map[uid];
+    return role === "owner" || role === "staff" || role === "unassigned"
+      ? role
+      : null;
   } catch {
-    return "staff";
+    return null;
   }
 }
 
-function cacheRole(uid: string, role: StaffUser["role"]) {
+function cacheRole(uid: string, role: StaffRole) {
   try {
     const raw = globalThis.localStorage?.getItem(ROLE_CACHE_KEY);
     const map = raw ? (JSON.parse(raw) as Record<string, string>) : {};
@@ -426,16 +431,14 @@ function cacheRole(uid: string, role: StaffUser["role"]) {
 
 export const firestoreAuthRepo: AuthRepository = {
   async signIn(email, password) {
-    const { auth, db, fs } = await getBundle();
+    const { auth } = await getBundle();
     const { signInWithEmailAndPassword } = await import("firebase/auth");
-    const credential = await signInWithEmailAndPassword(auth, email, password);
-
-    // Role comes from /staff/{uid} (docs/requirements.md §8). A missing doc
-    // defaults to `staff` so a barista can always work the board.
-    const snap = await fs.getDoc(fs.doc(db, STAFF, credential.user.uid));
-    const role: StaffUser["role"] =
-      snap.exists() && snap.data()?.role === "owner" ? "owner" : "staff";
-    cacheRole(credential.user.uid, role);
+    // The role is not looked up here. `subscribe` below reads /staff/{uid} on
+    // every auth change — including this one — so one place decides it, and it
+    // also runs on a plain page reload, not only on sign-in. (This used to fetch
+    // the role itself and default a missing document to "staff", which the
+    // rules stopped honouring when membership became explicit.)
+    await signInWithEmailAndPassword(auth, email.trim(), password);
   },
 
   async signInWithPin(pin) {
@@ -456,23 +459,59 @@ export const firestoreAuthRepo: AuthRepository = {
   subscribe(listener) {
     let off: Unsubscribe = () => {};
     let cancelled = false;
+    // Bumped on every auth change, so a slow role lookup for a previous user
+    // can never overwrite the current one.
+    let generation = 0;
 
     void (async () => {
-      const { auth } = await getBundle();
+      const { auth, db, fs } = await getBundle();
       const { onAuthStateChanged } = await import("firebase/auth");
       if (cancelled) return;
       off = onAuthStateChanged(auth, (user) => {
-        listener(
-          user
-            ? {
-                uid: user.uid,
-                email: user.email ?? "",
-                role: readRole(user.uid),
-                displayName:
-                  user.displayName ?? user.email?.split("@")[0] ?? "Staff",
-              }
-            : null,
-        );
+        const mine = ++generation;
+        const live = () => !cancelled && mine === generation;
+
+        // A customer's anonymous session is not a staff session. Without this,
+        // a phone that placed an order and then opened /staff was treated as a
+        // signed-in barista instead of being shown the sign-in form.
+        if (!user || user.isAnonymous) {
+          listener(null);
+          return;
+        }
+
+        const base = { uid: user.uid, email: user.email ?? "" };
+        const fallbackName =
+          user.displayName ?? user.email?.split("@")[0] ?? "Staff";
+
+        // Paint straight away from the cached role, if there is one, so the
+        // counter phone does not flash a sign-in form on every reload.
+        const cached = readCachedRole(user.uid);
+        if (cached)
+          listener({ ...base, role: cached, displayName: fallbackName });
+
+        // Then ask Firestore. The rules let a signed-in user read their own
+        // /staff document, and only that one, so this works for an account
+        // that has not been set up yet: it simply comes back missing.
+        fs.getDoc(fs.doc(db, STAFF, user.uid))
+          .then((snap) => {
+            if (!live()) return;
+            const data = snap.exists() ? snap.data() : undefined;
+            const role = roleFromStaffDoc(snap.exists(), data);
+            cacheRole(user.uid, role);
+            listener({
+              ...base,
+              role,
+              displayName: staffDisplayName(data, user.email),
+            });
+          })
+          .catch(() => {
+            // Offline, most likely. Keep the cached role if we painted one;
+            // otherwise assume staff and let the board's own error banner say
+            // what went wrong. Guessing "unassigned" here would tell a real
+            // barista their account does not exist because the wifi dropped.
+            if (!live() || cached) return;
+            listener({ ...base, role: "staff", displayName: fallbackName });
+          });
       });
     })();
 
