@@ -109,6 +109,44 @@ describe("qr encoder", () => {
     }
   });
 
+  // Versions 7–10 carry an extra version-information block that 1–6 do not.
+  // The encoder once shipped without it, and every code of version 7 or more
+  // decoded to nothing; the table URLs never got that long, so nobody noticed
+  // until the UPI link did. Walk every version, not just the ones in use today.
+  it.each([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])(
+    "round-trips a payload at version %i",
+    (version) => {
+      let bytes = 1;
+      while (
+        bytes < maxPayloadBytes() &&
+        chooseVersion(bytes + 1).version <= version
+      ) {
+        bytes += 1;
+      }
+      // the longest payload that still fits this version
+      expect(chooseVersion(bytes).version).toBe(version);
+      const text = `upi://pay?pa=cafe@okaxis&tn=${"x".repeat(bytes)}`.slice(
+        0,
+        bytes,
+      );
+      expect(decode(text)).toBe(text);
+    },
+  );
+
+  it("writes the version-7 information block both times", () => {
+    // ISO/IEC 18004 Annex D: version 7 is 000111 110010010100 (0x07C94).
+    const m = encodeQr("x".repeat(120));
+    expect(m.length).toBe(45);
+    const size = m.length;
+    for (let i = 0; i < 18; i += 1) {
+      const expected = ((0x07c94 >>> i) & 1) === 1;
+      const a = size - 11 + (i % 3);
+      const b = Math.floor(i / 3);
+      expect(m[a][b]).toBe(expected); // bottom-left block
+      expect(m[b][a]).toBe(expected); // top-right block
+    }
+  });
+
   it("emits an SVG with a quiet zone", () => {
     const svg = qrToSvg("https://cafe.web.app/order?table=2");
     expect(svg.startsWith("<svg")).toBe(true);

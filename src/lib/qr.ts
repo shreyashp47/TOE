@@ -329,6 +329,31 @@ function placeFunctionPatterns(
     if (!reserved[8][size - 1 - i]) set(8, size - 1 - i, false);
     if (!reserved[size - 1 - i][8]) set(size - 1 - i, 8, false);
   }
+
+  // Version information, versions 7 and up: two 6×3 blocks beside the top-right
+  // and bottom-left finders. A scanner reads the version from here rather than
+  // from the matrix size, so without it every code from version 7 on decodes
+  // to nothing — which is exactly what this encoder did until the UPI link
+  // (~110 bytes) became the first payload long enough to need version 7.
+  if (spec.version >= 7) {
+    const bits = versionBits(spec.version);
+    for (let i = 0; i < 18; i += 1) {
+      const dark = ((bits >>> i) & 1) === 1;
+      const a = size - 11 + (i % 3);
+      const b = Math.floor(i / 3);
+      set(a, b, dark);
+      set(b, a, dark);
+    }
+  }
+}
+
+/** BCH(18,6) version information: 6 bits of version, 12 of error correction. */
+function versionBits(version: number): number {
+  let rem = version;
+  for (let i = 0; i < 12; i += 1) {
+    rem = (rem << 1) ^ ((rem >>> 11) * 0x1f25);
+  }
+  return (version << 12) | rem;
 }
 
 // --- masking ----------------------------------------------------------------
