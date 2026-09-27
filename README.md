@@ -367,12 +367,27 @@ means:
   A customer with devtools could post `total: 1` for a real basket and it would be
   accepted.
 
-For a single cafe the exposure is small: the attacker can only understate what
-they owe, it is visible on the staff board, and `priceCart()` stops the honest
-client from ever producing a wrong total. If you need it airtight, add a
-Firestore-triggered function that rewrites `total` from the stored lines. That
-requires the Blaze plan, but Cloud Functions 2nd gen includes 2M invocations a
-month free — far more than a cafe uses.
+What the app does about it, on the free tier, is **detection, not prevention**.
+The staff board re-derives every ticket — the stored total against its own
+lines, and each line's price and name against the live menu — and a ticket that
+does not match gets a red _"Total doesn't match menu — check before charging"_
+box, the stored figure struck through, and the basket's price at today's menu
+next to it. So a doctored order still lands in the database, but it cannot get
+past the counter unnoticed, which is where the money is actually taken.
+`/admin/reports` already sums revenue from the line items rather than the stored
+totals, and lists any order in the period whose total disagrees with its items,
+so the owner can reconcile it against the till.
+
+Two honest caveats. A line's price is copied from the menu when the order is
+placed, so if the owner changes a price while an order is on the board, that
+ticket is flagged too; the box names both prices so the barista can tell. And
+this only works because a human looks at the board before taking payment — if
+payment ever moves online, detection is not enough.
+
+The real fix is a Firestore-triggered function that rewrites `total` from the
+stored lines and the menu. That requires the Blaze plan (Cloud Functions 2nd gen
+includes 2M invocations a month free — far more than a cafe uses), and it stays
+the documented follow-up in issue #27.
 
 ### Deploy the rules too — this is the part people skip
 
@@ -426,8 +441,10 @@ Two rules worth knowing before you change anything:
 2. **Money is only partly server-checked, and you should know where the gap is.**
    `firestore.rules` can bound and type-check a total but **cannot recompute it**
    — the rules language has no loops and no lambdas, so an arbitrary-length
-   basket cannot be summed server-side. The total is therefore client-supplied.
-   See [the limits section](#what-the-rules-cannot-do) before you rely on it.
+   basket cannot be summed server-side. The total is therefore client-supplied;
+   the staff board flags a total that does not match the menu, but that is
+   detection, not prevention. See [the limits section](#what-the-rules-cannot-do)
+   before you rely on it.
 
 ---
 

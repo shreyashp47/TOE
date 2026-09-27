@@ -20,8 +20,11 @@ Worth knowing when judging severity:
 - **Money.** `src/lib/money.ts` re-prices every basket against the live menu, and
   `firestore.rules` type-checks and bounds the total. But the rules language cannot
   recompute a total (no loops, no lambdas), so a tampered client **can** post a
-  false `total` and have it accepted. A bug in the pricing maths, or a report built
-  on a forged total, is high severity.
+  false `total` and have it accepted. The staff board re-derives every order from
+  its lines and the live menu and flags a mismatch before payment
+  (`src/lib/order-integrity.ts`) — detection at the counter, not prevention in
+  the database. A bug in the pricing maths, in that check, or a report built on a
+  forged total, is high severity.
 - **Staff and owner accounts.** Email + password via Firebase Authentication,
   with the role read from `/staff/{uid}` and enforced by `firestore.rules`.
   A privilege-escalation path from `staff` to `owner` is high severity.
@@ -49,8 +52,9 @@ Worth knowing when judging severity:
 - Status transitions are enumerated in the rules, so a staff account cannot skip a
   state or edit a price after the order is placed.
 - **Not handled:** the order `total` is client-supplied and is not re-derived
-  server-side. See the money bullet above — this is a known, accepted gap, not an
-  oversight.
+  server-side. It is re-derived on the staff board, and a mismatch is flagged
+  there, but the forged figure is still stored. See the money bullet above — this
+  is a known gap, tracked in issue #27, whose real fix needs the Blaze plan.
 - Completed orders are immutable, so history cannot be rewritten.
 - The Firebase SDK is never loaded unless the Firebase env block is set, and it
   is never used to hold a secret — the config values are public by design.
