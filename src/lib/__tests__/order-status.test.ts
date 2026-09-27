@@ -55,8 +55,22 @@ describe("order status machine", () => {
     expect(transition("preparing", "ready")).toBe("ready");
   });
 
-  it("lets staff complete straight from ready without serving", () => {
-    expect(actionsFor("ready").map((a) => a.to)).toContain("completed");
+  // This used to assert the opposite: Ready offered a "Complete" button, but
+  // ready -> completed is not a legal hop here or in firestore.rules, so the
+  // board's guard refused it and the tap silently did nothing.
+  it("does not offer Complete from ready — serve it first", () => {
+    expect(actionsFor("ready").map((a) => a.to)).toEqual(["served"]);
+  });
+
+  it("only ever offers a button the machine will accept", () => {
+    for (const status of ORDER_STATUSES) {
+      for (const action of actionsFor(status)) {
+        expect(
+          transition(status, action.to),
+          `${status} offers "${action.label}" -> ${action.to}`,
+        ).toBe(action.to);
+      }
+    }
   });
 
   it("always offers exactly one primary action, except when closed", () => {

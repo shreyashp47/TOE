@@ -21,6 +21,10 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { TicketTotal, TotalWarning } from "@/components/TotalWarning";
 import { useOrderChime } from "@/hooks/useOrderChime";
 import { getCafeName } from "@/lib/config";
+import {
+  friendlySignInError,
+  friendlyStatusError,
+} from "@/lib/friendly-errors";
 import { formatINR, formatWait, lineSubtotal } from "@/lib/money";
 import { checkOrderIntegrity } from "@/lib/order-integrity";
 import { actionsFor, transition, type OrderStatus } from "@/lib/order-status";
@@ -49,6 +53,10 @@ function StaffScreen() {
   const { items: menu } = useMenu();
   const [tableFilter, setTableFilter] = useState<number | "all">("all");
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<{
+    orderId: string;
+    message: string;
+  } | null>(null);
 
   const known = useRef<Set<string>>(new Set());
   const primed = useRef(false);
@@ -102,13 +110,25 @@ function StaffScreen() {
 
   const advance = useCallback(async (order: Order, to: OrderStatus) => {
     setBusyId(order.id);
+    setActionError(null);
     try {
       // Guard the transition client-side too; the Firestore rules are the
-      // real enforcement, this keeps the UI honest in demo mode.
-      if (!transition(order.status, to)) return;
+      // real enforcement, this keeps the UI honest in demo mode. It used to
+      // return silently, which is how a button that could never work ("Complete"
+      // on a Ready ticket) looked like a dead tap instead of a bug.
+      if (!transition(order.status, to)) {
+        setActionError({
+          orderId: order.id,
+          message:
+            "That step isn't allowed from here — the order may have already moved on.",
+        });
+        return;
+      }
       const { loadBundle } = await import("@/lib/data");
       const bundle = await loadBundle();
       await bundle.orders.setStatus(order.id, to);
+    } catch (err) {
+      setActionError({ orderId: order.id, message: friendlyStatusError(err) });
     } finally {
       setBusyId(null);
     }
@@ -242,6 +262,9 @@ function StaffScreen() {
                 menu={menu}
                 isFresh={freshIds.has(order.id)}
                 busy={busyId === order.id}
+                error={
+                  actionError?.orderId === order.id ? actionError.message : null
+                }
                 onAdvance={(to) => void advance(order, to)}
               />
             ))}
@@ -283,12 +306,15 @@ function OrderTicket({
   menu,
   isFresh,
   busy,
+  error,
   onAdvance,
 }: {
   order: Order;
   menu: MenuItem[];
   isFresh: boolean;
   busy: boolean;
+  /** Why the last status change on this ticket failed, if it did. */
+  error: string | null;
   onAdvance: (to: OrderStatus) => void;
 }) {
   // 1s tick keeps the wait timer live without a Firestore read.
@@ -373,6 +399,15 @@ function OrderTicket({
 
       <TotalWarning check={check} />
 
+      {error ? (
+        <p
+          role="alert"
+          className="border-berry bg-paper text-berry-deep mx-3 mb-2 rounded-sm border-2 px-2.5 py-1.5 text-sm font-semibold"
+        >
+          {error}
+        </p>
+      ) : null}
+
       <div className="border-line-soft flex items-center justify-between gap-2 border-t-2 px-3 py-2">
         <TicketTotal check={check} />
         <div className="flex flex-wrap justify-end gap-2">
@@ -429,7 +464,7 @@ function StaffLogin({
       if (mode === "pin") await signInWithPin(pin);
       else await signIn(email, password);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Sign-in failed.");
+      setError(friendlySignInError(err));
     } finally {
       setBusy(false);
     }

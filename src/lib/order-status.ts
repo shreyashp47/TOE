@@ -103,18 +103,16 @@ export function actionsFor(status: OrderStatus): StatusAction[] {
         { to: "ready", label: "Mark ready", variant: "primary", primary: true },
       ];
     case "ready":
+      // No "Complete" shortcut here. There used to be one, but ready ->
+      // completed is not a legal hop — not in NEXT above, and not in
+      // firestore.rules — so the tap was refused and silently did nothing.
+      // Offering only buttons the machine accepts is pinned by a test.
       return [
         {
           to: "served",
           label: "Mark served",
           variant: "primary",
           primary: true,
-        },
-        {
-          to: "completed",
-          label: "Complete",
-          variant: "secondary",
-          primary: false,
         },
       ];
     case "served":
