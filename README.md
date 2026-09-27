@@ -373,6 +373,30 @@ and writable by anyone with the project id. The rules in this repo are what make
 menu, and nothing else. See the comments in [`firestore.rules`](./firestore.rules)
 for each clause.
 
+#### Upgrading a live project past the order-counter and throttle change
+
+The release that removed `/meta/counters` (issue #30) and added the order
+throttle (issue #32) changes what an order write looks like, and the old app and
+the new rules do not work together in either direction: old rules refuse the new
+app's orders, and new rules refuse the old app's. Ship both halves **in one
+command**, at a quiet time:
+
+```bash
+npm run build && firebase deploy --only firestore:rules,hosting
+```
+
+Then:
+
+- **Reload the staff board on the counter phone.** An old board shows every new
+  order as `#0`, because it only knows how to read a stored number.
+- **Reload any customer pages left open** (a phone on the menu can still be
+  running the old app). A customer who does not gets "We couldn't send that
+  order. Please tell the counter." until they reload.
+
+A leftover `meta/counters` document is inert after this; delete it from the
+console whenever you like. Ordinary deploys after this one can go back to the
+command above.
+
 ---
 
 ## How it works
@@ -423,7 +447,9 @@ order's document id ([`src/lib/order-number.ts`](./src/lib/order-number.ts)), no
 allocated from a counter. It is three digits because a barista reads it out, and
 it is always shown next to the table, which is what actually tells two orders
 apart. Two orders in a day can share a number; two open orders on the same table
-sharing one is about a 1-in-900 chance per pair.
+sharing one is about a 1-in-900 chance per pair. Across a busy board the odds that
+_some_ two orders share a number are much higher — about 19% with 20 open — so
+read the table first.
 
 It used to come from a `/meta/counters` document that every customer phone
 incremented, which meant the document had to be writable by anyone — so anyone
