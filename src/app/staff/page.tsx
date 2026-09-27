@@ -180,7 +180,7 @@ function StaffScreen() {
         {error ? (
           <p
             role="alert"
-            className="border-berry bg-paper text-berry mb-3 rounded-md border-2 px-3 py-2 text-sm"
+            className="border-berry bg-paper text-berry-deep mb-3 rounded-md border-2 px-3 py-2 text-sm"
           >
             Live updates dropped: {error.message}
           </p>
@@ -312,7 +312,11 @@ function OrderTicket({
           <span
             className={[
               "tnum font-round flex items-center gap-1 text-sm",
-              urgent ? "text-berry" : warn ? "text-secondary" : "text-muted",
+              urgent
+                ? "text-berry-deep"
+                : warn
+                  ? "text-secondary"
+                  : "text-muted",
             ].join(" ")}
           >
             <Icon name="clock" size={14} />
@@ -500,7 +504,7 @@ function StaffLogin({
         )}
 
         {error ? (
-          <p role="alert" className="text-berry text-sm font-semibold">
+          <p role="alert" className="text-berry-deep text-sm font-semibold">
             {error}
           </p>
         ) : null}

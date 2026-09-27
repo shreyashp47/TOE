@@ -252,17 +252,23 @@ npm run verify     # lint → typecheck → test → build
 | `npm run build`         | Production build                                    |
 | `npm run format`        | Prettier, incl. Tailwind class sorting              |
 
-There are also two Playwright scripts for checking things a unit test cannot:
+There are also three Playwright scripts for checking things a unit test cannot:
 
 ```bash
-node scripts/screenshot.mjs   # every screen at 320/390/430/768/1280 px
-node scripts/flow.mjs         # customer → staff → customer, end to end
+node scripts/screenshot.mjs            # every screen at 320/390/430/768/1280 px
+node scripts/audit.mjs                 # WCAG A/AA + WebKit (Safari/iOS)
+node scripts/flow.mjs                  # customer → staff → customer, end to end
 ```
 
-`screenshot.mjs` fails on any console error **and** on horizontal overflow at any
-width, which is the failure mode that actually matters on a phone. `flow.mjs`
-places a real order and asserts the staff board sees it and the customer's screen
-tracks the status changes.
+- **`screenshot.mjs`** fails on any console error **and** on horizontal overflow
+  at any width — the failure mode that actually matters on a phone.
+- **`audit.mjs`** runs every screen through axe-core at an iPhone viewport, in
+  **both Chromium and WebKit**. WebKit is Safari/iOS, which is a large share of
+  cafe customers, so it is the only way to actually verify the "works on
+  standard Android/iOS browsers" claim. It is also what caught that two colours in
+  the locked palette cannot legally carry body text — see below.
+- **`flow.mjs`** places a real order and asserts the staff board sees it and the
+  customer's screen tracks the status changes.
 
 ### What the tests cover
 
@@ -279,6 +285,23 @@ tracks the status changes.
   against the demo store: live emission, ordering, no deletes, bounded ranges.
 - **UI** — cart stepper maths, sold-out items, staff status buttons, sheet
   dialog semantics, accessible labelling.
+
+### A note on the palette and contrast
+
+`docs/anime-theme.md` §2 locks the palette, and three of those colours are
+mid-tones that cannot legally carry body text on a light background:
+
+| Colour               | On         | Ratio | AA needs |
+| -------------------- | ---------- | ----- | -------- |
+| terracotta `#C97B3D` | cream text | 2.9:1 | 4.5:1    |
+| sage `#6B8E5A`       | pale sage  | 3.0:1 | 4.5:1    |
+| berry `#C0505B`      | paper      | 4.4:1 | 4.5:1    |
+
+Rather than change the locked hues, the theme keeps them for their documented
+purpose — icons, chart bars, borders, category accents — and adds
+`--secondary-deep`, `--sage-deep` and `--berry-deep`: the same hues darkened just
+enough to carry text. `scripts/audit.mjs` is the gate that keeps this true, and
+it runs in CI.
 
 The `self-check` CI job deliberately breaks the money calculation on `main` and
 fails if the suite stays green. A test suite nobody has seen go red is not a

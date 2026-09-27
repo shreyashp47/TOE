@@ -412,12 +412,7 @@ function penalty(matrix: Matrix): number {
   return score;
 }
 
-function applyFormatBits(
-  matrix: Matrix,
-  reserved: boolean[][],
-  ecLevelBits: number,
-  maskId: number,
-) {
+function applyFormatBits(matrix: Matrix, ecLevelBits: number, maskId: number) {
   const size = matrix.length;
   // BCH(15,5) format information for level M (0b00) with the given mask
   const data = (ecLevelBits << 3) | maskId;
@@ -441,7 +436,6 @@ function applyFormatBits(
   for (let i = 8; i <= 14; i += 1) matrix[size - 15 + i][8] = bit(i);
 
   matrix[size - 8][8] = true; // dark module
-  void reserved;
 }
 
 // --- public API -------------------------------------------------------------
@@ -493,7 +487,7 @@ export function encodeQr(text: string): Matrix {
       upward = !upward;
     }
 
-    applyFormatBits(candidate, reserved, 0b00, mask);
+    applyFormatBits(candidate, 0b00, mask);
     const score = penalty(candidate);
     if (score < bestScore) {
       bestScore = score;

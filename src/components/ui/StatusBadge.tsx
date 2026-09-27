@@ -18,12 +18,13 @@ const LOOK: Record<
   ready: {
     label: "Ready",
     emoji: "☕",
-    className: "bg-sage-soft text-sage border-sage",
+    // text-sage-deep, not text-sage: sage on sage-soft is 2.99:1
+    className: "bg-sage-soft text-sage-deep border-sage",
   },
   served: {
     label: "Served",
     emoji: "✨",
-    className: "bg-sage text-on-dark border-sage",
+    className: "bg-sage-deep text-on-dark border-sage-deep",
   },
   completed: {
     label: "Completed",

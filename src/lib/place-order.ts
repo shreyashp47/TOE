@@ -7,7 +7,7 @@
  * and refuses to send a basket containing a sold-out or deleted item.
  */
 
-import { demoBundle, loadBundle } from "./data";
+import { loadBundle } from "./data";
 import { priceCart } from "./money";
 import type { CartLine, MenuItem, Order } from "./types";
 
@@ -52,7 +52,6 @@ export async function placeOrder({
   }
 
   const bundle = await loadBundle();
-  void demoBundle;
 
   return bundle.orders.create({
     tableNumber,

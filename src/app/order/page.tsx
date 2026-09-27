@@ -188,7 +188,7 @@ function MenuScreen({ tableNumber }: { tableNumber: number }) {
             role="alert"
             className="border-berry bg-paper rounded-lg border-2 p-4 text-center"
           >
-            <p className="text-berry font-semibold">
+            <p className="text-berry-deep font-semibold">
               We couldn&apos;t load the menu.
             </p>
             <p className="text-muted mt-1 text-sm">{error.message}</p>
@@ -314,17 +314,21 @@ function MenuCard({
   const soldOut = !item.available;
 
   return (
+    // No opacity on the whole card: it drags every text colour below the WCAG AA
+    // contrast floor (axe measured 3.41:1 for the "Sold out" badge). Sold out is
+    // signalled with a muted surface, a muted illustration, a struck-through name
+    // and an explicit badge instead.
     <li
       className={[
-        "border-line-soft bg-paper shadow-card flex h-full flex-col overflow-hidden rounded-lg border-2",
-        soldOut ? "opacity-60" : "",
+        "border-line-soft shadow-card flex h-full flex-col overflow-hidden rounded-lg border-2",
+        soldOut ? "bg-tan/40" : "bg-paper",
       ].join(" ")}
     >
       <div className="flex flex-1 gap-2.5 p-2.5">
         <div
           className={[
             "grid size-11 shrink-0 place-items-center rounded-md min-[420px]:size-14",
-            soldOut ? "bg-tan" : "bg-highlight-soft/70 text-primary",
+            soldOut ? "bg-tan text-muted" : "bg-highlight-soft/70 text-primary",
           ].join(" ")}
         >
           <Icon name={itemArtIcon(item.art)} size={26} />
@@ -348,7 +352,7 @@ function MenuCard({
           {formatINR(item.price)}
         </span>
         {soldOut ? (
-          <span className="rounded-pill bg-tan font-round text-primary-dark px-3 py-1.5 text-sm">
+          <span className="rounded-pill bg-tan-deep font-round text-ink px-3 py-1.5 text-sm">
             Sold out
           </span>
         ) : qty === 0 ? (
@@ -457,7 +461,7 @@ function CartSheet({
             {blocked ? (
               <p
                 role="alert"
-                className="border-berry/40 bg-berry/10 text-berry rounded-sm border-2 px-3 py-2 text-sm"
+                className="border-berry/40 bg-berry/10 text-berry-deep rounded-sm border-2 px-3 py-2 text-sm"
               >
                 {priceCheck.blocking.join(" ")} Please adjust your order.
               </p>
@@ -472,7 +476,7 @@ function CartSheet({
             {error ? (
               <p
                 role="alert"
-                className="border-berry/40 bg-berry/10 text-berry rounded-sm border-2 px-3 py-2 text-sm"
+                className="border-berry/40 bg-berry/10 text-berry-deep rounded-sm border-2 px-3 py-2 text-sm"
               >
                 {error}
               </p>
@@ -549,13 +553,13 @@ function CartSheet({
                   <button
                     type="button"
                     onClick={() => cart.remove(line.menuItemId)}
-                    className="text-muted hover:text-berry min-h-11 px-2 text-sm font-semibold underline-offset-2 hover:underline"
+                    className="text-muted hover:text-berry-deep min-h-11 px-2 text-sm font-semibold underline-offset-2 hover:underline"
                   >
                     Remove
                   </button>
                 </div>
                 {item && !item.available ? (
-                  <p className="text-berry mt-1 text-sm font-semibold">
+                  <p className="text-berry-deep mt-1 text-sm font-semibold">
                     Just sold out — remove it to continue.
                   </p>
                 ) : null}

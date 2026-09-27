@@ -87,7 +87,7 @@ export default function QrPage() {
             Print {tables.length} card{tables.length === 1 ? "" : "s"}
           </Button>
           {!valid ? (
-            <p role="alert" className="text-berry text-sm font-semibold">
+            <p role="alert" className="text-berry-deep text-sm font-semibold">
               Enter a full address starting with http:// or https://
             </p>
           ) : (
@@ -142,7 +142,9 @@ function TableCard({ table, url }: { table: number; url: string }) {
               dangerouslySetInnerHTML={{ __html: svg }}
             />
           ) : (
-            <p className="text-berry text-sm">Could not build this code.</p>
+            <p className="text-berry-deep text-sm">
+              Could not build this code.
+            </p>
           )}
         </div>
 

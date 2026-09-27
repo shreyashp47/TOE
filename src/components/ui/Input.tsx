@@ -60,7 +60,7 @@ export function Field({
       </label>
       {children}
       {error ? (
-        <p role="alert" className="text-berry text-sm font-semibold">
+        <p role="alert" className="text-berry-deep text-sm font-semibold">
           {error}
         </p>
       ) : hint ? (

@@ -7,13 +7,14 @@ type Size = "sm" | "md" | "lg";
 const VARIANTS: Record<Variant, string> = {
   primary:
     "bg-primary text-on-dark hover:bg-primary-soft active:bg-primary-dark shadow-card",
+  // --secondary-deep, not --secondary: terracotta under cream text is 2.9:1
   secondary:
-    "bg-secondary text-on-dark hover:brightness-95 active:brightness-90 shadow-card",
+    "bg-secondary-deep text-on-dark hover:brightness-110 active:brightness-95 shadow-card",
   highlight:
     "bg-highlight text-ink hover:bg-highlight-soft active:brightness-95 shadow-card",
   ghost:
     "bg-paper/70 text-ink border-2 border-line hover:border-primary hover:bg-paper",
-  danger: "bg-berry text-on-dark hover:brightness-95 shadow-card",
+  danger: "bg-berry-deep text-on-dark hover:brightness-110 shadow-card",
 };
 
 const SIZES: Record<Size, string> = {

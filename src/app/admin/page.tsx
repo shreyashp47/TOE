@@ -72,7 +72,7 @@ export default function AdminMenuPage() {
       {error ? (
         <p
           role="alert"
-          className="border-berry bg-paper text-berry rounded-md border-2 px-3 py-2 text-sm"
+          className="border-berry bg-paper text-berry-deep rounded-md border-2 px-3 py-2 text-sm"
         >
           {error}
         </p>
@@ -263,7 +263,7 @@ function SpecialOfferCard() {
         </Button>
       </div>
       {state === "error" ? (
-        <p role="alert" className="text-berry mt-2 text-sm font-semibold">
+        <p role="alert" className="text-berry-deep mt-2 text-sm font-semibold">
           That didn&apos;t save. Try again.
         </p>
       ) : null}
@@ -490,8 +490,8 @@ function MenuRow({
           className={[
             "rounded-pill font-round flex min-h-11 items-center gap-2 border-2 px-3.5 text-sm",
             item.available
-              ? "border-sage bg-sage-soft text-sage"
-              : "border-berry/50 bg-berry/10 text-berry",
+              ? "border-sage bg-sage-soft text-sage-deep"
+              : "border-berry/50 bg-berry/10 text-berry-deep",
           ].join(" ")}
         >
           <span
@@ -536,7 +536,7 @@ function MenuRow({
           onClick={onDelete}
           disabled={busy}
           aria-label={`Delete ${item.name}`}
-          className="rounded-pill border-line bg-paper text-muted hover:border-berry hover:text-berry grid size-11 place-items-center border-2 transition-colors"
+          className="rounded-pill border-line bg-paper text-muted hover:border-berry hover:text-berry-deep grid size-11 place-items-center border-2 transition-colors"
         >
           <Icon name="trash" size={18} />
         </button>

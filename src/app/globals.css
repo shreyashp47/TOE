@@ -19,12 +19,18 @@
   --primary: #7a3e1d; /* roasted brown — main CTAs, logo */
   --primary-soft: #9c5730;
   --primary-dark: #5a2d14;
-  --secondary: #c97b3d; /* terracotta — icons, secondary buttons */
+  --secondary: #c97b3d; /* terracotta — icons, chart bars, category accents */
+  --secondary-deep: #9a5522; /* same hue, darkened: terracotta as a button fill
+                                under cream text is only 2.9:1, which fails
+                                WCAG AA. --secondary stays for decorative use. */
   --highlight: #e8a93e; /* mustard — badges, emphasis */
   --highlight-soft: #f5d08a;
-  --sage: #6b8e5a; /* plants / success */
+  --sage: #6b8e5a; /* plants / success — fills, chart bars, borders */
+  --sage-deep: #3f5e33; /* same hue, darkened: sage on a light background is
+                           2.99:1, so it cannot be used as text. */
   --sage-soft: #dfead6;
   --berry: #c0505b; /* errors, new-order alert */
+  --berry-deep: #9c3540; /* berry as text on paper is 3.6:1 */
 
   /* -- text (theme doc: dark coffee brown headers, soft charcoal body) ---- */
   --ink: #3e2418;
@@ -68,11 +74,14 @@
   --color-primary-soft: var(--primary-soft);
   --color-primary-dark: var(--primary-dark);
   --color-secondary: var(--secondary);
+  --color-secondary-deep: var(--secondary-deep);
   --color-highlight: var(--highlight);
   --color-highlight-soft: var(--highlight-soft);
   --color-sage: var(--sage);
+  --color-sage-deep: var(--sage-deep);
   --color-sage-soft: var(--sage-soft);
   --color-berry: var(--berry);
+  --color-berry-deep: var(--berry-deep);
 
   --color-ink: var(--ink);
   --color-body: var(--body);

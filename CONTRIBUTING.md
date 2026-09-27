@@ -32,11 +32,18 @@ Two scripts check what a unit test cannot:
 
 ```bash
 node scripts/screenshot.mjs   # every screen at 5 widths; fails on overflow
+node scripts/audit.mjs        # WCAG A/AA, in Chromium *and* WebKit
 node scripts/flow.mjs         # customer → staff → customer, end to end
 ```
 
 Run `screenshot.mjs` after any styling change and **look at the PNGs**. It fails
 on horizontal overflow, but it cannot tell you the card grid is ugly.
+
+Run `audit.mjs` after any change to a colour. The palette is a fixed set of warm
+mid-tones and several of them sit below the WCAG AA contrast floor on light
+surfaces, so "it looks fine" is not good enough — two of them were only caught by
+the audit. If you need text on terracotta, sage or berry, use the `-deep` variant
+rather than lightening the background.
 
 ## House rules
 
@@ -67,6 +74,9 @@ These exist because of specific problems, not taste.
 
 6. **No licensed anime or manga IP.** The mascot is original, and must stay
    that way. Theme doc §7 is explicit.
+
+7. **Never put body text on a mid-tone palette colour.** Use the `-deep` token
+   variants. `node scripts/audit.mjs` will fail otherwise.
 
 ## Commit messages
 

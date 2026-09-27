@@ -194,7 +194,7 @@ export default function ReportsPage() {
       {error ? (
         <p
           role="alert"
-          className="border-berry bg-paper text-berry rounded-md border-2 px-3 py-2 text-sm"
+          className="border-berry bg-paper text-berry-deep rounded-md border-2 px-3 py-2 text-sm"
         >
           {error}
         </p>
