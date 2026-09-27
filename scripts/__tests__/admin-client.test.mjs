@@ -227,6 +227,40 @@ describe("createAdminClient requests", () => {
     ).rejects.toThrow(/403.*does not have permission/);
   });
 
+  it("counts with a plain count aggregation, and reads query errors from an array", async () => {
+    let fail = false;
+    const { calls, fetchImpl } = recordingFetch(() =>
+      fail
+        ? { status: 400, body: [{ error: { message: "requires an index" } }] }
+        : {
+            status: 200,
+            body: [
+              { result: { aggregateFields: { n: { integerValue: "7" } } } },
+            ],
+          },
+    );
+    const client = createAdminClient({
+      project: "p",
+      token: "t",
+      env: {},
+      fetchImpl,
+    });
+    const cutoff = new Date("2026-03-27T00:00:00Z");
+    expect(await client.countOrdersBefore(cutoff)).toBe(7);
+    const sent = JSON.parse(calls[0].body).structuredAggregationQuery;
+    // A sum() here would need a composite index the project does not have.
+    expect(sent.aggregations).toEqual([{ alias: "n", count: {} }]);
+    expect(sent.structuredQuery.where.fieldFilter).toEqual({
+      field: { fieldPath: "createdAt" },
+      op: "LESS_THAN",
+      value: { timestampValue: "2026-03-27T00:00:00.000Z" },
+    });
+    fail = true;
+    await expect(client.countOrdersBefore(cutoff)).rejects.toThrow(
+      /\(400\): requires an index/,
+    );
+  });
+
   it("decodes the Firestore value types these scripts read", () => {
     expect(
       decodeFields({

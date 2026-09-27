@@ -103,8 +103,10 @@ forward-only and single-step, enforced in three independent places:
 3. the test suite, which walks the whole chain and asserts each hop.
 
 `completed` is terminal and immutable. That is what satisfies §5.3's "keeps it in
-the database for history — not deleted" and §5.4's six-month retention, and it is
-why completed orders still appear in reports after they leave the staff board.
+the database for history — not deleted", and it is why completed orders still
+appear in reports after they leave the staff board. It is **not** what satisfies
+§5.4's six months; see [Order retention](#order-retention-is-an-operational-practice-not-a-feature)
+below — an earlier version of this file claimed it was.
 
 ### Order totals: checked in the app, bounded in the rules, and not re-derived
 
@@ -168,6 +170,43 @@ the Blaze fix, reconcile those against the till.
 `scripts/rules-test.mjs` pins the behaviour that _is_ enforceable: 28 assertions
 covering the anonymous customer, a signed-in barista and a signed-in owner,
 including that a barista cannot touch the menu and cannot skip a status.
+
+### Order retention is an operational practice, not a feature
+
+§5.4 says "all orders retained (no auto-deletion) — target minimum 6 months,
+extendable". Read carefully, that is a **floor**: keep at least six months. The
+app meets the floor trivially, because nothing in it ever deletes an order — the
+rules only let an owner delete, and no screen does.
+
+What it does not have is a ceiling. Nothing removes old orders, so the collection
+grows forever. The automatic way to bound it is a Firestore TTL policy on an
+`expiresAt` field, which needs the Blaze plan; a scheduled Cloud Function needs
+it too. So, decided explicitly rather than left implied:
+
+- **Retention is an owner's operational practice.** The owner decides when old
+  orders go, and does it with a command:
+
+  ```bash
+  npm run cleanup:orders                          # dry run: count orders over 6 months old
+  npm run cleanup:orders -- --older-than=1y --confirm
+  ```
+
+  It is a dry run unless given `--confirm`, and it **refuses any cutoff younger
+  than six months**, so it cannot be used to break the floor §5.4 sets. It runs
+  as the owner's `firebase login` (the same approach as `seed:staff`, see
+  README §3), deletes oldest-first in batches, and counts with an aggregation
+  query so a dry run costs about one read per thousand orders.
+
+- **Doing nothing is also fine.** A busy cafe here produces ~36k orders a year,
+  which Firestore does not notice, and `/admin/reports` only ever reads a
+  bounded date range, so old orders cost storage, not reads. Run the cleanup
+  when there is a reason to, not on a schedule.
+- **Deleted orders leave the reports too.** Export the months you want to keep
+  from `/admin/reports` (CSV) before running it with `--confirm`.
+
+If the project ever moves to Blaze, a TTL policy on `createdAt + N months`
+replaces the command: Firestore deletes within about a day of expiry, which is
+precise enough for this.
 
 ### A hand-written QR encoder
 

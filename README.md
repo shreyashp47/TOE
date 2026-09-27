@@ -389,6 +389,22 @@ stored lines and the menu. That requires the Blaze plan (Cloud Functions 2nd gen
 includes 2M invocations a month free — far more than a cafe uses), and it stays
 the documented follow-up in issue #27.
 
+### Old orders
+
+Nothing deletes orders automatically: the requirement is to keep _at least_ six
+months, and a Firestore TTL policy that would enforce a ceiling needs the Blaze
+plan. When you want to clear old ones out:
+
+```bash
+npm run cleanup:orders                                   # dry run: how many are over 6 months old
+npm run cleanup:orders -- --older-than=1y --confirm      # delete orders over a year old
+```
+
+It only deletes with `--confirm`, refuses anything under six months, and uses the
+same `firebase login` as `seed:staff`. Deleted orders disappear from
+`/admin/reports` too, so export those months as CSV first. The reasoning is in
+[`docs/decisions.md`](./docs/decisions.md#order-retention-is-an-operational-practice-not-a-feature).
+
 ### Deploy the rules too — this is the part people skip
 
 ```bash
@@ -454,18 +470,19 @@ Two rules worth knowing before you change anything:
 npm run verify     # lint → typecheck → test → build
 ```
 
-| Command                 | What it does                                         |
-| ----------------------- | ---------------------------------------------------- |
-| `npm run dev`           | Dev server                                           |
-| `npm run preview`       | Serve the production export exactly as Firebase does |
-| `npm run test:rules`    | Attack `firestore.rules` (needs `npm run emulators`) |
-| `npm run seed:staff`    | Create a staff/owner account and its role document   |
-| `npm run lint`          | ESLint 9, `next/core-web-vitals` + TypeScript rules  |
-| `npm run typecheck`     | `tsc --noEmit`, `strict`                             |
-| `npm test`              | Vitest + Testing Library, 189 tests                  |
-| `npm run test:coverage` | Coverage, fails below 70% on all four metrics        |
-| `npm run build`         | Production build, then stamps the `sw.js` version    |
-| `npm run format`        | Prettier, incl. Tailwind class sorting               |
+| Command                  | What it does                                                 |
+| ------------------------ | ------------------------------------------------------------ |
+| `npm run dev`            | Dev server                                                   |
+| `npm run preview`        | Serve the production export exactly as Firebase does         |
+| `npm run test:rules`     | Attack `firestore.rules` (needs `npm run emulators`)         |
+| `npm run seed:staff`     | Create a staff/owner account and its role document           |
+| `npm run cleanup:orders` | Count (or with `--confirm`, delete) orders over 6 months old |
+| `npm run lint`           | ESLint 9, `next/core-web-vitals` + TypeScript rules          |
+| `npm run typecheck`      | `tsc --noEmit`, `strict`                                     |
+| `npm test`               | Vitest + Testing Library, 189 tests                          |
+| `npm run test:coverage`  | Coverage, fails below 70% on all four metrics                |
+| `npm run build`          | Production build, then stamps the `sw.js` version            |
+| `npm run format`         | Prettier, incl. Tailwind class sorting                       |
 
 There are also three Playwright scripts for checking things a unit test cannot:
 
