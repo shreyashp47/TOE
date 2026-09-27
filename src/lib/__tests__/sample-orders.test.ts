@@ -15,6 +15,7 @@ import {
   resetDemoStore,
 } from "@/lib/data/demo-store";
 import { orderTotal } from "@/lib/money";
+import { displayNumberFromId } from "@/lib/order-number";
 import { buildReport, currentMonth, monthRange } from "@/lib/reports";
 import { demoOrderRepo } from "@/lib/data/demo";
 import type { Order } from "@/lib/types";
@@ -145,12 +146,13 @@ describe("a seeded demo month reports sensibly", () => {
     expect(open.length).toBeLessThan(active.length);
   });
 
-  it("gives every order a unique id and increasing number", () => {
+  it("gives every order a unique id and the number derived from it", () => {
     resetDemoStore();
     demoSeedOrders(buildSampleOrders(60, NOW));
     const { orders } = loadDemoState();
     expect(new Set(orders.map((o) => o.id)).size).toBe(orders.length);
-    const numbers = orders.map((o) => o.orderNumber);
-    expect(new Set(numbers).size).toBe(numbers.length);
+    for (const o of orders) {
+      expect(o.orderNumber).toBe(displayNumberFromId(o.id));
+    }
   });
 });

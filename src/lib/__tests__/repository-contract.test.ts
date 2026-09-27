@@ -23,6 +23,7 @@ import {
   DEMO_STORAGE_KEY,
 } from "@/lib/data/demo-store";
 import { DEMO_CREDENTIALS } from "@/lib/data/seed";
+import { displayNumberFromId } from "@/lib/order-number";
 import {
   ACTIVE_STATUSES,
   canAdvance,
@@ -157,10 +158,14 @@ describe("repository contract: orders", () => {
     expect(order.status).toBe("preparing");
   });
 
-  it("allocates increasing order numbers", async () => {
+  it("derives a short display number from the id, with no shared counter", async () => {
     const a = await place();
-    const b = await place();
-    expect(b.orderNumber).toBeGreaterThan(a.orderNumber);
+    expect(a.orderNumber).toBe(displayNumberFromId(a.id));
+    expect(a.orderNumber).toBeGreaterThanOrEqual(100);
+    expect(a.orderNumber).toBeLessThanOrEqual(999);
+    // Reading it back gives the same number the placing phone was shown.
+    const stored = await demoOrderRepo.listRange(0, Date.now() + 1000);
+    expect(stored.find((o) => o.id === a.id)?.orderNumber).toBe(a.orderNumber);
   });
 
   it("creates unique ids", async () => {

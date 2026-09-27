@@ -37,7 +37,9 @@ Worth knowing when judging severity:
 ## What is already handled
 
 - Public users can **create** orders and **read** the menu. Nothing else. See
-  `firestore.rules`.
+  `firestore.rules`. (Until issue #30 there was one more thing: a
+  world-writable `/meta/counters` order counter. It is gone; the display number
+  is derived from the order id, and `/meta` is denied to everyone.)
 - `status` is pinned to `preparing` on create, `createdAt` is required to equal
   `request.time` so a phone cannot backdate an order out of a reporting month, and
   the document is restricted to an exact field set.

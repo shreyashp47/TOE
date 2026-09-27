@@ -12,6 +12,7 @@
 
 import { DEFAULT_STATUS } from "../order-status";
 import { orderTotal } from "../money";
+import { displayNumberFromId } from "../order-number";
 import {
   parseMenuList,
   parseOrder,
@@ -32,7 +33,6 @@ interface DemoState {
   menu: MenuItem[];
   orders: Order[];
   offer: SpecialOffer;
-  seq: number;
 }
 
 function emptyState(): DemoState {
@@ -40,7 +40,6 @@ function emptyState(): DemoState {
     menu: [],
     orders: [],
     offer: { enabled: false, text: "" },
-    seq: 100,
   };
 }
 
@@ -49,7 +48,6 @@ function seedState(): DemoState {
     menu: SEED_MENU.map((item) => ({ ...item })),
     orders: [],
     offer: { ...SEED_OFFER },
-    seq: 100,
   };
 }
 
@@ -102,10 +100,8 @@ function load(): DemoState {
       menu: parseMenuList((parsed as DemoState)?.menu),
       orders: parseOrderList((parsed as DemoState)?.orders),
       offer: parseSpecialOffer((parsed as DemoState)?.offer),
-      seq:
-        typeof (parsed as DemoState)?.seq === "number"
-          ? (parsed as DemoState).seq
-          : 100,
+      // Older saved states also carry a `seq` counter. It is ignored: the display
+      // number is derived from the id now, exactly as it is in Firestore.
     };
   } catch {
     return seedState();
@@ -214,11 +210,15 @@ export function selectOrdersInRange(
 
 // --- commands ---------------------------------------------------------------
 
+/**
+ * No counter here either. The display number comes from the id, the same way
+ * the Firestore adapter does it (src/lib/order-number.ts), so the demo cannot
+ * quietly promise sequential numbers that the real backend does not give.
+ */
 export function demoCreateOrder(input: NewOrderInput): Order {
   const now = Date.now();
   const order = parseOrder({
     id: makeId("o"),
-    orderNumber: 0,
     tableNumber: input.tableNumber,
     items: input.items,
     total: orderTotal(input.items),
@@ -231,16 +231,9 @@ export function demoCreateOrder(input: NewOrderInput): Order {
     throw new Error("Could not build the order from the cart.");
   }
 
-  mutate((state) => {
-    const orderNumber = state.seq + 1;
-    return {
-      ...state,
-      seq: orderNumber,
-      orders: [...state.orders, { ...order, orderNumber }],
-    };
-  });
+  mutate((state) => ({ ...state, orders: [...state.orders, order] }));
 
-  return { ...order, orderNumber: load().seq };
+  return order;
 }
 
 export function demoSetStatus(id: string, status: Order["status"]): void {
@@ -303,13 +296,12 @@ export function demoReplaceMenu(items: MenuItem[]): void {
 export function demoSeedOrders(
   orders: Array<Omit<Order, "id" | "orderNumber">>,
 ): number {
-  let firstNumber = 100;
   mutate((state) => {
     const withIds = orders.map((order) => {
-      firstNumber += 1;
-      return { ...order, id: makeId("o"), orderNumber: firstNumber };
+      const id = makeId("o");
+      return { ...order, id, orderNumber: displayNumberFromId(id) };
     });
-    return { ...state, seq: firstNumber, orders: withIds };
+    return { ...state, orders: withIds };
   });
   return orders.length;
 }

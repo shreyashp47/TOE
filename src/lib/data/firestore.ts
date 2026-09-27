@@ -6,7 +6,9 @@
  *                      createdAt, completedAt?, paymentMethod
  *   /menu/{itemId}     name, description?, price, category, available
  *   /config/special   the "today's special" board
- *   /meta/counters    monotonic order display number
+ *
+ * There is no /meta/counters any more: the order's display number is derived
+ * from its document id on read (src/lib/order-number.ts, issue #30).
  *
  * `onSnapshot` powers the live staff board and the customer's status screen
  * (§5.3) with no separate realtime service. The module is only ever imported
@@ -45,7 +47,6 @@ const MENU = "menu";
 const ORDERS = "orders";
 const CONFIG = "config";
 const SPECIAL_DOC = "special";
-const COUNTERS = "meta/counters";
 const STAFF = "staff";
 
 let bundle: Promise<{
@@ -281,31 +282,23 @@ export const firestoreOrderRepo: OrderRepository = {
     const uid = await customerUid();
     const ref = fs.doc(fs.collection(db, ORDERS));
     const total = orderTotal(input.items);
-    // The display number is allocated in a transaction so two phones placing an
-    // order in the same moment can't collide.
-    await fs.runTransaction(db, async (tx) => {
-      const counter = await tx.get(fs.doc(db, COUNTERS));
-      const previous = counter.exists()
-        ? Number(counter.data()?.orderNumber ?? 100)
-        : 100;
-      const orderNumber = previous + 1;
-      tx.set(fs.doc(db, COUNTERS), { orderNumber }, { merge: true });
-      tx.set(ref, {
-        orderNumber,
-        tableNumber: input.tableNumber,
-        items: input.items,
-        total,
-        status: "preparing",
-        createdAt: fs.serverTimestamp(),
-        notes: input.notes ?? "",
-        paymentMethod: input.paymentMethod ?? "counter",
-        customerUid: uid,
-      });
+    // No display number is written. It used to be allocated from a shared
+    // /meta/counters document in a transaction, which meant that document had to
+    // be writable by the public (issue #30). The number is now derived from
+    // `ref.id` when the order is read — see src/lib/order-number.ts.
+    await fs.setDoc(ref, {
+      tableNumber: input.tableNumber,
+      items: input.items,
+      total,
+      status: "preparing",
+      createdAt: fs.serverTimestamp(),
+      notes: input.notes ?? "",
+      paymentMethod: input.paymentMethod ?? "counter",
+      customerUid: uid,
     });
 
     return parseOrder({
       id: ref.id,
-      orderNumber: 0,
       tableNumber: input.tableNumber,
       items: input.items,
       total,

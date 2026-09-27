@@ -246,7 +246,7 @@ To confirm the database side, with the console open in another tab:
 
 ```bash
 npm run emulators    # terminal 1
-npm run test:rules   # terminal 2 — 35 assertions, 0 failures
+npm run test:rules   # terminal 2 — 46 assertions, 0 failures
 ```
 
 **Verify before you trust it** — the emulator applies the real routing and header
@@ -322,10 +322,10 @@ produced the font.
 Worth reading before you rely on the money figures.
 
 `firestore.rules` is a real boundary, not a formality: `scripts/rules-test.mjs`
-runs 28 assertions against the emulators covering the anonymous customer, a
-signed-in barista and a signed-in owner. A barista cannot edit the menu, cannot
-read another barista's role record, cannot skip a status and cannot change a
-price after the order is placed.
+runs 46 assertions against the emulators covering the anonymous customer, a
+signed-out caller, a signed-in barista and a signed-in owner. A barista cannot
+edit the menu, cannot read another barista's role record, cannot skip a status
+and cannot change a price after the order is placed.
 
 But the rules language has **no loops and no lambdas** — there is no `reduce` and
 no `function` expression. So a rule cannot sum a variable-length basket, which
@@ -398,6 +398,22 @@ Two rules worth knowing before you change anything:
    — the rules language has no loops and no lambdas, so an arbitrary-length
    basket cannot be summed server-side. The total is therefore client-supplied.
    See [the limits section](#what-the-rules-cannot-do) before you rely on it.
+
+### Order numbers are short, and not unique on their own
+
+The `#417` on the staff board and the customer's screen is derived from the
+order's document id ([`src/lib/order-number.ts`](./src/lib/order-number.ts)), not
+allocated from a counter. It is three digits because a barista reads it out, and
+it is always shown next to the table, which is what actually tells two orders
+apart. Two orders in a day can share a number; two open orders on the same table
+sharing one is about a 1-in-900 chance per pair.
+
+It used to come from a `/meta/counters` document that every customer phone
+incremented, which meant the document had to be writable by anyone — so anyone
+could reset it or run it up (issue #30). Nothing writes `/meta` now, and the rules
+deny it to everyone. Orders placed under the old counter keep their stored number.
+If your project has a leftover `meta/counters` document, it is inert; delete it
+from the console whenever you like.
 
 ---
 

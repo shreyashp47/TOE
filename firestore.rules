@@ -49,9 +49,9 @@ service cloud.firestore {
 
     // -- orders -------------------------------------------------------------
     // Public create (no customer login, §3), everything else staff-only.
-    // The create rule re-derives the total server-side from the submitted line
-    // prices so a tampered client cannot pick its own amount, and pins status
-    // and orderNumber rather than trusting whatever the phone sent.
+    // The create rule pins status, createdAt and the field set rather than
+    // trusting whatever the phone sent. It does not re-derive the total — see
+    // the long comment on `allow create` below for why it cannot.
 
     match /orders/{orderId} {
       // Split deliberately into `get` and `list`, because a single `allow read`
@@ -85,8 +85,6 @@ service cloud.firestore {
       //     make an unpaid order look settled
       //   - createdAt == request.time, so a phone with a wrong clock cannot
       //     backdate an order out of today's takings
-      //   - orderNumber as an int, bounded, so the counter cannot be pushed to
-      //     something absurd
       //   - customerUid, which must equal the caller's own anonymous uid, so a
       //     customer can only ever read back the order they placed themselves
       //   - total as a bounded int
@@ -97,9 +95,14 @@ service cloud.firestore {
       // here. `total` is therefore client-supplied and a customer with devtools
       // could post a cheap total. See docs/decisions.md and the README; the fix
       // is a trusted backend, not a cleverer rule.
+      //
+      // There is no orderNumber field. The short number staff read out is derived
+      // from the document id when the order is read (src/lib/order-number.ts),
+      // so the client has nothing to allocate and no shared counter to bump
+      // (issue #30). Orders placed before that change still carry one, which is
+      // fine: this rule only governs creates.
       allow create: if
         request.resource.data.keys().hasOnly([
-          "orderNumber",
           "tableNumber",
           "items",
           "total",
@@ -115,9 +118,6 @@ service cloud.firestore {
         && request.resource.data.tableNumber <= 50
         && request.resource.data.status == "preparing"
         && request.resource.data.createdAt == request.time
-        && request.resource.data.orderNumber is int
-        && request.resource.data.orderNumber >= 0
-        && request.resource.data.orderNumber < 1000000
         && request.resource.data.total is int
         && request.resource.data.total >= 0
         && request.resource.data.total <= 100000
@@ -176,19 +176,15 @@ service cloud.firestore {
       allow write: if isOwner();
     }
 
-    // -- meta: order counter ------------------------------------------------
-    // There is no customer identity (§3), so the counter cannot be guarded by
-    // auth. The blast radius is deliberately cosmetic: it only affects the
-    // number printed on the receipt. Order *totals* are derived per-order and
-    // orders are immutable once created, so money cannot be affected.
-
-    match /meta/{docId} {
-      allow read: if true;
-      allow write: if docId == "counters"
-                   && request.resource.data.keys().hasOnly(["orderNumber"])
-                   && request.resource.data.orderNumber is int
-                   && request.resource.data.orderNumber < 1000000;
-    }
+    // -- meta: gone ----------------------------------------------------------
+    // /meta/counters used to hold the order display number, and every customer
+    // phone incremented it — which meant anyone on the internet could write it:
+    // reset it so two orders shared a receipt number, push it to 999999, or loop
+    // on it to burn the free-tier write quota (issue #30). The number is now
+    // derived from the order's document id instead, so nothing needs /meta and
+    // it falls through to the default deny below for everyone, staff included.
+    // A leftover /meta/counters document in an existing project is inert and can
+    // be deleted from the console.
 
     // default deny
     match /{document=**} {
