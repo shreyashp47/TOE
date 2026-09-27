@@ -3,12 +3,14 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
+  CLOCK_SKEW_ALLOWANCE_MS,
   ORDER_GAP_SECONDS,
   OrderThrottled,
   forgetLastOrder,
   readLastOrderAt,
   recordOrderPlaced,
   secondsUntilNextOrder,
+  throttleFromServerStamp,
   throttleMessage,
 } from "../order-throttle";
 
@@ -33,8 +35,12 @@ describe("secondsUntilNextOrder", () => {
     expect(secondsUntilNextOrder(T0, T0 + 60_000)).toBe(0);
   });
 
-  it("waits the full gap if the clock has gone backwards", () => {
-    expect(secondsUntilNextOrder(T0, T0 - 10_000)).toBe(ORDER_GAP_SECONDS);
+  it("ignores a note from the future instead of locking the phone out", () => {
+    // The clock was hours ahead when the order went in and has been corrected
+    // since. Waiting for real time to catch up would block every order and
+    // never ask the server, which enforces the gap anyway.
+    expect(secondsUntilNextOrder(T0, T0 - 10_000)).toBe(0);
+    expect(secondsUntilNextOrder(T0, T0 - 3 * 3600_000)).toBe(0);
   });
 
   it("ignores a corrupt stored time rather than blocking forever", () => {
@@ -42,7 +48,57 @@ describe("secondsUntilNextOrder", () => {
   });
 });
 
+describe("throttleFromServerStamp (after the server has refused)", () => {
+  const GAP = ORDER_GAP_SECONDS * 1000;
+
+  it("is not a throttle when the customer has no stamp", () => {
+    expect(throttleFromServerStamp(null, T0)).toBeNull();
+  });
+
+  it("counts down accurately when the clocks agree", () => {
+    // The old estimate subtracted 5 s of slack and said 29 with 24 left.
+    expect(throttleFromServerStamp(T0, T0 + 6_000)).toEqual({ seconds: 24 });
+    expect(throttleFromServerStamp(T0, T0 + GAP - 200)).toEqual({ seconds: 1 });
+  });
+
+  it("still says 'throttled' when the phone runs ahead of the server", () => {
+    // The phone thinks 40 s have passed; the server, which refused, knows
+    // fewer than 30 have. No local note, and the customer still gets the
+    // friendly message, without an invented number.
+    expect(throttleFromServerStamp(T0, T0 + GAP + 10_000)).toEqual({
+      seconds: null,
+    });
+    expect(throttleFromServerStamp(T0, T0 + GAP)).toEqual({ seconds: null });
+  });
+
+  it("still says 'throttled' when the phone runs behind the server", () => {
+    expect(throttleFromServerStamp(T0, T0 - 20_000)).toEqual({
+      seconds: null,
+    });
+  });
+
+  it("gives up on clocks further out than the allowance", () => {
+    expect(
+      throttleFromServerStamp(T0, T0 - CLOCK_SKEW_ALLOWANCE_MS - 1),
+    ).toBeNull();
+  });
+
+  it("treats an old stamp as some other refusal, not a throttle", () => {
+    expect(
+      throttleFromServerStamp(T0, T0 + GAP + CLOCK_SKEW_ALLOWANCE_MS),
+    ).toBeNull();
+    expect(throttleFromServerStamp(T0, T0 + 3600_000)).toBeNull();
+  });
+});
+
 describe("throttleMessage", () => {
+  it("says 'under 30 seconds' when the phone cannot know the exact wait", () => {
+    expect(throttleMessage(null)).toMatch(
+      new RegExp(`another in under ${ORDER_GAP_SECONDS} seconds\\.$`),
+    );
+    expect(new OrderThrottled(null).seconds).toBeNull();
+  });
+
   it("tells the customer what to do, in seconds", () => {
     expect(throttleMessage(25)).toMatch(/another in 25 seconds\.$/);
     expect(throttleMessage(1)).toMatch(/another in 1 second\.$/);

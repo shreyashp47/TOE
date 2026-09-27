@@ -18,7 +18,7 @@
 import { getDemoStaffPin } from "../config";
 import { orderTotal } from "../money";
 import { ACTIVE_STATUSES } from "../order-status";
-import { OrderThrottled, secondsUntilNextOrder } from "../order-throttle";
+import { OrderThrottled, throttleFromServerStamp } from "../order-throttle";
 import {
   parseMenuItem,
   parseOrder,
@@ -123,10 +123,10 @@ async function asThrottled(
     const last = snap.data()?.lastOrderAt as
       { toMillis?: () => number } | undefined;
     const at = typeof last?.toMillis === "function" ? last.toMillis() : null;
-    // The server already refused, so err towards "throttled": a phone clock a
-    // few seconds ahead of the server's would otherwise read the gap as over.
-    const wait = secondsUntilNextOrder(at, Date.now() - 5_000);
-    return wait > 0 ? new OrderThrottled(wait) : null;
+    // Handles a phone clock that disagrees with the server's: see the
+    // function for how.
+    const verdict = throttleFromServerStamp(at, Date.now());
+    return verdict ? new OrderThrottled(verdict.seconds) : null;
   } catch {
     return null;
   }
