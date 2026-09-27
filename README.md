@@ -182,6 +182,22 @@ it under **Hosting → Add custom domain** — the QR codes do not need regenera
 as long as `/order?table=N` keeps working, which is why `NEXT_PUBLIC_BASE_URL`
 exists if you want to print cards against a staging address first.
 
+### If the build fails with "An error occurred in `next/font`"
+
+`next/font/google` downloads the font files from Google **at build time**. On a
+flaky connection it fails with an unhelpful `TypeError: Cannot read properties of
+null` from the font loader, which looks like a code bug but is not one.
+
+Just build again — it caches after the first success. CI already retries once
+automatically.
+
+If you are deploying from somewhere with unreliable internet, self-host the fonts
+instead: download the woff2 files for Caveat (600, 700), Fredoka (500, 600) and
+Nunito (400, 600, 700) into `public/fonts`, and swap the three `next/font/google`
+calls in `src/app/layout.tsx` for `next/font/local`. The CSS variables and every
+component stay exactly as they are — nothing else in the app knows which loader
+produced the font.
+
 ### Deploy the rules too — this is the part people skip
 
 ```bash

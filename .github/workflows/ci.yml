@@ -95,8 +95,18 @@ jobs:
 
       # A production build, not `next dev`: every route is prerendered, so the
       # 24 screenshots take seconds instead of recompiling the app 8 times.
+      # `next/font/google` fetches the font files from Google at build time, so a
+      # flaky network on the runner fails the build with an unhelpful
+      # "Cannot read properties of null" from the font loader. Retry once: the
+      # failure is transient, and the alternative is self-hosting the woff2
+      # files (documented as the fallback in the README).
       - name: Build
-        run: npm run build
+        run: |
+          npm run build || {
+            echo "::warning::build failed, retrying once (next/font fetch is network-dependent)"
+            sleep 20
+            npm run build
+          }
 
       - name: Start the server
         run: |
