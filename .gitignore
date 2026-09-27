@@ -25,6 +25,9 @@ tsconfig.tsbuildinfo
 .vscode
 .idea
 
+# Claude Code local state, including agent worktrees (full copies of this repo)
+.claude/
+
 # firebase (out/ is already ignored above, under # next)
 .firebase
 firebase-debug.log

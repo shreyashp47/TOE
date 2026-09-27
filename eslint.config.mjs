@@ -20,6 +20,9 @@ const eslintConfig = [
       "coverage/**",
       ".screenshots/**",
       "next-env.d.ts",
+      // Claude Code's local state, including whole agent worktrees of this
+      // repo; linting those lints the project several times over.
+      ".claude/**",
     ],
   },
 ];
