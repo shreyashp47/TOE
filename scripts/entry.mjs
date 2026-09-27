@@ -53,6 +53,43 @@ if (dev && !(await waitForServer(BASE))) {
   process.exit(1);
 }
 
+/**
+ * Waits for the screen to stop changing, rather than sleeping a fixed amount.
+ *
+ * Two fixed sleeps were wrong here. On a cold CDN the root page is a static
+ * export of a `redirect()`, so the hop to /order happens after hydration and two
+ * runs of the same commit disagreed. And matching a specific loader string is
+ * worse: the app has several ("Finding your table...", "Setting out the cups...")
+ * and matching one of them lets the wait return while a different loader is still
+ * on screen. Reading until the text holds steady is independent of the copy.
+ */
+async function waitForMenu(page, ms = 15_000) {
+  // A price on screen is what "the menu is here" means. After a client-side
+  // navigation the menu is re-read from Firestore, so this legitimately takes a
+  // couple of seconds; the QR path is instant because the shell is already warm.
+  await page
+    .getByText(/\u20b9\s*\d/)
+    .first()
+    .waitFor({ state: "visible", timeout: ms })
+    .catch(() => {});
+}
+
+async function settle(page, ms = 10_000) {
+  const deadline = Date.now() + ms;
+  let previous = null;
+  while (Date.now() < deadline) {
+    const now = (
+      await page
+        .locator("body")
+        .innerText()
+        .catch(() => "")
+    ).replace(/\s+/g, " ");
+    if (now && now === previous) return;
+    previous = now;
+    await page.waitForTimeout(250);
+  }
+}
+
 /** What the customer is actually looking at, in one word. */
 async function classify(page) {
   const text = (await page.locator("body").innerText()).replace(/\s+/g, " ");
@@ -81,7 +118,8 @@ step(1, "Land on / — should land on the order page");
   page.on("pageerror", (e) => errors.push(e.message));
   page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
   await page.goto(`${BASE}/`, { waitUntil: "domcontentloaded" });
-  await page.waitForTimeout(1500);
+  await page.waitForURL(/\/order/, { timeout: 15_000 }).catch(() => {});
+  await settle(page);
   check(
     "/ redirects to the order page",
     page.url().includes("/order"),
@@ -102,14 +140,17 @@ step(2, "Tap table 3 on the picker — should show the menu");
   page.on("pageerror", (e) => errors.push(e.message));
   page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
   await page.goto(`${BASE}/`, { waitUntil: "domcontentloaded" });
-  await page.waitForTimeout(1500);
+  await page.waitForURL(/\/order/, { timeout: 10_000 }).catch(() => {});
+  await settle(page);
 
   const tile = page.locator('a[href*="table="]').first();
   check("the picker offers tappable tables", (await tile.count()) > 0);
 
   const before = page.url();
   await tile.click();
-  await page.waitForTimeout(1500);
+  await page.waitForURL(/table=/, { timeout: 10_000 }).catch(() => {});
+  await waitForMenu(page);
+  await settle(page);
 
   const after = page.url();
   const shown = await classify(page);
@@ -132,7 +173,7 @@ step(3, "Open /order?table=3 directly — the QR path");
   page.on("pageerror", (e) => errors.push(e.message));
   page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
   await page.goto(`${BASE}/order?table=3`, { waitUntil: "domcontentloaded" });
-  await page.waitForTimeout(2000);
+  await settle(page);
   const shown = await classify(page);
   console.log(`  screen shows: ${shown}`);
   check("direct load shows the menu", shown === "menu", `got "${shown}"`);
@@ -156,7 +197,7 @@ for (const [query, why, want] of [
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto(`${BASE}/order${query}`, { waitUntil: "domcontentloaded" });
-  await page.waitForTimeout(1500);
+  await settle(page);
   const shown = await classify(page);
   check(
     `${why} (${query || "no query"}) falls back cleanly`,
