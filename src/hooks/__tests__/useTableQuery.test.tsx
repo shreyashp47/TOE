@@ -9,10 +9,25 @@
  */
 
 import { render, renderHook } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useTableQuery } from "@/hooks/useTableQuery";
 import { orderHref, parseTableNumber, readTableFromSearch } from "@/lib/tables";
+
+/**
+ * `useQueryParams` now reads through Next's `useSearchParams`, which is what
+ * makes it correct across client-side navigations. Outside a router that hook has
+ * nothing to read, so it is stood in for by the real thing it wraps: the query
+ * string on the current location.
+ *
+ * The bug this hook had — reading the query once on mount, so a soft navigation
+ * to `/order?table=3` left the table picker on screen — is not reachable from a
+ * unit test, because there is no router to navigate. That case is covered by
+ * `scripts/entry.mjs`, which drives a real browser.
+ */
+vi.mock("next/navigation", () => ({
+  useSearchParams: () => new URLSearchParams(window.location.search),
+}));
 
 function setLocation(search: string) {
   window.history.replaceState({}, "", `/order${search}`);
@@ -36,17 +51,24 @@ describe("useTableQuery", () => {
     expect(result.current.raw).toBeNull();
   });
 
-  it("returns unready on the very first render", () => {
-    // The first paint must be the mascot loader, not a flash of the fallback
-    // table picker on a QR scan.
+  it("is ready on the first client render, without a mount cycle", () => {
+    // The loader used to come from this hook returning `ready: false` until an
+    // effect had run. It now comes from the <Suspense> boundary around
+    // OrderScreen, because a static export prerenders with no query string and
+    // the hook reads through Next's useSearchParams — which has the query
+    // available immediately on the client.
+    //
+    // The intent is unchanged and still holds: the first paint is the mascot
+    // loader, not a flash of the table picker on a QR scan. `scripts/entry.mjs`
+    // checks that in a real browser, which is the only place it is observable.
+    setLocation("?table=4");
     const seen: boolean[] = [];
     function Probe() {
       seen.push(useTableQuery().ready);
       return null;
     }
     render(<Probe />);
-    expect(seen[0]).toBe(false);
-    expect(seen.at(-1)).toBe(true);
+    expect(seen.every(Boolean)).toBe(true);
   });
 
   it("keeps the raw value for the 'that looks odd' copy", () => {

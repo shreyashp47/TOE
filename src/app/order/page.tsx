@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 
 import { Doodles } from "@/components/Doodles";
 import {
@@ -31,16 +31,32 @@ import type { MenuItem } from "@/lib/types";
 export default function OrderPage() {
   return (
     <DataProvider>
-      <OrderScreen />
+      {/*
+        A static export prerenders this route with no query string, so anything
+        reading it has to sit behind a Suspense boundary or the build fails.
+        It also keeps the "Finding your table…" loader inside the boundary,
+        which is where it belongs — it is the fallback, not the whole page.
+      */}
+      <Suspense fallback={<Loading label="Finding your table…" />}>
+        <OrderScreen />
+      </Suspense>
     </DataProvider>
   );
 }
 
 function OrderScreen() {
   const { ready, tableNumber, raw } = useTableQuery();
+  const known = getTableNumbers();
 
   if (!ready) return <Loading label="Finding your table…" />;
   if (tableNumber === null) return <TablePicker query={raw} />;
+  // A number that parses but is not a table this cafe has. Reachable by editing
+  // the URL, or by scanning a QR code left over from a table that has since been
+  // removed. Worth catching here rather than at checkout: the rules accept
+  // tableNumber 1..50 while the parser accepts 1..999, so without this the
+  // customer builds a whole basket and is refused by Firestore at the last step,
+  // with an error about a number they never chose.
+  if (!known.includes(tableNumber)) return <TablePicker query={raw} />;
 
   return <MenuScreen tableNumber={tableNumber} />;
 }

@@ -10,7 +10,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 
 import { SparkleBurst } from "@/components/Doodles";
 import { Icon } from "@/components/icons";
@@ -42,7 +42,11 @@ import { readSessionOrderId, rememberSessionOrder } from "@/lib/order-session";
 export default function ConfirmationPage() {
   return (
     <DataProvider>
-      <ConfirmationScreen />
+      {/* See src/app/order/page.tsx: a static export prerenders with no query
+          string, so the reader needs a Suspense boundary. */}
+      <Suspense fallback={<Loading label="Finding your order…" />}>
+        <ConfirmationScreen />
+      </Suspense>
     </DataProvider>
   );
 }

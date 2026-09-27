@@ -132,6 +132,14 @@ jobs:
       # WebKit is Safari/iOS, and colour contrast is a real gate here: the theme
       # is a fixed warm palette, and two of its mid-tones cannot legally carry
       # body text. This is what catches that.
+      # Every way a customer can arrive, including tapping a table number on the
+      # picker. That path was broken for as long as it existed and nothing caught
+      # it, because flow.mjs always navigated straight to /order?table=N.
+      - name: Entry paths
+        run: node scripts/entry.mjs
+        env:
+          BASE_URL: http://127.0.0.1:4320
+
       - name: Accessibility + WebKit audit
         run: node scripts/audit.mjs
         env:
