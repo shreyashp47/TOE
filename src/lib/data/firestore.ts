@@ -15,6 +15,7 @@
 
 import { getDemoStaffPin } from "../config";
 import { orderTotal } from "../money";
+import { ACTIVE_STATUSES } from "../order-status";
 import {
   parseMenuItem,
   parseOrder,
@@ -239,9 +240,17 @@ export const firestoreOrderRepo: OrderRepository = {
       const { db, fs } = await dbAndFs();
       // One bounded listener, oldest-first: the most urgent order stays on top and
       // the query stays index-friendly (§5.3).
+      //
+      // `in` rather than `status != "completed"`. Firestore treats a `!=` filter
+      // as an inequality on a second field alongside the `orderBy`, and refuses
+      // the query with "range and inequality filters on multiple fields" — a
+      // failed-precondition, not a permissions error, so it surfaces as the board
+      // silently dropping its listener. `in` is an equality match, so the single
+      // (status, createdAt) composite index covers it. The list of open statuses
+      // is the same constant the UI already uses, so it cannot drift.
       const query = fs.query(
         fs.collection(db, ORDERS),
-        fs.where("status", "!=", "completed"),
+        fs.where("status", "in", [...ACTIVE_STATUSES]),
         fs.orderBy("createdAt", "asc"),
         fs.limit(100),
       );

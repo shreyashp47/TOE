@@ -244,9 +244,30 @@ await t(
   "cannot set an absurd unit price",
   denied(() => placeAs(publicC, { items: [line({ price: 999999 })] })),
 );
-// A collection query is allowed when every document it would return is the
-// caller's own, so the meaningful assertion is that a query spanning somebody
-// else's order is refused.
+// `get` and `list` are separate rules, and the difference is not academic: a
+// single `allow read: if isStaff() || resource.data.customerUid == ...` leaves
+// Firestore unable to prove a list query is safe, and the staff board fails with
+// "Missing or insufficient permissions" while single reads carry on working.
+await t(
+  "a customer can get their own order by id",
+  allowed(async () => {
+    const mine = await placeAs(publicC, { notes: "get me" });
+    const snap = await getDoc(doc(publicC.db, "orders", mine.id));
+    if (!snap.exists()) throw new Error("could not read its own order");
+  }),
+);
+await t(
+  "a customer cannot get somebody else's order by id",
+  denied(async () => {
+    const other = await placeAs(otherCustomerC, { notes: "not yours" });
+    const snap = await getDoc(doc(publicC.db, "orders", other.id));
+    if (snap.exists()) throw new Error("read a stranger's order");
+  }),
+);
+await t(
+  "cannot list a board at all",
+  denied(() => getDocs(collection(publicC.db, "orders"))),
+);
 await t(
   "cannot list a board containing another customer's order",
   denied(() => getDocs(collection(publicC.db, "orders"))),

@@ -54,12 +54,25 @@ service cloud.firestore {
     // and orderNumber rather than trusting whatever the phone sent.
 
     match /orders/{orderId} {
+      // Split deliberately into `get` and `list`, because a single `allow read`
+      // cannot express this.
+      //
       // Staff see the whole board. A customer sees only the order they placed,
-      // which is what the confirmation and live-status screens need — they are
-      // unauthenticated in every other sense, but they do hold an anonymous uid
-      // that the create rule pins to the document.
-      allow read: if isStaff()
+      // which is what the confirmation and live-status screens need — they hold
+      // an anonymous uid, and the create rule pins it to the document.
+      //
+      // Written as one `allow read: if isStaff() || resource.data.customerUid ==
+      // request.auth.uid`, the staff board stops working. Firestore has to be
+      // able to *prove* a list query only returns documents the caller may read,
+      // and an OR with a content-dependent branch leaves it unable to, so it
+      // refuses the whole query with "Missing or insufficient permissions" — the
+      // exact error that surfaced on the board while single-document reads kept
+      // working. A customer reading their own order is a `get`; the board is a
+      // `list`. Only `list` needs the proof, so only `list` is staff-only.
+      allow get: if isStaff()
         || (signedIn() && resource.data.customerUid == request.auth.uid);
+      allow list: if isStaff();
+
       allow delete: if isOwner();
 
       // This is the only write any member of the public can perform, so it is

@@ -169,7 +169,16 @@ export function useMenu(): {
   return { items: value, loading: !repo, error };
 }
 
-export function useActiveOrders(): {
+/**
+ * `enabled` exists because the staff board used to subscribe before anyone had
+ * signed in. The order rules only let a *staff* account list orders, so that
+ * first listener was refused, the page showed "Live updates dropped: Missing or
+ * insufficient permissions", and because the subscription is created once it was
+ * never retried — the board stayed empty for a correctly signed-in barista. Every
+ * network request afterwards succeeded; the page was showing a failure from
+ * before the session existed.
+ */
+export function useActiveOrders(enabled = true): {
   orders: Order[];
   loading: boolean;
   error: Error | null;
@@ -177,17 +186,19 @@ export function useActiveOrders(): {
   const repo = useOrderRepo();
   const [error, setError] = useState<Error | null>(null);
 
-  const subscribe = useMemo(
-    () =>
-      repo
-        ? (listener: (orders: Order[]) => void) =>
-            repo.subscribeActive(listener, setError)
-        : null,
-    [repo],
-  );
+  const subscribe = useMemo(() => {
+    if (!repo || !enabled) return null;
+    return (listener: (orders: Order[]) => void) =>
+      repo.subscribeActive((orders) => {
+        // A good snapshot clears a bad one, so a single dropped connection does
+        // not leave a permanent banner sitting above a working board.
+        setError(null);
+        listener(orders);
+      }, setError);
+  }, [repo, enabled]);
 
   const { value } = useLive<Order[]>(subscribe, []);
-  return { orders: value, loading: !repo, error };
+  return { orders: enabled ? value : [], loading: !repo || !enabled, error };
 }
 
 export function useOrder(id: string | null): {

@@ -35,14 +35,23 @@ async function getFirebase() {
       ]);
 
     const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
-    return {
-      app,
-      auth: authMod.getAuth(app),
-      db: fsMod.initializeFirestore(app, {
-        // One long-lived listener per device; keeps reads inside free tier.
-        experimentalAutoDetectLongPolling: true,
-      }),
-    };
+    const auth = authMod.getAuth(app);
+    const db = fsMod.initializeFirestore(app, {
+      // One long-lived listener per device; keeps reads inside free tier.
+      experimentalAutoDetectLongPolling: true,
+    });
+
+    // Wait for the SDK to settle who we are before anyone reads or writes.
+    // Auth state is restored from IndexedDB, so the first few milliseconds after
+    // a cold load have no token yet. A listener attached in that window is
+    // treated as anonymous, and the order rules refuse it — which is how a
+    // returning customer could be shown "we can't find that order" on a reload
+    // and a barista saw a permission error on a board that worked moments later.
+    // It resolves immediately when nobody is signed in, so the customer flow
+    // that never signs in is unaffected.
+    await auth.authStateReady();
+
+    return { app, auth, db };
   })();
 
   return appPromise;

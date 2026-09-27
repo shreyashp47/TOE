@@ -35,7 +35,13 @@ function StaffScreen() {
   const { user, loading, signIn, signInWithPin, signOut } = useStaffSession();
   const isDemo = useIsDemo();
   const { muted, setMuted, armed, unlock, chime, buzz } = useOrderChime();
-  const { orders, loading: ordersLoading, error } = useActiveOrders();
+  // Only once there is a session: the rules refuse a list to anyone who is not
+  // staff, so subscribing earlier just guarantees a permission error.
+  const {
+    orders,
+    loading: ordersLoading,
+    error,
+  } = useActiveOrders(Boolean(user));
   const [tableFilter, setTableFilter] = useState<number | "all">("all");
   const [busyId, setBusyId] = useState<string | null>(null);
 
