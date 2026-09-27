@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "@/components/icons";
 import { InstallHint } from "@/components/Pwa";
 import { Mascot } from "@/components/Mascot";
+import { NotSetUp } from "@/components/NotSetUp";
 import {
   DataProvider,
   useActiveOrders,
@@ -35,13 +36,11 @@ function StaffScreen() {
   const { user, loading, signIn, signInWithPin, signOut } = useStaffSession();
   const isDemo = useIsDemo();
   const { muted, setMuted, armed, unlock, chime, buzz } = useOrderChime();
-  // Only once there is a session: the rules refuse a list to anyone who is not
-  // staff, so subscribing earlier just guarantees a permission error.
-  const {
-    orders,
-    loading: ordersLoading,
-    error,
-  } = useActiveOrders(Boolean(user));
+  // Only once there is a staff session: the rules refuse a list to anyone who
+  // is not staff, so subscribing earlier — or as an account with no /staff
+  // document — just guarantees a permission error.
+  const canWork = Boolean(user) && user?.role !== "unassigned";
+  const { orders, loading: ordersLoading, error } = useActiveOrders(canWork);
   const [tableFilter, setTableFilter] = useState<number | "all">("all");
   const [busyId, setBusyId] = useState<string | null>(null);
 
@@ -120,6 +119,10 @@ function StaffScreen() {
         onFirstGesture={unlock}
       />
     );
+  }
+
+  if (user.role === "unassigned") {
+    return <NotSetUp user={user} onSignOut={() => void signOut()} />;
   }
 
   return (

@@ -13,6 +13,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { Icon } from "@/components/icons";
 import { Mascot } from "@/components/Mascot";
+import { NotSetUp } from "@/components/NotSetUp";
 import { UpdateBar } from "@/components/Pwa";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Button } from "@/components/ui/Button";
@@ -430,6 +431,30 @@ describe("demo store isolation between tests", () => {
     expect(order.id).toBeTruthy();
     resetDemoStore();
     expect(loadDemoState().orders).toEqual([]);
+  });
+});
+
+describe("account not set up (issue #33)", () => {
+  it("explains itself and shows the owner what to set up", async () => {
+    const onSignOut = vi.fn();
+    render(
+      <NotSetUp
+        user={{ uid: "abc123UID", email: "asha@cafe.com" }}
+        onSignOut={onSignOut}
+      />,
+    );
+    expect(
+      screen.getByText(/Your account isn.t set up yet — ask the owner/),
+    ).toBeInTheDocument();
+    expect(screen.getByText("abc123UID")).toBeInTheDocument();
+    expect(screen.getByText("asha@cafe.com")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "npm run seed:staff -- --email=asha@cafe.com --role=staff",
+      ),
+    ).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Sign out" }));
+    expect(onSignOut).toHaveBeenCalledOnce();
   });
 });
 

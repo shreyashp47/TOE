@@ -66,10 +66,17 @@ export interface OrderRepository {
   listRange(fromMs: number, toMs: number): Promise<Order[]>;
 }
 
+/**
+ * `unassigned` is a real, signed-in Firebase account with no `/staff/{uid}`
+ * document. The rules treat it as a stranger, so the app must too: it gets a
+ * "not set up yet" screen rather than an order board it cannot read.
+ */
+export type StaffRole = "staff" | "owner" | "unassigned";
+
 export interface StaffUser {
   uid: string;
   email: string;
-  role: "staff" | "owner";
+  role: StaffRole;
   displayName: string;
 }
 
