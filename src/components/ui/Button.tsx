@@ -17,7 +17,7 @@ const VARIANTS: Record<Variant, string> = {
 };
 
 const SIZES: Record<Size, string> = {
-  // every size keeps the 44px minimum touch target (theme doc §4 ergonomics)
+  // every size keeps the 44px minimum touch target (docs/anime-theme.md §4 ergonomics)
   sm: "min-h-11 px-3.5 text-sm gap-1.5",
   md: "min-h-11 px-5 text-base gap-2",
   lg: "min-h-13 px-6 text-lg gap-2.5",
@@ -43,7 +43,7 @@ export function Button({
     <button
       type={type}
       className={cn(
-        "inline-flex items-center justify-center rounded-pill font-round font-semibold",
+        "rounded-pill font-round inline-flex items-center justify-center font-semibold",
         "transition-[transform,background-color,filter] duration-150",
         "active:scale-[.97] disabled:pointer-events-none disabled:opacity-45",
         VARIANTS[variant],

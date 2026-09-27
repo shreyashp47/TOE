@@ -3,7 +3,7 @@ import { cn } from "@/lib/cn";
 import type { ReactNode } from "react";
 
 /**
- * Manga speech bubble (theme doc §4). Tail is a rotated square rather than a
+ * Manga speech bubble (docs/anime-theme.md §4). Tail is a rotated square rather than a
  * pseudo-element so it can be positioned without magic offsets.
  */
 export function SpeechBubble({
@@ -11,22 +11,27 @@ export function SpeechBubble({
   mood = "cheer",
   className,
   tail = "left",
+  showMascot = true,
 }: {
   children: ReactNode;
   mood?: MascotMood;
   className?: string;
   tail?: "left" | "right" | "none";
+  /** Set false when a larger mascot already appears directly above. */
+  showMascot?: boolean;
 }) {
   return (
     <div className={cn("flex items-end gap-3", className)}>
-      <Mascot mood={mood} size={92} className="shrink-0" />
-      <div className="relative flex-1 rounded-lg rounded-bl-md border-2 border-line bg-paper px-4 py-3 shadow-card">
-        <p className="font-round text-base text-ink">{children}</p>
+      {showMascot ? (
+        <Mascot mood={mood} size={92} className="shrink-0" />
+      ) : null}
+      <div className="border-line bg-paper shadow-card relative flex-1 rounded-lg rounded-bl-md border-2 px-4 py-3">
+        <p className="font-round text-ink text-base">{children}</p>
         {tail !== "none" ? (
           <span
             aria-hidden="true"
             className={cn(
-              "absolute -bottom-2 size-4 rotate-45 border-b-2 border-r-2 border-line bg-paper",
+              "border-line bg-paper absolute -bottom-2 size-4 rotate-45 border-r-2 border-b-2",
               tail === "left" ? "left-7" : "right-7",
             )}
           />
@@ -37,7 +42,7 @@ export function SpeechBubble({
 }
 
 /**
- * Tilted washi-taped sticky note (theme doc §4: handwritten sticky-note
+ * Tilted washi-taped sticky note (docs/anime-theme.md §4: handwritten sticky-note
  * accents + washi-tape detail). Used for the cafe's sticky tagline and the
  * "today's special" board.
  */
@@ -61,7 +66,7 @@ export function WashiNote({
   return (
     <div
       className={cn(
-        "relative inline-block rounded-md border-2 px-4 py-2 shadow-card",
+        "shadow-card relative inline-block rounded-md border-2 px-4 py-2",
         tones[tone],
         className,
       )}
@@ -70,9 +75,9 @@ export function WashiNote({
       {/* washi tape */}
       <span
         aria-hidden="true"
-        className="absolute -top-2.5 left-1/2 h-4 w-16 -translate-x-1/2 rounded-[2px] bg-secondary/45 backdrop-blur-[1px]"
+        className="bg-secondary/45 absolute -top-2.5 left-1/2 h-4 w-16 -translate-x-1/2 rounded-[2px] backdrop-blur-[1px]"
       />
-      <span className="font-hand text-xl leading-tight text-primary-dark">
+      <span className="font-hand text-primary-dark text-xl leading-tight">
         {children}
       </span>
     </div>

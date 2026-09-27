@@ -1,10 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 import { Doodles } from "@/components/Doodles";
-import { Icon, categoryIcon, itemArtIcon, type IconName } from "@/components/icons";
+import {
+  Icon,
+  categoryIcon,
+  itemArtIcon,
+  type IconName,
+} from "@/components/icons";
 import { Mascot } from "@/components/Mascot";
 import {
   DataProvider,
@@ -17,60 +22,39 @@ import { EmptyState, Loading } from "@/components/ui/Loading";
 import { Sheet } from "@/components/ui/Sheet";
 import { SpeechBubble, WashiNote } from "@/components/ui/SpeechBubble";
 import { useCart } from "@/hooks/useCart";
+import { useTableQuery } from "@/hooks/useTableQuery";
 import { getCafeName, getCafeTagline } from "@/lib/config";
 import { formatINR, lineSubtotal, priceCart } from "@/lib/money";
-import { getTableNumbers, orderHref, parseTableNumber } from "@/lib/tables";
+import { getTableNumbers, orderHref } from "@/lib/tables";
 import type { MenuItem } from "@/lib/types";
 
-export default function OrderPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ table?: string }>;
-}) {
+export default function OrderPage() {
   return (
     <DataProvider>
-      <OrderScreen searchParams={searchParams} />
+      <OrderScreen />
     </DataProvider>
   );
 }
 
-function OrderScreen({
-  searchParams,
-}: {
-  searchParams: Promise<{ table?: string }>;
-}) {
-  const [params, setParams] = useState<{ table?: string }>({});
-  const [table, setTable] = useState<number | null>(null);
+function OrderScreen() {
+  const { ready, tableNumber, raw } = useTableQuery();
 
-  // Resolve the query string on the client so the page is a static export and
-  // the QR handoff is instant on a phone.
-  useEffect(() => {
-    let alive = true;
-    void searchParams.then((p) => {
-      if (!alive) return;
-      setParams(p);
-      setTable(parseTableNumber(p.table));
-    });
-    return () => {
-      alive = false;
-    };
-  }, [searchParams]);
+  if (!ready) return <Loading label="Finding your table…" />;
+  if (tableNumber === null) return <TablePicker query={raw} />;
 
-  if (table === null) return <TablePicker query={params.table} />;
-
-  return <MenuScreen tableNumber={table} />;
+  return <MenuScreen tableNumber={tableNumber} />;
 }
 
-function TablePicker({ query }: { query?: string }) {
+function TablePicker({ query }: { query: string | null }) {
   const tables = getTableNumbers();
   return (
     <main className="relative mx-auto flex min-h-svh max-w-md flex-col items-center justify-center gap-5 px-5 py-10 text-center">
       <Doodles />
       <Mascot mood="worry" size={140} />
-      <h1 className="font-hand text-4xl text-primary-dark">
+      <h1 className="font-hand text-primary-dark text-4xl">
         {query ? "That table number looks odd" : "Which table are you at?"}
       </h1>
-      <p className="max-w-xs text-muted">
+      <p className="text-muted max-w-xs">
         Scan the QR code on your table, or tap yours below.
       </p>
       <div className="grid w-full grid-cols-3 gap-3">
@@ -78,7 +62,7 @@ function TablePicker({ query }: { query?: string }) {
           <Link
             key={n}
             href={orderHref(n)}
-            className="flex min-h-16 items-center justify-center rounded-lg border-2 border-line bg-paper font-round text-2xl text-ink shadow-card transition-transform active:scale-95"
+            className="border-line bg-paper font-round text-ink shadow-card flex min-h-16 items-center justify-center rounded-lg border-2 text-2xl transition-transform active:scale-95"
           >
             {n}
           </Link>
@@ -136,21 +120,21 @@ function MenuScreen({ tableNumber }: { tableNumber: number }) {
   }
 
   return (
-    <div className="relative min-h-svh pb-cart">
+    <div className="pb-cart relative min-h-svh">
       <Doodles />
 
-      <header className="safe-t relative z-10 border-b-2 border-line-soft bg-cream/85 backdrop-blur-sm">
+      <header className="safe-t border-line-soft bg-cream/85 relative z-10 border-b-2 backdrop-blur-sm">
         <div className="shell flex items-center gap-3 py-3">
           <Mascot size={58} className="shrink-0" />
           <div className="min-w-0 flex-1">
-            <h1 className="truncate font-hand text-[2rem] leading-none text-primary">
+            <h1 className="font-hand text-primary truncate text-[2rem] leading-none">
               {getCafeName()}
             </h1>
-            <p className="truncate text-2xs font-semibold uppercase tracking-[0.14em] text-muted">
+            <p className="text-2xs text-muted truncate font-semibold tracking-[0.14em] uppercase">
               {getCafeTagline()}
             </p>
           </div>
-          <span className="flex shrink-0 items-center gap-1.5 rounded-pill border-2 border-primary bg-paper px-3 py-1.5 font-round text-sm text-primary">
+          <span className="rounded-pill border-primary bg-paper font-round text-primary flex shrink-0 items-center gap-1.5 border-2 px-3 py-1.5 text-sm">
             <Icon name="pin" size={16} />
             <span className="tnum">{tableNumber}</span>
           </span>
@@ -167,11 +151,11 @@ function MenuScreen({ tableNumber }: { tableNumber: number }) {
 
       {isDemo ? <DemoNotice /> : null}
 
-      {/* category rail — theme doc §4: icons, not plain text labels */}
+      {/* category rail — docs/anime-theme.md §4: icons, not plain text labels */}
       {items.length > 0 ? (
         <nav
           aria-label="Menu categories"
-          className="no-scrollbar sticky top-0 z-20 mt-4 overflow-x-auto border-y-2 border-line-soft bg-cream/90 backdrop-blur-sm"
+          className="no-scrollbar border-line-soft bg-cream/90 sticky top-0 z-20 mt-4 overflow-x-auto border-y-2 backdrop-blur-sm"
           // fades the right edge so a cut-off chip reads as "scroll me"
           style={{
             maskImage:
@@ -202,12 +186,12 @@ function MenuScreen({ tableNumber }: { tableNumber: number }) {
         {error ? (
           <div
             role="alert"
-            className="rounded-lg border-2 border-berry bg-paper p-4 text-center"
+            className="border-berry bg-paper rounded-lg border-2 p-4 text-center"
           >
-            <p className="font-semibold text-berry">
+            <p className="text-berry font-semibold">
               We couldn&apos;t load the menu.
             </p>
-            <p className="mt-1 text-sm text-muted">{error.message}</p>
+            <p className="text-muted mt-1 text-sm">{error.message}</p>
           </div>
         ) : loading || items.length === 0 ? (
           <Loading label="Setting out the cups…" />
@@ -220,7 +204,7 @@ function MenuScreen({ tableNumber }: { tableNumber: number }) {
                 aria-labelledby={`h-${slug(category)}`}
               >
                 <div className="mb-3 flex items-center gap-2">
-                  <span className="grid size-9 place-items-center rounded-pill bg-secondary/15 text-secondary">
+                  <span className="rounded-pill bg-secondary/15 text-secondary grid size-9 place-items-center">
                     <Icon name={icon} size={20} />
                   </span>
                   <h2 id={`h-${slug(category)}`} className="text-xl">
@@ -248,7 +232,7 @@ function MenuScreen({ tableNumber }: { tableNumber: number }) {
           </div>
         )}
 
-        <p className="pb-6 pt-2 text-center text-sm text-muted">
+        <p className="text-muted pt-2 pb-6 text-center text-sm">
           Pay at the counter when you&apos;re done — no app, no OTP, no
           cash-handling here.
         </p>
@@ -302,7 +286,7 @@ function CategoryChip({
       onClick={onClick}
       aria-pressed={active}
       className={[
-        "flex min-h-11 shrink-0 items-center gap-1.5 rounded-pill border-2 px-3.5 font-round text-sm transition-colors",
+        "rounded-pill font-round flex min-h-11 shrink-0 items-center gap-1.5 border-2 px-3.5 text-sm transition-colors",
         active
           ? "border-primary bg-primary text-on-dark shadow-card"
           : "border-line bg-paper text-ink hover:border-primary",
@@ -332,7 +316,7 @@ function MenuCard({
   return (
     <li
       className={[
-        "flex h-full flex-col overflow-hidden rounded-lg border-2 border-line-soft bg-paper shadow-card",
+        "border-line-soft bg-paper shadow-card flex h-full flex-col overflow-hidden rounded-lg border-2",
         soldOut ? "opacity-60" : "",
       ].join(" ")}
     >
@@ -351,7 +335,7 @@ function MenuCard({
             {item.name}
           </h3>
           {item.description ? (
-            <p className="mt-0.5 line-clamp-2 text-[0.8rem] leading-snug text-muted">
+            <p className="text-muted mt-0.5 line-clamp-2 text-[0.8rem] leading-snug">
               {item.description}
             </p>
           ) : null}
@@ -359,12 +343,12 @@ function MenuCard({
       </div>
 
       {/* price lives on its own row so a long name can never squeeze it out */}
-      <div className="mt-auto flex items-center justify-between gap-2 border-t-2 border-line-soft px-2.5 py-1.5">
-        <span className="tnum pl-1 font-round text-base font-semibold text-primary">
+      <div className="border-line-soft mt-auto flex items-center justify-between gap-2 border-t-2 px-2.5 py-1.5">
+        <span className="tnum font-round text-primary pl-1 text-base font-semibold">
           {formatINR(item.price)}
         </span>
         {soldOut ? (
-          <span className="rounded-pill bg-tan px-3 py-1.5 font-round text-sm text-primary-dark">
+          <span className="rounded-pill bg-tan font-round text-primary-dark px-3 py-1.5 text-sm">
             Sold out
           </span>
         ) : qty === 0 ? (
@@ -378,7 +362,7 @@ function MenuCard({
               <Icon name="minus" size={18} />
             </StepperButton>
             <span
-              className="tnum w-6 text-center font-round text-lg text-ink"
+              className="tnum font-round text-ink w-6 text-center text-lg"
               aria-live="polite"
             >
               {qty}
@@ -407,7 +391,7 @@ function StepperButton({
       type="button"
       aria-label={label}
       onClick={onClick}
-      className="grid size-11 place-items-center rounded-pill border-2 border-primary bg-paper text-primary transition-transform active:scale-90"
+      className="rounded-pill border-primary bg-paper text-primary grid size-11 place-items-center border-2 transition-transform active:scale-90"
     >
       {children}
     </button>
@@ -473,14 +457,14 @@ function CartSheet({
             {blocked ? (
               <p
                 role="alert"
-                className="rounded-sm border-2 border-berry/40 bg-berry/10 px-3 py-2 text-sm text-berry"
+                className="border-berry/40 bg-berry/10 text-berry rounded-sm border-2 px-3 py-2 text-sm"
               >
                 {priceCheck.blocking.join(" ")} Please adjust your order.
               </p>
             ) : priceCheck.changes.length > 0 ? (
               <p
                 role="status"
-                className="rounded-sm border-2 border-secondary/40 bg-highlight-soft/60 px-3 py-2 text-sm text-primary-dark"
+                className="border-secondary/40 bg-highlight-soft/60 text-primary-dark rounded-sm border-2 px-3 py-2 text-sm"
               >
                 Price updated &mdash; the total below is what you&apos;ll pay.
               </p>
@@ -488,12 +472,12 @@ function CartSheet({
             {error ? (
               <p
                 role="alert"
-                className="rounded-sm border-2 border-berry/40 bg-berry/10 px-3 py-2 text-sm text-berry"
+                className="border-berry/40 bg-berry/10 text-berry rounded-sm border-2 px-3 py-2 text-sm"
               >
                 {error}
               </p>
             ) : null}
-            <label className="flex min-h-11 cursor-pointer items-center gap-2.5 px-1 text-sm text-body">
+            <label className="text-body flex min-h-11 cursor-pointer items-center gap-2.5 px-1 text-sm">
               <input
                 type="checkbox"
                 checked={agreed}
@@ -529,14 +513,14 @@ function CartSheet({
             return (
               <li
                 key={line.menuItemId}
-                className="rounded-md border-2 border-line-soft bg-paper p-2.5"
+                className="border-line-soft bg-paper rounded-md border-2 p-2.5"
               >
                 <div className="flex items-start gap-2">
                   <div className="min-w-0 flex-1">
-                    <p className="truncate font-semibold text-ink">
+                    <p className="text-ink truncate font-semibold">
                       {line.name}
                     </p>
-                    <p className="tnum text-sm text-muted">
+                    <p className="tnum text-muted text-sm">
                       {formatINR(line.price)} each
                     </p>
                   </div>
@@ -547,7 +531,7 @@ function CartSheet({
                     >
                       <Icon name="minus" size={18} />
                     </StepperButton>
-                    <span className="tnum w-7 text-center font-round text-lg">
+                    <span className="tnum font-round w-7 text-center text-lg">
                       {line.qty}
                     </span>
                     <StepperButton
@@ -558,20 +542,20 @@ function CartSheet({
                     </StepperButton>
                   </div>
                 </div>
-                <div className="mt-2 flex items-center justify-between border-t border-line-soft pt-2">
-                  <p className="tnum font-semibold text-primary">
+                <div className="border-line-soft mt-2 flex items-center justify-between border-t pt-2">
+                  <p className="tnum text-primary font-semibold">
                     {formatINR(lineSubtotal(line))}
                   </p>
                   <button
                     type="button"
                     onClick={() => cart.remove(line.menuItemId)}
-                    className="min-h-11 px-2 text-sm font-semibold text-muted underline-offset-2 hover:text-berry hover:underline"
+                    className="text-muted hover:text-berry min-h-11 px-2 text-sm font-semibold underline-offset-2 hover:underline"
                   >
                     Remove
                   </button>
                 </div>
                 {item && !item.available ? (
-                  <p className="mt-1 text-sm font-semibold text-berry">
+                  <p className="text-berry mt-1 text-sm font-semibold">
                     Just sold out — remove it to continue.
                   </p>
                 ) : null}
@@ -595,9 +579,9 @@ function CartSheet({
 function DemoNotice() {
   return (
     <div className="shell relative z-10 pt-3">
-      <div className="flex items-start gap-2 rounded-md border-2 border-dashed border-secondary/50 bg-highlight-soft/50 px-3 py-2">
-        <Icon name="sparkle" size={18} className="mt-0.5 text-secondary" />
-        <p className="text-sm leading-snug text-primary-dark">
+      <div className="border-secondary/50 bg-highlight-soft/50 flex items-start gap-2 rounded-md border-2 border-dashed px-3 py-2">
+        <Icon name="sparkle" size={18} className="text-secondary mt-0.5" />
+        <p className="text-primary-dark text-sm leading-snug">
           <strong className="font-semibold">Demo mode.</strong> Orders are saved
           in this browser only. Add Firebase keys to <code>.env.local</code> to
           go live.

@@ -2,7 +2,7 @@
 
 /**
  * Cart state for a table, persisted so a reload mid-order never loses a basket
- * (requirements.md §5.2, "cart-based ordering per table session").
+ * (docs/requirements.md §5.2, "cart-based ordering per table session").
  *
  * The reducer itself lives in src/lib/cart.ts so it can be tested without React.
  */
@@ -69,15 +69,18 @@ export function useCart(tableNumber: number, menu: MenuItem[]) {
   }, []);
 
   const increment = useCallback(
-    (menuItemId: string, by = 1) => dispatch({ type: "increment", menuItemId, by }),
+    (menuItemId: string, by = 1) =>
+      dispatch({ type: "increment", menuItemId, by }),
     [],
   );
   const decrement = useCallback(
-    (menuItemId: string, by = 1) => dispatch({ type: "decrement", menuItemId, by }),
+    (menuItemId: string, by = 1) =>
+      dispatch({ type: "decrement", menuItemId, by }),
     [],
   );
   const setQty = useCallback(
-    (menuItemId: string, qty: number) => dispatch({ type: "setQty", menuItemId, qty }),
+    (menuItemId: string, qty: number) =>
+      dispatch({ type: "setQty", menuItemId, qty }),
     [],
   );
   const remove = useCallback(
@@ -116,17 +119,7 @@ export function useCart(tableNumber: number, menu: MenuItem[]) {
       reAdd,
       isEmpty: lines.length === 0,
     }),
-    [
-      lines,
-      ready,
-      add,
-      increment,
-      decrement,
-      setQty,
-      remove,
-      clear,
-      reAdd,
-    ],
+    [lines, ready, add, increment, decrement, setQty, remove, clear, reAdd],
   );
 }
 

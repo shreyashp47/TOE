@@ -1,12 +1,12 @@
 /**
  * Dependency-free QR encoder (byte mode, versions 1–10, ECC level M).
  *
- * requirements.md §5.5: "One static QR code per table, encoding table number in
+ * docs/requirements.md §5.5: "One static QR code per table, encoding table number in
  * the URL. Generated once, printed, placed on table — no dynamic regeneration
  * needed."
  *
  * A library would be ~30 kB of JS on a page whose whole point is to be light on
- * cafe wifi (theme doc §6), and the payload is a ~45 character URL — squarely
+ * cafe wifi (docs/anime-theme.md §6), and the payload is a ~45 character URL — squarely
  * inside the small-version range. So this is a compact, well-known
  * implementation of ISO/IEC 18004: byte mode + Reed–Solomon + mask selection.
  *
@@ -88,16 +88,76 @@ interface VersionSpec {
 
 /** Data capacity in codewords, versions 1–10, ECC level M (ISO table 9). */
 const SPECS: VersionSpec[] = [
-  { version: 1, totalCodewords: 26, ecCodewordsPerBlock: 10, blocks: [1, 16, 0, 0], alignmentCenters: [] },
-  { version: 2, totalCodewords: 44, ecCodewordsPerBlock: 16, blocks: [1, 28, 0, 0], alignmentCenters: [6, 18] },
-  { version: 3, totalCodewords: 70, ecCodewordsPerBlock: 26, blocks: [1, 44, 0, 0], alignmentCenters: [6, 22] },
-  { version: 4, totalCodewords: 100, ecCodewordsPerBlock: 18, blocks: [2, 32, 0, 0], alignmentCenters: [6, 26] },
-  { version: 5, totalCodewords: 134, ecCodewordsPerBlock: 24, blocks: [2, 43, 0, 0], alignmentCenters: [6, 30] },
-  { version: 6, totalCodewords: 172, ecCodewordsPerBlock: 16, blocks: [4, 27, 0, 0], alignmentCenters: [6, 34] },
-  { version: 7, totalCodewords: 196, ecCodewordsPerBlock: 18, blocks: [4, 31, 0, 0], alignmentCenters: [6, 22, 38] },
-  { version: 8, totalCodewords: 242, ecCodewordsPerBlock: 22, blocks: [2, 38, 2, 39], alignmentCenters: [6, 24, 42] },
-  { version: 9, totalCodewords: 292, ecCodewordsPerBlock: 22, blocks: [3, 36, 2, 37], alignmentCenters: [6, 26, 46] },
-  { version: 10, totalCodewords: 346, ecCodewordsPerBlock: 26, blocks: [4, 43, 1, 44], alignmentCenters: [6, 28, 50] },
+  {
+    version: 1,
+    totalCodewords: 26,
+    ecCodewordsPerBlock: 10,
+    blocks: [1, 16, 0, 0],
+    alignmentCenters: [],
+  },
+  {
+    version: 2,
+    totalCodewords: 44,
+    ecCodewordsPerBlock: 16,
+    blocks: [1, 28, 0, 0],
+    alignmentCenters: [6, 18],
+  },
+  {
+    version: 3,
+    totalCodewords: 70,
+    ecCodewordsPerBlock: 26,
+    blocks: [1, 44, 0, 0],
+    alignmentCenters: [6, 22],
+  },
+  {
+    version: 4,
+    totalCodewords: 100,
+    ecCodewordsPerBlock: 18,
+    blocks: [2, 32, 0, 0],
+    alignmentCenters: [6, 26],
+  },
+  {
+    version: 5,
+    totalCodewords: 134,
+    ecCodewordsPerBlock: 24,
+    blocks: [2, 43, 0, 0],
+    alignmentCenters: [6, 30],
+  },
+  {
+    version: 6,
+    totalCodewords: 172,
+    ecCodewordsPerBlock: 16,
+    blocks: [4, 27, 0, 0],
+    alignmentCenters: [6, 34],
+  },
+  {
+    version: 7,
+    totalCodewords: 196,
+    ecCodewordsPerBlock: 18,
+    blocks: [4, 31, 0, 0],
+    alignmentCenters: [6, 22, 38],
+  },
+  {
+    version: 8,
+    totalCodewords: 242,
+    ecCodewordsPerBlock: 22,
+    blocks: [2, 38, 2, 39],
+    alignmentCenters: [6, 24, 42],
+  },
+  {
+    version: 9,
+    totalCodewords: 292,
+    ecCodewordsPerBlock: 22,
+    blocks: [3, 36, 2, 37],
+    alignmentCenters: [6, 26, 46],
+  },
+  {
+    version: 10,
+    totalCodewords: 346,
+    ecCodewordsPerBlock: 26,
+    blocks: [4, 43, 1, 44],
+    alignmentCenters: [6, 28, 50],
+  },
 ];
 
 function dataCodewords(spec: VersionSpec): number {
@@ -112,7 +172,9 @@ function charCountBits(version: number): number {
 
 export function chooseVersion(byteLength: number): VersionSpec {
   for (const spec of SPECS) {
-    const needed = Math.ceil((4 + charCountBits(spec.version) + byteLength * 8) / 8);
+    const needed = Math.ceil(
+      (4 + charCountBits(spec.version) + byteLength * 8) / 8,
+    );
     if (needed <= dataCodewords(spec)) return spec;
   }
   throw new Error(
@@ -122,7 +184,8 @@ export function chooseVersion(byteLength: number): VersionSpec {
 
 export function maxPayloadBytes(): number {
   const last = SPECS[SPECS.length - 1];
-  const capacityBits = dataCodewords(last) * 8 - 4 - charCountBits(last.version);
+  const capacityBits =
+    dataCodewords(last) * 8 - 4 - charCountBits(last.version);
   return Math.floor(capacityBits / 8);
 }
 
@@ -241,7 +304,9 @@ function placeFunctionPatterns(
     for (const c of centers) {
       // skip the three finder corners
       const nearFinder =
-        (r <= 8 && c <= 8) || (r <= 8 && c >= size - 9) || (r >= size - 9 && c <= 8);
+        (r <= 8 && c <= 8) ||
+        (r <= 8 && c >= size - 9) ||
+        (r >= size - 9 && c <= 8);
       if (nearFinder) continue;
       for (let dr = -2; dr <= 2; dr += 1) {
         for (let dc = -2; dc <= 2; dc += 1) {
@@ -306,7 +371,11 @@ function penalty(matrix: Matrix): number {
   for (let r = 0; r < size - 1; r += 1) {
     for (let c = 0; c < size - 1; c += 1) {
       const v = matrix[r][c];
-      if (v === matrix[r][c + 1] && v === matrix[r + 1][c] && v === matrix[r + 1][c + 1]) {
+      if (
+        v === matrix[r][c + 1] &&
+        v === matrix[r + 1][c] &&
+        v === matrix[r + 1][c + 1]
+      ) {
         score += 3;
       }
     }
@@ -314,9 +383,12 @@ function penalty(matrix: Matrix): number {
 
   // rule 3: finder-like patterns
   const A = [true, false, true, true, true, false, true];
-    const B = [false, false, false, false, true, false, false];
-  const matches = (get: (k: number) => boolean, start: number, pattern: boolean[]) =>
-    pattern.every((v, k) => get(start + k) === v);
+  const B = [false, false, false, false, true, false, false];
+  const matches = (
+    get: (k: number) => boolean,
+    start: number,
+    pattern: boolean[],
+  ) => pattern.every((v, k) => get(start + k) === v);
   for (let i = 0; i < size; i += 1) {
     for (let j = 0; j <= size - 7; j += 1) {
       for (const get of [
@@ -437,7 +509,10 @@ export function encodeQr(text: string): Matrix {
  * Render to an inline SVG string. Uses a 4-module quiet zone (the spec
  * minimum) so the code still scans when printed at tent-card size.
  */
-export function qrToSvg(text: string, options?: { moduleSize?: number; quiet?: number }): string {
+export function qrToSvg(
+  text: string,
+  options?: { moduleSize?: number; quiet?: number },
+): string {
   const matrix = encodeQr(text);
   const quiet = options?.quiet ?? 4;
   const size = matrix.length + quiet * 2;

@@ -1,20 +1,22 @@
 "use client";
 
 /**
- * Monthly + date-range reporting (requirements.md §4.3 steps 3–4, §5.4).
+ * Monthly + date-range reporting (docs/requirements.md §4.3 steps 3–4, §5.4).
  *
- * The chart is CSS-only: theme doc §6 says keep animations and the payload
+ * The chart is CSS-only: docs/anime-theme.md §6 says keep animations and the payload
  * small, and a monthly bar chart of 31 bars does not need a charting library.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { Icon } from "@/components/icons";
-import { useOrderRepo } from "@/components/providers/DataProvider";
+import { useIsDemo, useOrderRepo } from "@/components/providers/DataProvider";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Field, Input } from "@/components/ui/Input";
 import { EmptyState, Loading } from "@/components/ui/Loading";
+import { demoSeedOrders } from "@/lib/data/demo-store";
+import { buildSampleOrders } from "@/lib/data/sample-orders";
 import { formatINR } from "@/lib/money";
 import {
   buildReport,
@@ -43,15 +45,29 @@ function fromInputDate(value: string): number | null {
 
 export default function ReportsPage() {
   const repo = useOrderRepo();
+  const isDemo = useIsDemo();
   const [mode, setMode] = useState<Mode>("month");
   const [cursor, setCursor] = useState(() => currentMonth());
   const [from, setFrom] = useState(() =>
-    toInputDate(new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime()),
+    toInputDate(
+      new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime(),
+    ),
   );
   const [to, setTo] = useState(() => toInputDate(Date.now()));
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [seeding, setSeeding] = useState(false);
+
+  async function seedSampleMonth() {
+    setSeeding(true);
+    try {
+      demoSeedOrders(buildSampleOrders(240));
+      await load();
+    } finally {
+      setSeeding(false);
+    }
+  }
 
   const range = useMemo(() => {
     if (mode === "month") return monthRange(cursor.year, cursor.month0);
@@ -109,11 +125,13 @@ export default function ReportsPage() {
               <Button
                 variant="ghost"
                 aria-label="Previous month"
-                onClick={() => setCursor(shiftMonth(cursor.year, cursor.month0, -1))}
+                onClick={() =>
+                  setCursor(shiftMonth(cursor.year, cursor.month0, -1))
+                }
               >
                 <Icon name="back" size={18} />
               </Button>
-              <div className="min-w-[10rem] rounded-sm border-2 border-line bg-cream-soft px-3.5 py-2.5 text-center font-round text-lg text-ink">
+              <div className="border-line bg-cream-soft font-round text-ink min-w-[10rem] rounded-sm border-2 px-3.5 py-2.5 text-center text-lg">
                 {new Date(cursor.year, cursor.month0, 1).toLocaleDateString(
                   "en-IN",
                   { month: "long", year: "numeric" },
@@ -122,7 +140,9 @@ export default function ReportsPage() {
               <Button
                 variant="ghost"
                 aria-label="Next month"
-                onClick={() => setCursor(shiftMonth(cursor.year, cursor.month0, 1))}
+                onClick={() =>
+                  setCursor(shiftMonth(cursor.year, cursor.month0, 1))
+                }
               >
                 <Icon name="back" size={18} className="rotate-180" />
               </Button>
@@ -158,7 +178,7 @@ export default function ReportsPage() {
                 onClick={() => setMode(m)}
                 aria-pressed={mode === m}
                 className={[
-                  "min-h-11 rounded-pill border-2 px-4 font-round text-sm capitalize",
+                  "rounded-pill font-round min-h-11 border-2 px-4 text-sm capitalize",
                   mode === m
                     ? "border-primary bg-primary text-on-dark"
                     : "border-line bg-paper text-ink",
@@ -174,22 +194,44 @@ export default function ReportsPage() {
       {error ? (
         <p
           role="alert"
-          className="rounded-md border-2 border-berry bg-paper px-3 py-2 text-sm text-berry"
+          className="border-berry bg-paper text-berry rounded-md border-2 px-3 py-2 text-sm"
         >
           {error}
         </p>
       ) : null}
 
       {report && report.orderCount === 0 ? (
-        <EmptyState
-          title="No orders in this period"
-          body="Orders placed on the customer side show up here the moment they're completed."
-        />
+        <Card className="px-6 py-10 text-center">
+          <EmptyState
+            title="No orders in this period"
+            body="Orders placed on the customer side show up here the moment they are completed."
+            action={
+              isDemo ? (
+                <Button
+                  variant="secondary"
+                  disabled={seeding}
+                  onClick={() => void seedSampleMonth()}
+                >
+                  <Icon name="sparkle" size={18} />
+                  {seeding ? "Adding…" : "Add a sample month"}
+                </Button>
+              ) : null
+            }
+          />
+        </Card>
       ) : report ? (
         <>
           <ul className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
-            <Stat label="Revenue" value={formatINR(report.revenue)} icon="chart" />
-            <Stat label="Orders" value={String(report.orderCount)} icon="cart" />
+            <Stat
+              label="Revenue"
+              value={formatINR(report.revenue)}
+              icon="chart"
+            />
+            <Stat
+              label="Orders"
+              value={String(report.orderCount)}
+              icon="cart"
+            />
             <Stat
               label="Average order"
               value={formatINR(report.averageOrderValue)}
@@ -202,8 +244,25 @@ export default function ReportsPage() {
             <RevenueChart report={report} />
           </Card>
 
+          {isDemo ? (
+            <Card className="flex flex-wrap items-center justify-between gap-3 p-3">
+              <p className="text-muted text-sm">
+                Demo data. Add another sample month to compare periods.
+              </p>
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={seeding}
+                onClick={() => void seedSampleMonth()}
+              >
+                <Icon name="sparkle" size={16} />
+                {seeding ? "Adding…" : "Add another month"}
+              </Button>
+            </Card>
+          ) : null}
+
           <Card className="overflow-hidden">
-            <div className="flex items-center justify-between gap-3 border-b-2 border-line-soft px-4 py-3">
+            <div className="border-line-soft flex items-center justify-between gap-3 border-b-2 px-4 py-3">
               <h2 className="text-lg">Best sellers</h2>
               <Button size="sm" variant="secondary" onClick={downloadCsv}>
                 <Icon name="chart" size={16} />
@@ -213,37 +272,56 @@ export default function ReportsPage() {
             <div className="overflow-x-auto">
               <table className="w-full min-w-[26rem] text-left">
                 <thead>
-                  <tr className="border-b-2 border-line-soft text-2xs uppercase tracking-wide text-muted">
-                    <th scope="col" className="px-4 py-2 font-semibold">Item</th>
-                    <th scope="col" className="px-2 py-2 text-right font-semibold">Sold</th>
-                    <th scope="col" className="px-2 py-2 text-right font-semibold">Revenue</th>
-                    <th scope="col" className="px-4 py-2 font-semibold">Share</th>
+                  <tr className="border-line-soft text-2xs text-muted border-b-2 tracking-wide uppercase">
+                    <th scope="col" className="px-4 py-2 font-semibold">
+                      Item
+                    </th>
+                    <th
+                      scope="col"
+                      className="px-2 py-2 text-right font-semibold"
+                    >
+                      Sold
+                    </th>
+                    <th
+                      scope="col"
+                      className="px-2 py-2 text-right font-semibold"
+                    >
+                      Revenue
+                    </th>
+                    <th scope="col" className="px-4 py-2 font-semibold">
+                      Share
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
                   {report.topItems.map((item) => (
                     <tr
                       key={item.name}
-                      className="border-b border-line-soft last:border-0"
+                      className="border-line-soft border-b last:border-0"
                     >
-                      <th scope="row" className="px-4 py-2 font-normal text-ink">
+                      <th
+                        scope="row"
+                        className="text-ink px-4 py-2 font-normal"
+                      >
                         {item.name}
                       </th>
-                      <td className="tnum px-2 py-2 text-right text-body">
+                      <td className="tnum text-body px-2 py-2 text-right">
                         {item.qty}
                       </td>
-                      <td className="tnum px-2 py-2 text-right font-semibold text-primary">
+                      <td className="tnum text-primary px-2 py-2 text-right font-semibold">
                         {formatINR(item.revenue)}
                       </td>
                       <td className="px-4 py-2">
                         <span
-                          className="flex h-2.5 w-full overflow-hidden rounded-pill bg-tan"
+                          className="rounded-pill bg-tan flex h-2.5 w-full overflow-hidden"
                           role="img"
                           aria-label={`${Math.round(item.share * 100)}% of revenue`}
                         >
                           <span
-                            className="h-full rounded-pill bg-secondary"
-                            style={{ width: `${Math.max(2, item.share * 100)}%` }}
+                            className="rounded-pill bg-secondary h-full"
+                            style={{
+                              width: `${Math.max(2, item.share * 100)}%`,
+                            }}
                           />
                         </span>
                       </td>
@@ -254,9 +332,9 @@ export default function ReportsPage() {
             </div>
           </Card>
 
-          <p className="rounded-md border-2 border-dashed border-line bg-tan/50 px-4 py-3 text-sm text-body">
-            Orders are never deleted automatically — six months of history is the
-            target, and every figure above is recomputed from the full order
+          <p className="border-line bg-tan/50 text-body rounded-md border-2 border-dashed px-4 py-3 text-sm">
+            Orders are never deleted automatically — six months of history is
+            the target, and every figure above is recomputed from the full order
             list.
           </p>
         </>
@@ -275,12 +353,12 @@ function Stat({
   icon: "chart" | "cart" | "sparkle";
 }) {
   return (
-    <li className="rounded-lg border-2 border-line-soft bg-paper p-4 shadow-card">
-      <p className="flex items-center gap-1.5 text-2xs font-semibold uppercase tracking-[0.12em] text-muted">
+    <li className="border-line-soft bg-paper shadow-card rounded-lg border-2 p-4">
+      <p className="text-2xs text-muted flex items-center gap-1.5 font-semibold tracking-[0.12em] uppercase">
         <Icon name={icon} size={14} />
         {label}
       </p>
-      <p className="tnum mt-1 font-round text-2xl text-primary">{value}</p>
+      <p className="tnum font-round text-primary mt-1 text-2xl">{value}</p>
     </li>
   );
 }
@@ -291,36 +369,57 @@ function RevenueChart({
   report: NonNullable<ReturnType<typeof buildReport>>;
 }) {
   const peak = peakDay(report.byDay);
+  // Fixed pixel bar area. A percentage height resolves against an auto-height
+  // flex item, which collapses every bar to zero — this bit us once already.
+  const AREA = 112;
 
   if (report.byDay.length === 0) {
-    return <p className="mt-2 text-sm text-muted">Nothing to chart yet.</p>;
+    return <p className="text-muted mt-2 text-sm">Nothing to chart yet.</p>;
   }
+
+  // With a full month of days every label would collide, so show the first, the
+  // last, and a few in between. The rest live in the tooltip.
+  const step = Math.max(1, Math.ceil(report.byDay.length / 8));
+  const best = [...report.byDay].sort((a, b) => b.revenue - a.revenue)[0];
 
   return (
     <>
-      <ol className="mt-3 flex h-36 items-end gap-1">
-        {report.byDay.map((day) => {
-          const height = peak > 0 ? Math.max(3, (day.revenue / peak) * 100) : 3;
+      <ol className="mt-3 flex items-end gap-1 sm:gap-1.5">
+        {report.byDay.map((day, index) => {
+          const barPx = peak > 0 ? Math.max(3, (day.revenue / peak) * AREA) : 3;
+          const showLabel =
+            index === 0 ||
+            index === report.byDay.length - 1 ||
+            index % step === 0;
           return (
-            <li key={day.date} className="flex min-w-0 flex-1 flex-col items-center gap-1">
-              <span
-                className="w-full rounded-t-sm bg-secondary/85 transition-[height] duration-500"
-                style={{ height: `${height}%` }}
-                title={`${day.label}: ${formatINR(day.revenue)} from ${day.orders} order(s)`}
-              />
-              <span className="truncate text-2xs text-muted">{day.label}</span>
+            <li
+              key={day.date}
+              className="flex min-w-0 flex-1 flex-col items-center gap-1.5"
+              title={`${day.label}: ${formatINR(day.revenue)} from ${
+                day.orders
+              } order${day.orders === 1 ? "" : "s"}`}
+            >
+              <span className="flex h-28 w-full items-end">
+                <span
+                  className="bg-secondary/85 w-full rounded-t-sm transition-[height] duration-500"
+                  style={{ height: `${barPx}px` }}
+                />
+              </span>
+              <span className="tnum text-2xs text-muted">
+                {showLabel ? day.dayOfMonth : ""}
+              </span>
             </li>
           );
         })}
       </ol>
-      <p className="mt-2 text-sm text-muted">
+      <p className="text-muted mt-2 text-sm">
         Best day:{" "}
-        <span className="tnum font-semibold text-ink">
-          {[...report.byDay]
-            .sort((a, b) => b.revenue - a.revenue)
-            .slice(0, 1)
-            .map((d) => `${d.label} · ${formatINR(d.revenue)}`)
-            .join("")}
+        <span className="tnum text-ink font-semibold">
+          {best
+            ? `${best.label} · ${formatINR(best.revenue)} from ${best.orders} order${
+                best.orders === 1 ? "" : "s"
+              }`
+            : "—"}
         </span>
       </p>
     </>

@@ -1,5 +1,5 @@
 /**
- * Order status machine (requirements.md §5.3, §4.2 step 6).
+ * Order status machine (docs/requirements.md §5.3, §4.2 step 6).
  *
  * The spec's baseline is `preparing` -> `completed`, explicitly "extendable to
  * `ready`, `served` later". This app takes that extension, because staff
@@ -104,8 +104,18 @@ export function actionsFor(status: OrderStatus): StatusAction[] {
       ];
     case "ready":
       return [
-        { to: "served", label: "Mark served", variant: "primary", primary: true },
-        { to: "completed", label: "Complete", variant: "secondary", primary: false },
+        {
+          to: "served",
+          label: "Mark served",
+          variant: "primary",
+          primary: true,
+        },
+        {
+          to: "completed",
+          label: "Complete",
+          variant: "secondary",
+          primary: false,
+        },
       ];
     case "served":
       return [

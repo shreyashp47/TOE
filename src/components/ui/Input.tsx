@@ -7,17 +7,11 @@ const base =
   "focus:border-primary focus:outline-none focus-visible:outline-3 " +
   "focus-visible:outline-ring focus-visible:outline-offset-0";
 
-export function Input({
-  className,
-  ...rest
-}: ComponentProps<"input">) {
+export function Input({ className, ...rest }: ComponentProps<"input">) {
   return <input className={cn(base, "min-h-12", className)} {...rest} />;
 }
 
-export function Textarea({
-  className,
-  ...rest
-}: ComponentProps<"textarea">) {
+export function Textarea({ className, ...rest }: ComponentProps<"textarea">) {
   return (
     <textarea
       className={cn(base, "min-h-24 py-2.5 leading-relaxed", className)}
@@ -26,10 +20,7 @@ export function Textarea({
   );
 }
 
-export function Select({
-  className,
-  ...rest
-}: ComponentProps<"select">) {
+export function Select({ className, ...rest }: ComponentProps<"select">) {
   return (
     <select
       className={cn(
@@ -63,17 +54,17 @@ export function Field({
     <div className="flex flex-col gap-1.5">
       <label
         htmlFor={htmlFor}
-        className="text-sm font-semibold tracking-wide text-ink"
+        className="text-ink text-sm font-semibold tracking-wide"
       >
         {label}
       </label>
       {children}
       {error ? (
-        <p role="alert" className="text-sm font-semibold text-berry">
+        <p role="alert" className="text-berry text-sm font-semibold">
           {error}
         </p>
       ) : hint ? (
-        <p className="text-sm text-muted">{hint}</p>
+        <p className="text-muted text-sm">{hint}</p>
       ) : null}
     </div>
   );

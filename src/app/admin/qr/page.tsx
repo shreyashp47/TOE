@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Printable per-table QR cards (requirements.md §5.5).
+ * Printable per-table QR cards (docs/requirements.md §5.5).
  *
  * "One static QR code per table, encoding table number in the URL. Generated
  * once, printed, placed on table — no dynamic regeneration needed." So this
@@ -13,7 +13,12 @@ import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Field, Input } from "@/components/ui/Input";
-import { getBaseUrl, getCafeName, getCafeTagline, getTableNumbers } from "@/lib/config";
+import {
+  getBaseUrl,
+  getCafeName,
+  getCafeTagline,
+  getTableNumbers,
+} from "@/lib/config";
 import { qrToSvg } from "@/lib/qr";
 
 export default function QrPage() {
@@ -44,7 +49,7 @@ export default function QrPage() {
     <div className="flex flex-col gap-4 pb-8">
       <Card className="p-4 print:hidden">
         <h2 className="text-lg">Table QR codes</h2>
-        <p className="mt-0.5 text-sm text-muted">
+        <p className="text-muted mt-0.5 text-sm">
           Print this page, cut along the lines, and put one card on each table.
           The codes never need regenerating — they only depend on the address
           below.
@@ -82,11 +87,11 @@ export default function QrPage() {
             Print {tables.length} card{tables.length === 1 ? "" : "s"}
           </Button>
           {!valid ? (
-            <p role="alert" className="text-sm font-semibold text-berry">
+            <p role="alert" className="text-berry text-sm font-semibold">
               Enter a full address starting with http:// or https://
             </p>
           ) : (
-            <p className="text-sm text-muted">
+            <p className="text-muted text-sm">
               {tables.length} table{tables.length === 1 ? "" : "s"} ready.
             </p>
           )}
@@ -121,14 +126,14 @@ function TableCard({ table, url }: { table: number; url: string }) {
   return (
     <li className="print:break-inside-avoid">
       <Card className="flex flex-col items-center gap-3 p-5 text-center">
-        <p className="font-hand text-3xl leading-none text-primary">
+        <p className="font-hand text-primary text-3xl leading-none">
           {getCafeName()}
         </p>
-        <p className="text-2xs font-semibold uppercase tracking-[0.18em] text-muted">
+        <p className="text-2xs text-muted font-semibold tracking-[0.18em] uppercase">
           {getCafeTagline()}
         </p>
 
-        <div className="rounded-md border-2 border-line-soft bg-white p-3">
+        <div className="border-line-soft rounded-md border-2 bg-white p-3">
           {svg ? (
             <span
               className="block size-[9.5rem] sm:size-[11rem]"
@@ -137,20 +142,20 @@ function TableCard({ table, url }: { table: number; url: string }) {
               dangerouslySetInnerHTML={{ __html: svg }}
             />
           ) : (
-            <p className="text-sm text-berry">Could not build this code.</p>
+            <p className="text-berry text-sm">Could not build this code.</p>
           )}
         </div>
 
         <div>
-          <p className="font-round text-2xl text-ink">Table {table}</p>
-          <p className="mt-1 text-sm text-muted">
+          <p className="font-round text-ink text-2xl">Table {table}</p>
+          <p className="text-muted mt-1 text-sm">
             Scan to open the menu and order
           </p>
         </div>
 
-        <p className="tnum break-all text-2xs text-muted">{url}</p>
+        <p className="tnum text-2xs text-muted break-all">{url}</p>
 
-        <p className="rounded-pill bg-highlight-soft px-3 py-1 font-hand text-xl text-primary-dark">
+        <p className="rounded-pill bg-highlight-soft font-hand text-primary-dark px-3 py-1 text-xl">
           No app needed. Pay at the counter.
         </p>
       </Card>

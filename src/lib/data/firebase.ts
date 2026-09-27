@@ -13,8 +13,11 @@ type FirebaseApp = import("firebase/app").FirebaseApp;
 type Auth = import("firebase/auth").Auth;
 type Firestore = import("firebase/firestore").Firestore;
 
-let appPromise: Promise<{ app: FirebaseApp; auth: Auth; db: Firestore }> | null =
-  null;
+let appPromise: Promise<{
+  app: FirebaseApp;
+  auth: Auth;
+  db: Firestore;
+}> | null = null;
 
 async function getFirebase() {
   if (!firebaseConfig) {

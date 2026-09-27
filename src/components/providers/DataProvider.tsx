@@ -75,9 +75,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  return (
-    <DataContext.Provider value={value}>{children}</DataContext.Provider>
-  );
+  return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
 }
 
 function useData(): DataContextValue {

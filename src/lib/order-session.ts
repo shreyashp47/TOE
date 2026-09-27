@@ -1,7 +1,7 @@
 /**
  * Per-table order session.
  *
- * Customers have no login (requirements.md §3), so "my order" is remembered
+ * Customers have no login (docs/requirements.md §3), so "my order" is remembered
  * with a single localStorage key per table. That's enough to make a refresh land
  * back on the live status screen instead of an empty menu.
  */

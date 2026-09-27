@@ -29,7 +29,8 @@ function readSession(): StaffUser | null {
     const parsed: unknown = JSON.parse(raw);
     if (!parsed || typeof parsed !== "object") return null;
     const user = parsed as Partial<StaffUser>;
-    if (typeof user.uid !== "string" || typeof user.role !== "string") return null;
+    if (typeof user.uid !== "string" || typeof user.role !== "string")
+      return null;
     return {
       uid: user.uid,
       email: typeof user.email === "string" ? user.email : "",
@@ -44,7 +45,8 @@ function readSession(): StaffUser | null {
 
 function writeSession(user: StaffUser | null) {
   try {
-    if (user) globalThis.localStorage?.setItem(SESSION_KEY, JSON.stringify(user));
+    if (user)
+      globalThis.localStorage?.setItem(SESSION_KEY, JSON.stringify(user));
     else globalThis.localStorage?.removeItem(SESSION_KEY);
   } catch {
     /* storage unavailable: session simply won't survive a reload */

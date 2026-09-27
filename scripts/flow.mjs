@@ -43,11 +43,11 @@ async function waitForServer(url, timeoutMs = 120_000) {
   return false;
 }
 
-const dev = process.env.BASE_URL ? null : spawn(
-  "npm",
-  ["run", "dev", "--", "--port", String(PORT)],
-  { stdio: ["ignore", "ignore", "inherit"] },
-);
+const dev = process.env.BASE_URL
+  ? null
+  : spawn("npm", ["run", "dev", "--", "--port", String(PORT)], {
+      stdio: ["ignore", "ignore", "inherit"],
+    });
 if (dev && !(await waitForServer(BASE))) {
   dev.kill("SIGKILL");
   console.error("dev server never came up");
@@ -87,52 +87,102 @@ const staff = watch(await context.newPage(), "staff");
 // --- 1. customer browses and adds items -------------------------------------
 step(1, "Customer opens the table QR link");
 await customer.goto(`${BASE}/order?table=3`, { waitUntil: "networkidle" });
-check("table number shown in header", await customer.getByText("3", { exact: true }).first().isVisible());
+check(
+  "table number shown in header",
+  await customer.getByText("3", { exact: true }).first().isVisible(),
+);
 
 step(2, "Customer adds two different items");
 // Target by name, not index: adding the first item turns its "Add" button into a
 // stepper, which shifts the index of every button after it.
-const addByName = (page, name) =>
-  page
+const addByName = async (page, name) => {
+  const button = page
     .locator("li", { hasText: name })
     .getByRole("button", { name: /^Add$/ })
     .first();
+  // The cart trigger is a fixed bottom bar, so a card scrolled to the very
+  // bottom of the viewport sits underneath it. Centre the target first.
+  await button.evaluate((el) => el.scrollIntoView({ block: "center" }));
+  await button.waitFor({ state: "visible" });
+  await button.click();
+};
 
-await addByName(customer, "Cappuccino").click();
-await addByName(customer, "Butter Scone").click();
-await addByName(customer, "Butter Scone").click(); // 2x
+/** Same, but for the +/- stepper that replaces the Add button. */
+const stepper = async (page, ariaLabel) => {
+  const button = page
+    .getByRole("button", { name: ariaLabel, exact: true })
+    .first();
+  await button.evaluate((el) => el.scrollIntoView({ block: "center" }));
+  await button.waitFor({ state: "visible" });
+  await button.click();
+};
+
+await customer.waitForSelector("li", { timeout: 30_000 });
+await addByName(customer, "Cappuccino");
+await addByName(customer, "Butter Scone");
+// Once an item is in the cart its Add button becomes a stepper — use it, which
+// is also what exercises the "Add one more …" control.
+await stepper(customer, "Add one more Butter Scone");
 await customer.waitForTimeout(300);
 check(
   "cart trigger shows 3 items",
-  (await customer.getByRole("button", { name: /View order/ }).innerText()).includes("3"),
+  (
+    await customer.getByRole("button", { name: /View order/ }).innerText()
+  ).includes("3"),
 );
-await customer.screenshot({ path: `${OUT}/01-menu-with-cart.png`, fullPage: false });
+await customer.screenshot({
+  path: `${OUT}/01-menu-with-cart.png`,
+  fullPage: false,
+});
 
 step(3, "Customer opens the cart sheet");
 await customer.getByRole("button", { name: /View order/ }).click();
 await customer.waitForTimeout(500);
 check("sheet is a dialog", await customer.getByRole("dialog").isVisible());
-check("place order is disabled before consent", await customer.getByRole("button", { name: /Place order/ }).isDisabled());
+check(
+  "place order is disabled before consent",
+  await customer.getByRole("button", { name: /Place order/ }).isDisabled(),
+);
 await customer.screenshot({ path: `${OUT}/02-cart-sheet.png` });
 
 step(4, "Customer consents and places the order");
 await customer.getByRole("checkbox").check();
 await customer.getByRole("button", { name: /Place order/ }).click();
 await customer.waitForURL(/\/order\/confirmation/, { timeout: 20_000 });
-check("landed on the confirmation screen", /\/order\/confirmation/.test(customer.url()));
+check(
+  "landed on the confirmation screen",
+  /\/order\/confirmation/.test(customer.url()),
+);
 await customer.waitForTimeout(1200);
-check("confirmation shows an order number", /Order\s*#\d+/i.test(await customer.locator("main").innerText()));
-await customer.screenshot({ path: `${OUT}/03-confirmation.png`, fullPage: true });
+check(
+  "confirmation shows an order number",
+  /Order\s*#\d+/i.test(await customer.locator("main").innerText()),
+);
+await customer.screenshot({
+  path: `${OUT}/03-confirmation.png`,
+  fullPage: true,
+});
 const orderUrl = customer.url();
 
 // --- 2. staff board receives it live -----------------------------------------
 step(5, "Staff signs in and sees the order without refreshing");
 await staff.goto(`${BASE}/staff`, { waitUntil: "networkidle" });
-await staff.getByRole("button", { name: "PIN" }).click().catch(() => {});
+await staff
+  .getByRole("button", { name: "PIN" })
+  .click()
+  .catch(() => {});
 await staff.getByPlaceholder("••••").fill("1122");
 await staff.getByRole("button", { name: "Sign in" }).click();
 await staff.waitForSelector("text=Order board", { timeout: 20_000 });
-check("table 3 ticket is on the board", await staff.getByText("Table 3").first().isVisible().catch(() => false) || (await staff.locator("main").innerText()).includes("3"));
+check(
+  "table 3 ticket is on the board",
+  (await staff
+    .getByText("Table 3")
+    .first()
+    .isVisible()
+    .catch(() => false)) ||
+    (await staff.locator("main").innerText()).includes("3"),
+);
 check(
   "board lists the ordered item",
   (await staff.locator("main").innerText()).includes("Cappuccino"),
@@ -155,7 +205,10 @@ await customer.waitForFunction(
   { timeout: 20_000 },
 );
 check("customer timeline advanced to Ready", true);
-await customer.screenshot({ path: `${OUT}/05-customer-ready.png`, fullPage: true });
+await customer.screenshot({
+  path: `${OUT}/05-customer-ready.png`,
+  fullPage: true,
+});
 
 step(8, "Staff serves then completes; ticket leaves the board");
 await staff.getByRole("button", { name: "Mark served" }).click();
@@ -179,7 +232,7 @@ check(
 // --- 4. cart persistence -----------------------------------------------------
 step(10, "Cart survives a reload");
 await customer.goto(`${BASE}/order?table=3`, { waitUntil: "networkidle" });
-await addByName(customer, "Masala Chai").click();
+await addByName(customer, "Masala Chai");
 await customer.reload({ waitUntil: "networkidle" });
 await customer.waitForTimeout(600);
 check(
@@ -197,5 +250,9 @@ if (unique.length) {
 }
 if (dev) dev.kill("SIGTERM");
 
-console.log(failures === 0 ? "\nflow: all checks passed" : `\nflow: ${failures} failure(s)`);
+console.log(
+  failures === 0
+    ? "\nflow: all checks passed"
+    : `\nflow: ${failures} failure(s)`,
+);
 process.exit(failures === 0 ? 0 : 1);

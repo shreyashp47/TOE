@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Owner menu management (requirements.md §4.3 step 2, §5.1).
+ * Owner menu management (docs/requirements.md §4.3 step 2, §5.1).
  *
  * "Owner can edit menu without a developer" — so: plain labels, inline edit,
  * an availability switch for the sold-out case, and a running category list
@@ -55,7 +55,9 @@ export default function AdminMenuPage() {
       try {
         await fn();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "That change didn't save.");
+        setError(
+          err instanceof Error ? err.message : "That change didn't save.",
+        );
       } finally {
         setSavingId(null);
       }
@@ -70,7 +72,7 @@ export default function AdminMenuPage() {
       {error ? (
         <p
           role="alert"
-          className="rounded-md border-2 border-berry bg-paper px-3 py-2 text-sm text-berry"
+          className="border-berry bg-paper text-berry rounded-md border-2 px-3 py-2 text-sm"
         >
           {error}
         </p>
@@ -91,13 +93,13 @@ export default function AdminMenuPage() {
         grouped.map(([category, list]) => (
           <section key={category} aria-labelledby={`m-${category}`}>
             <div className="mb-2 flex items-center gap-2">
-              <span className="grid size-9 place-items-center rounded-pill bg-secondary/15 text-secondary">
+              <span className="rounded-pill bg-secondary/15 text-secondary grid size-9 place-items-center">
                 <Icon name={categoryIcon(category)} size={20} />
               </span>
               <h2 id={`m-${category}`} className="text-xl">
                 {category}
               </h2>
-              <span className="tnum text-sm text-muted">({list.length})</span>
+              <span className="tnum text-muted text-sm">({list.length})</span>
             </div>
 
             <ul className="flex flex-col gap-2.5">
@@ -133,16 +135,18 @@ export default function AdminMenuPage() {
         <Card className="flex flex-wrap items-center justify-between gap-3 p-4">
           <div>
             <h2 className="text-base">Reset the sample menu</h2>
-            <p className="text-sm text-muted">
-              Demo data only. This replaces the current menu with {SEED_MENU.length}{" "}
-              sample items.
+            <p className="text-muted text-sm">
+              Demo data only. This replaces the current menu with{" "}
+              {SEED_MENU.length} sample items.
             </p>
           </div>
           <Button
             variant="ghost"
             onClick={() =>
               void run("reset", async () => {
-                if (!window.confirm("Replace the whole menu with the samples?")) {
+                if (
+                  !window.confirm("Replace the whole menu with the samples?")
+                ) {
                   return;
                 }
                 await repo.replaceAll(SEED_MENU.map((i) => ({ ...i })));
@@ -171,12 +175,12 @@ function FeatureCards() {
       {cards.map((card) => (
         <li
           key={card.label}
-          className="flex flex-col items-center gap-1.5 rounded-lg border-2 border-line-soft bg-paper p-3 text-center"
+          className="border-line-soft bg-paper flex flex-col items-center gap-1.5 rounded-lg border-2 p-3 text-center"
         >
-          <span className="grid size-10 place-items-center rounded-pill bg-highlight-soft text-primary">
+          <span className="rounded-pill bg-highlight-soft text-primary grid size-10 place-items-center">
             <Icon name={card.icon} size={20} />
           </span>
-          <span className="text-2xs font-semibold uppercase tracking-wide text-muted">
+          <span className="text-2xs text-muted font-semibold tracking-wide uppercase">
             {card.label}
           </span>
         </li>
@@ -216,7 +220,7 @@ function SpecialOfferCard() {
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h2 className="text-lg">Today&apos;s special</h2>
-          <p className="text-sm text-muted">
+          <p className="text-muted text-sm">
             One short line customers see pinned to the top of the menu.
           </p>
         </div>
@@ -233,7 +237,11 @@ function SpecialOfferCard() {
 
       <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-end">
         <div className="flex-1">
-          <Field label="Message" htmlFor="special-text" hint="Up to 140 characters.">
+          <Field
+            label="Message"
+            htmlFor="special-text"
+            hint="Up to 140 characters."
+          >
             <Input
               id="special-text"
               value={text}
@@ -255,7 +263,7 @@ function SpecialOfferCard() {
         </Button>
       </div>
       {state === "error" ? (
-        <p role="alert" className="mt-2 text-sm font-semibold text-berry">
+        <p role="alert" className="text-berry mt-2 text-sm font-semibold">
           That didn&apos;t save. Try again.
         </p>
       ) : null}
@@ -405,13 +413,13 @@ function MenuRow({
   return (
     <li
       className={[
-        "rounded-lg border-2 bg-paper p-3 shadow-card transition-opacity",
+        "bg-paper shadow-card rounded-lg border-2 p-3 transition-opacity",
         dirty ? "border-highlight" : "border-line-soft",
         !item.available ? "opacity-70" : "",
       ].join(" ")}
     >
       <div className="flex items-start gap-3">
-        <div className="grid size-11 shrink-0 place-items-center rounded-md bg-highlight-soft/70 text-primary">
+        <div className="bg-highlight-soft/70 text-primary grid size-11 shrink-0 place-items-center rounded-md">
           <Icon name={itemArtIcon(item.art)} size={22} />
         </div>
 
@@ -424,7 +432,11 @@ function MenuRow({
                 onChange={(e) => setDraft({ ...draft, name: e.target.value })}
               />
             </Field>
-            <Field label="Price" htmlFor={`price-${item.id}`} error={priceError}>
+            <Field
+              label="Price"
+              htmlFor={`price-${item.id}`}
+              error={priceError}
+            >
               <Input
                 id={`price-${item.id}`}
                 inputMode="numeric"
@@ -468,7 +480,7 @@ function MenuRow({
         </div>
       </div>
 
-      <div className="mt-3 flex flex-wrap items-center gap-2 border-t-2 border-line-soft pt-2.5">
+      <div className="border-line-soft mt-3 flex flex-wrap items-center gap-2 border-t-2 pt-2.5">
         <button
           type="button"
           role="switch"
@@ -476,7 +488,7 @@ function MenuRow({
           onClick={() => onPatch({ available: !item.available })}
           disabled={busy}
           className={[
-            "flex min-h-11 items-center gap-2 rounded-pill border-2 px-3.5 font-round text-sm",
+            "rounded-pill font-round flex min-h-11 items-center gap-2 border-2 px-3.5 text-sm",
             item.available
               ? "border-sage bg-sage-soft text-sage"
               : "border-berry/50 bg-berry/10 text-berry",
@@ -484,13 +496,13 @@ function MenuRow({
         >
           <span
             className={[
-              "relative h-5 w-9 rounded-pill transition-colors",
+              "rounded-pill relative h-5 w-9 transition-colors",
               item.available ? "bg-sage" : "bg-berry/40",
             ].join(" ")}
           >
             <span
               className={[
-                "absolute top-0.5 size-4 rounded-pill bg-white transition-transform",
+                "rounded-pill absolute top-0.5 size-4 bg-white transition-transform",
                 item.available ? "translate-x-4.5" : "translate-x-0.5",
               ].join(" ")}
             />
@@ -498,7 +510,7 @@ function MenuRow({
           {item.available ? "Available" : "Sold out"}
         </button>
 
-        <span className="tnum ml-auto text-sm text-muted">
+        <span className="tnum text-muted ml-auto text-sm">
           {formatINR(item.price)}
         </span>
 
@@ -524,7 +536,7 @@ function MenuRow({
           onClick={onDelete}
           disabled={busy}
           aria-label={`Delete ${item.name}`}
-          className="grid size-11 place-items-center rounded-pill border-2 border-line bg-paper text-muted transition-colors hover:border-berry hover:text-berry"
+          className="rounded-pill border-line bg-paper text-muted hover:border-berry hover:text-berry grid size-11 place-items-center border-2 transition-colors"
         >
           <Icon name="trash" size={18} />
         </button>

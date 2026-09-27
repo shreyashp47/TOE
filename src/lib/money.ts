@@ -60,10 +60,7 @@ export interface PriceCheck {
   changes: string[];
 }
 
-export function priceCart(
-  lines: CartLine[],
-  menu: MenuItem[],
-): PriceCheck {
+export function priceCart(lines: CartLine[], menu: MenuItem[]): PriceCheck {
   const byId = new Map(menu.map((item) => [item.id, item]));
   const out: OrderLine[] = [];
   const blocking: string[] = [];

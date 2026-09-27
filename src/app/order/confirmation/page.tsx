@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Order confirmation + live status (requirements.md §4.1 steps 5–6).
+ * Order confirmation + live status (docs/requirements.md §4.1 steps 5–6).
  *
  * Closes open question #1 in §11: the customer DOES see live status. The screen
  * subscribes to their own order document, so the moment staff tap "Mark ready"
@@ -27,6 +27,7 @@ import { EmptyState, Loading } from "@/components/ui/Loading";
 import { SpeechBubble } from "@/components/ui/SpeechBubble";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { useCart } from "@/hooks/useCart";
+import { useTableQuery } from "@/hooks/useTableQuery";
 import { formatINR, lineSubtotal } from "@/lib/money";
 import {
   CUSTOMER_STEPS,
@@ -34,62 +35,45 @@ import {
   stepIndex,
   type OrderStatus,
 } from "@/lib/order-status";
-import { orderHref, parseTableNumber } from "@/lib/tables";
+import { orderHref } from "@/lib/tables";
 import type { OrderLine } from "@/lib/types";
 import { readSessionOrderId, rememberSessionOrder } from "@/lib/order-session";
 
-export default function ConfirmationPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ table?: string; id?: string }>;
-}) {
+export default function ConfirmationPage() {
   return (
     <DataProvider>
-      <ConfirmationScreen searchParams={searchParams} />
+      <ConfirmationScreen />
     </DataProvider>
   );
 }
 
-function ConfirmationScreen({
-  searchParams,
-}: {
-  searchParams: Promise<{ table?: string; id?: string }>;
-}) {
-  const router = useRouter();
-  const [params, setParams] = useState<{ table?: string; id?: string }>({});
-  void params;
-  const [table, setTable] = useState<number | null>(null);
+function ConfirmationScreen() {
+  const {
+    ready,
+    tableNumber,
+    orderId: idFromUrl,
+    hasOrderId,
+  } = useTableQuery();
   const [orderId, setOrderId] = useState<string | null>(null);
 
+  // A refresh (or a back-navigation) can drop the id, so the per-table session
+  // key in localStorage restores it and the customer lands back on their order.
   useEffect(() => {
-    let alive = true;
-    void searchParams.then(async (p) => {
-      if (!alive) return;
-      setParams(p);
-      const t = parseTableNumber(p.table);
-      setTable(t);
-      // A refresh (or a back-navigation) may drop the id; the per-table session
-      // key in localStorage restores it so the customer lands back on their order.
-      const fromUrl = p.id?.trim();
-      const remembered = t ? readSessionOrderId(t) : null;
-      const id = fromUrl || remembered;
-      if (id) setOrderId(id);
-      else if (t) router.replace(orderHref(t));
-    });
-    return () => {
-      alive = false;
-    };
-  }, [searchParams, router]);
+    if (!ready) return;
+    const remembered = tableNumber ? readSessionOrderId(tableNumber) : null;
+    setOrderId(idFromUrl || remembered);
+  }, [ready, tableNumber, idFromUrl]);
 
-  if (table === null) return <Loading label="Finding your table…" />;
-  if (!orderId) {
+  if (!ready) return <Loading label="Finding your table…" />;
+
+  if (tableNumber === null) {
     return (
       <EmptyState
         mood="worry"
         title="We lost that order"
-        body="Start again and we'll send a fresh one to the counter."
+        body="Head back to the menu and order again — it'll only take a moment."
         action={
-          <Link href={orderHref(table)}>
+          <Link href="/order">
             <Button>Back to the menu</Button>
           </Link>
         }
@@ -97,13 +81,39 @@ function ConfirmationScreen({
     );
   }
 
+  if (!orderId) {
+    return <OrderNotFound tableNumber={tableNumber} hadId={hasOrderId} />;
+  }
+
   return (
     <StatusScreen
-      tableNumber={table}
+      tableNumber={tableNumber}
       orderId={orderId}
-      onRemember={() => rememberSessionOrder(table, orderId)}
+      onRemember={() => rememberSessionOrder(tableNumber, orderId)}
     />
   );
+}
+
+/**
+ * The id is gone and nothing is remembered for this table — a stale bookmark,
+ * or a different phone. Send the customer back to the menu rather than showing
+ * a dead end.
+ */
+function OrderNotFound({
+  tableNumber,
+  hadId,
+}: {
+  tableNumber: number;
+  hadId: boolean;
+}) {
+  const router = useRouter();
+
+  useEffect(() => {
+    if (hadId) return;
+    router.replace(orderHref(tableNumber));
+  }, [hadId, router, tableNumber]);
+
+  return <Loading label="Finding your order…" />;
 }
 
 function StatusScreen({
@@ -141,7 +151,13 @@ function StatusScreen({
   }, [order, onRemember]);
 
   const previous = useMemo<OrderLine[]>(
-    () => order?.items.map((i) => ({ menuItemId: i.menuItemId, name: i.name, price: i.price, qty: i.qty })) ?? [],
+    () =>
+      order?.items.map((i) => ({
+        menuItemId: i.menuItemId,
+        name: i.name,
+        price: i.price,
+        qty: i.qty,
+      })) ?? [],
     [order],
   );
 
@@ -171,11 +187,11 @@ function StatusScreen({
     <div className="relative min-h-svh pb-8">
       <SparkleBurst active={celebrate} />
 
-      <header className="safe-t relative z-10 border-b-2 border-line-soft bg-cream/85 px-4 py-3 backdrop-blur-sm">
-        <div className="shell flex items-center gap-2 text-sm font-semibold text-muted">
+      <header className="safe-t border-line-soft bg-cream/85 relative z-10 border-b-2 px-4 py-3 backdrop-blur-sm">
+        <div className="shell text-muted flex items-center gap-2 text-sm font-semibold">
           <Icon name="pin" size={16} />
           Table {tableNumber}
-          <span className="ml-auto tnum rounded-pill bg-paper px-2.5 py-0.5 text-primary">
+          <span className="tnum rounded-pill bg-paper text-primary ml-auto px-2.5 py-0.5">
             Order #{order.orderNumber || "—"}
           </span>
         </div>
@@ -186,17 +202,25 @@ function StatusScreen({
         <section className="flex flex-col items-center gap-3 text-center">
           <Mascot mood={done ? "cheer" : "happy"} size={132} />
           <div>
-            <h1 className="font-hand text-4xl leading-none text-primary">
+            <h1 className="font-hand text-primary text-4xl leading-none">
               {done ? "All yours!" : "Got it!"}
             </h1>
-            <p className="mt-1 text-muted">
-              Order <span className="tnum font-round text-lg text-ink">#{order.orderNumber}</span>{" "}
+            <p className="text-muted mt-1">
+              Order{" "}
+              <span className="tnum font-round text-ink text-lg">
+                #{order.orderNumber}
+              </span>{" "}
               is on its way to table {tableNumber}.
             </p>
           </div>
         </section>
 
-        <SpeechBubble mood={done ? "cheer" : "happy"} tail="none">
+        {/* the big mascot is already right above, so no second one here */}
+        <SpeechBubble
+          mood={done ? "cheer" : "happy"}
+          tail="none"
+          showMascot={false}
+        >
           {done
             ? "Enjoy! Pay at the counter whenever you're ready."
             : offer.enabled && offer.text
@@ -207,37 +231,41 @@ function StatusScreen({
         <StatusTimeline current={order.status} activeStep={activeStep} />
 
         <Card className="overflow-hidden">
-          <h2 className="border-b-2 border-line-soft px-4 py-2.5 text-lg">
+          <h2 className="border-line-soft border-b-2 px-4 py-2.5 text-lg">
             What you ordered
           </h2>
-          <ul className="divide-y-2 divide-line-soft">
+          <ul className="divide-line-soft divide-y-2">
             {order.items.map((line) => (
               <li
                 key={`${line.menuItemId}-${line.name}`}
                 className="flex items-center justify-between gap-3 px-4 py-2.5"
               >
-                <span className="tnum w-6 shrink-0 font-round text-primary">
+                <span className="tnum font-round text-primary w-6 shrink-0">
                   {line.qty}×
                 </span>
-                <span className="min-w-0 flex-1 truncate text-ink">
+                <span className="text-ink min-w-0 flex-1 truncate">
                   {line.name}
                 </span>
-                <span className="tnum shrink-0 font-semibold text-body">
+                <span className="tnum text-body shrink-0 font-semibold">
                   {formatINR(lineSubtotal(line))}
                 </span>
               </li>
             ))}
-            <li className="flex items-center justify-between gap-3 bg-highlight-soft/40 px-4 py-3">
-              <span className="font-round text-lg text-ink">Total</span>
-              <span className="tnum font-round text-xl text-primary">
+            <li className="bg-highlight-soft/40 flex items-center justify-between gap-3 px-4 py-3">
+              <span className="font-round text-ink text-lg">Total</span>
+              <span className="tnum font-round text-primary text-xl">
                 {formatINR(order.total)}
               </span>
             </li>
           </ul>
         </Card>
 
-        <p className="rounded-md border-2 border-dashed border-line bg-tan/50 px-4 py-3 text-center text-sm text-body">
-          <Icon name="leaf" size={16} className="mr-1 inline-block align-[-2px]" />
+        <p className="border-line bg-tan/50 text-body rounded-md border-2 border-dashed px-4 py-3 text-center text-sm">
+          <Icon
+            name="leaf"
+            size={16}
+            className="mr-1 inline-block align-[-2px]"
+          />
           Pay at the counter when you&apos;re done. Nothing to install, no OTP.
         </p>
 
@@ -283,26 +311,24 @@ function StatusTimeline({
             <li key={step} className="min-w-0 flex-1">
               <div
                 className={[
-                  "h-1.5 rounded-pill transition-colors duration-500",
-                  done
-                    ? "bg-sage"
-                    : active
-                      ? "bg-highlight"
-                      : "bg-tan-deep/60",
+                  "rounded-pill h-1.5 transition-colors duration-500",
+                  done ? "bg-sage" : active ? "bg-highlight" : "bg-tan-deep/60",
                 ].join(" ")}
               />
               <div className="mt-1.5 flex justify-center">
                 <StatusBadge
                   status={step}
                   size="sm"
-                  className={active ? "animate-badge-pop" : !done ? "opacity-55" : ""}
+                  className={
+                    active ? "animate-badge-pop" : !done ? "opacity-55" : ""
+                  }
                 />
               </div>
             </li>
           );
         })}
       </ol>
-      <p className="mt-3 text-center text-sm text-muted" aria-live="polite">
+      <p className="text-muted mt-3 text-center text-sm" aria-live="polite">
         {current === "received"
           ? "The counter has your order."
           : current === "preparing"

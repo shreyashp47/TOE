@@ -1,12 +1,25 @@
 /**
- * Corner decoration (theme doc §4: "a few small plant leaves / coffee bean
+ * Corner decoration (docs/anime-theme.md §4: "a few small plant leaves / coffee bean
  * doodles in corners, kept subtle and low-opacity"). Purely decorative, so it
  * is aria-hidden and never intercepts taps.
  */
 
-function Bean({ className, style }: { className?: string; style?: React.CSSProperties }) {
+function Bean({
+  className,
+  style,
+}: {
+  className?: string;
+  style?: React.CSSProperties;
+}) {
   return (
-    <svg viewBox="0 0 24 24" width="100%" height="100%" className={className} style={style} aria-hidden="true">
+    <svg
+      viewBox="0 0 24 24"
+      width="100%"
+      height="100%"
+      className={className}
+      style={style}
+      aria-hidden="true"
+    >
       <ellipse
         cx="12"
         cy="12"
@@ -36,7 +49,14 @@ function Leaf({
   style?: React.CSSProperties;
 }) {
   return (
-    <svg viewBox="0 0 24 24" width="100%" height="100%" className={className} style={style} aria-hidden="true">
+    <svg
+      viewBox="0 0 24 24"
+      width="100%"
+      height="100%"
+      className={className}
+      style={style}
+      aria-hidden="true"
+    >
       <path
         d="M4 20C4 10 10 4 21 3c-1 11-6 17-17 17z"
         fill="none"
@@ -63,7 +83,14 @@ function Steam({
   style?: React.CSSProperties;
 }) {
   return (
-    <svg viewBox="0 0 24 24" width="100%" height="100%" className={className} style={style} aria-hidden="true">
+    <svg
+      viewBox="0 0 24 24"
+      width="100%"
+      height="100%"
+      className={className}
+      style={style}
+      aria-hidden="true"
+    >
       <path
         d="M8 21c-2-2.5 2-3.5 0-6s-2-3.5 0-6M15 21c-2-2.5 2-3.5 0-6"
         fill="none"
@@ -81,17 +108,29 @@ export function Doodles({ className }: { className?: string }) {
       aria-hidden="true"
       className={`doodle pointer-events-none absolute inset-0 overflow-hidden ${className ?? ""}`}
     >
-      <Bean className="absolute -left-1 top-24 size-9" style={{ transform: "rotate(14deg)" }} />
-      <Bean className="absolute right-1 top-[22rem] size-5" style={{ transform: "rotate(-38deg)" }} />
-      <Leaf className="absolute -right-1 top-3 size-14" style={{ transform: "rotate(16deg)" }} />
-      <Leaf className="absolute bottom-32 -left-1 size-11" style={{ transform: "rotate(-28deg)" }} />
-      <Steam className="absolute bottom-6 right-8 size-6" />
+      <Bean
+        className="absolute top-24 -left-1 size-9"
+        style={{ transform: "rotate(14deg)" }}
+      />
+      <Bean
+        className="absolute top-[22rem] right-1 size-5"
+        style={{ transform: "rotate(-38deg)" }}
+      />
+      <Leaf
+        className="absolute top-3 -right-1 size-14"
+        style={{ transform: "rotate(16deg)" }}
+      />
+      <Leaf
+        className="absolute bottom-32 -left-1 size-11"
+        style={{ transform: "rotate(-28deg)" }}
+      />
+      <Steam className="absolute right-8 bottom-6 size-6" />
     </div>
   );
 }
 
 /**
- * 1–2 second sparkle/petal burst on successful order placement (theme doc §4).
+ * 1–2 second sparkle/petal burst on successful order placement (docs/anime-theme.md §4).
  * CSS-only, and fully disabled under prefers-reduced-motion.
  */
 export function SparkleBurst({
@@ -119,7 +158,7 @@ export function SparkleBurst({
         return (
           <span
             key={i}
-            className="absolute left-1/2 top-1/2 size-2.5 animate-rise"
+            className="animate-rise absolute top-1/2 left-1/2 size-2.5"
             style={
               {
                 marginLeft: -5,

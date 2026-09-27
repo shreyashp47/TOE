@@ -4,11 +4,11 @@ import { cn } from "@/lib/cn";
 import { useEffect, useId, useRef, type ReactNode } from "react";
 
 /**
- * Cart drawer (theme doc §5: "cart drawer/bottom sheet slides up with a
+ * Cart drawer (docs/anime-theme.md §5: "cart drawer/bottom sheet slides up with a
  * playful transition"). Rendered as a real dialog so focus trapping, Escape and
  * backdrop dismissal come for free.
  *
- * Kept dependency-free: no animation library, transforms only (theme doc §6).
+ * Kept dependency-free: no animation library, transforms only (docs/anime-theme.md §6).
  */
 export interface SheetProps {
   open: boolean;
@@ -60,7 +60,7 @@ export function Sheet({
         tabIndex={-1}
         aria-hidden="true"
         onClick={onClose}
-        className="absolute inset-0 animate-fade-in bg-[var(--scrim)]"
+        className="animate-fade-in absolute inset-0 bg-[var(--scrim)]"
       />
       <div
         ref={panelRef}
@@ -69,11 +69,11 @@ export function Sheet({
         aria-labelledby={id}
         tabIndex={-1}
         className={cn(
-          "relative flex max-h-[88svh] animate-sheet-up flex-col",
-          "rounded-t-xl border-t-2 border-line bg-cream shadow-sheet outline-none",
+          "animate-sheet-up relative flex max-h-[88svh] flex-col",
+          "border-line bg-cream shadow-sheet rounded-t-xl border-t-2 outline-none",
         )}
       >
-        <header className="flex shrink-0 items-center justify-between gap-3 border-b-2 border-line-soft px-4 py-3">
+        <header className="border-line-soft flex shrink-0 items-center justify-between gap-3 border-b-2 px-4 py-3">
           <h2 id={id} className="text-xl">
             {title}
           </h2>
@@ -81,7 +81,7 @@ export function Sheet({
             type="button"
             onClick={onClose}
             aria-label="Close cart"
-            className="-mr-1 grid size-11 shrink-0 place-items-center rounded-pill text-ink transition-colors hover:bg-tan"
+            className="rounded-pill text-ink hover:bg-tan -mr-1 grid size-11 shrink-0 place-items-center transition-colors"
           >
             <svg
               viewBox="0 0 24 24"
@@ -103,7 +103,7 @@ export function Sheet({
         </div>
 
         {footer ? (
-          <div className="safe-b shrink-0 border-t-2 border-line-soft bg-paper px-4 pt-3">
+          <div className="safe-b border-line-soft bg-paper shrink-0 border-t-2 px-4 pt-3">
             {footer}
           </div>
         ) : null}

@@ -45,14 +45,18 @@ describe("Card / Panel / CardHeader", () => {
         action={<Button size="sm">CSV</Button>}
       />,
     );
-    expect(screen.getByRole("heading", { name: "Best sellers" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Best sellers" }),
+    ).toBeInTheDocument();
     expect(screen.getByText("By revenue")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "CSV" })).toBeInTheDocument();
   });
 
   it("omits the hint and action when not given", () => {
     render(<CardHeader title="Only a title" />);
-    expect(screen.getByRole("heading", { name: "Only a title" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Only a title" }),
+    ).toBeInTheDocument();
   });
 });
 
@@ -69,11 +73,18 @@ describe("Input / Textarea / Select / Field", () => {
 
   it("shows an error instead of the hint when there is one", () => {
     render(
-      <Field label="Price" htmlFor="p" hint="Rupees" error="Enter a price above 0.">
+      <Field
+        label="Price"
+        htmlFor="p"
+        hint="Rupees"
+        error="Enter a price above 0."
+      >
         <Input id="p" />
       </Field>,
     );
-    expect(screen.getByRole("alert")).toHaveTextContent("Enter a price above 0.");
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Enter a price above 0.",
+    );
     expect(screen.queryByText("Rupees")).not.toBeInTheDocument();
   });
 
@@ -113,7 +124,9 @@ describe("Loading / EmptyState / Spinner", () => {
         action={<Button>Refresh</Button>}
       />,
     );
-    expect(screen.getByRole("heading", { name: "No orders yet" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "No orders yet" }),
+    ).toBeInTheDocument();
     expect(screen.getByText("They will appear here.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Refresh" })).toBeInTheDocument();
   });
@@ -214,7 +227,11 @@ describe("useCart", () => {
   it("drops a line the live menu just sold out", async () => {
     const { result, rerender } = renderHook(
       ({ menu }: { menu: MenuItem[] }) => useCart(3, menu),
-      { initialProps: { menu: [item(), item({ id: "m2", name: "Scone", price: 160 })] } },
+      {
+        initialProps: {
+          menu: [item(), item({ id: "m2", name: "Scone", price: 160 })],
+        },
+      },
     );
     act(() => {
       result.current.add(item(), 1);
@@ -224,7 +241,10 @@ describe("useCart", () => {
 
     await act(async () => {
       rerender({
-        menu: [item(), item({ id: "m2", name: "Scone", price: 160, available: false })],
+        menu: [
+          item(),
+          item({ id: "m2", name: "Scone", price: 160, available: false }),
+        ],
       });
     });
     expect(result.current.count).toBe(1);
@@ -259,9 +279,7 @@ describe("useOrderChime", () => {
     expect(result.current.muted).toBe(false);
     act(() => result.current.setMuted(true));
     expect(result.current.muted).toBe(true);
-    expect(
-      localStorage.getItem("cafe-qr-order.staff.muted.v1"),
-    ).toBe("1");
+    expect(localStorage.getItem("cafe-qr-order.staff.muted.v1")).toBe("1");
   });
 
   it("does not throw when the audio context is unavailable", () => {

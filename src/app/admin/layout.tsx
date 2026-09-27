@@ -3,7 +3,7 @@
 /**
  * Owner gate + chrome for /admin.
  *
- * requirements.md §3: staff and owner are both authenticated, but only the owner
+ * docs/requirements.md §3: staff and owner are both authenticated, but only the owner
  * can change the menu. The real enforcement is the Firestore rules
  * (isOwner()); this is the UI half, and it deliberately explains itself in plain
  * language because the cafe owner is not assumed to be technical (§2).
@@ -56,18 +56,18 @@ function Shell({ children }: { children: ReactNode }) {
 
   return (
     <div className="min-h-svh pb-10">
-      <header className="safe-t sticky top-0 z-30 border-b-2 border-line-soft bg-cream/95 backdrop-blur">
+      <header className="safe-t border-line-soft bg-cream/95 sticky top-0 z-30 border-b-2 backdrop-blur">
         <div className="shell-wide flex items-center gap-2.5 py-2.5">
           <Mascot size={40} className="shrink-0" />
           <div className="min-w-0 flex-1">
             <h1 className="truncate text-lg leading-tight">Owner dashboard</h1>
-            <p className="truncate text-2xs font-semibold uppercase tracking-[0.12em] text-muted">
+            <p className="text-2xs text-muted truncate font-semibold tracking-[0.12em] uppercase">
               {getCafeName()}
             </p>
           </div>
           <Link
             href="/staff"
-            className="grid size-11 shrink-0 place-items-center rounded-pill border-2 border-line bg-paper text-muted"
+            className="rounded-pill border-line bg-paper text-muted grid size-11 shrink-0 place-items-center border-2"
             aria-label="Go to the order board"
           >
             <Icon name="cart" size={20} />
@@ -76,7 +76,7 @@ function Shell({ children }: { children: ReactNode }) {
             type="button"
             onClick={() => void signOut()}
             aria-label="Sign out"
-            className="grid size-11 shrink-0 place-items-center rounded-pill border-2 border-line bg-paper text-muted"
+            className="rounded-pill border-line bg-paper text-muted grid size-11 shrink-0 place-items-center border-2"
           >
             <Icon name="logout" size={20} />
           </button>
@@ -95,7 +95,7 @@ function Shell({ children }: { children: ReactNode }) {
                     href={item.href}
                     aria-current={active ? "page" : undefined}
                     className={[
-                      "flex min-h-11 items-center gap-1.5 rounded-pill border-2 px-3.5 font-round text-sm transition-colors",
+                      "rounded-pill font-round flex min-h-11 items-center gap-1.5 border-2 px-3.5 text-sm transition-colors",
                       active
                         ? "border-primary bg-primary text-on-dark"
                         : "border-line bg-paper text-ink",
@@ -120,8 +120,8 @@ function SignedOut() {
   return (
     <div className="shell flex min-h-svh flex-col items-center justify-center gap-4 text-center">
       <Mascot mood="worry" size={120} />
-      <h1 className="font-hand text-4xl text-primary">Owner sign-in</h1>
-      <p className="max-w-xs text-muted">
+      <h1 className="font-hand text-primary text-4xl">Owner sign-in</h1>
+      <p className="text-muted max-w-xs">
         This page changes your menu and shows your sales. Sign in on the staff
         screen with the owner account.
       </p>
@@ -136,14 +136,14 @@ function NotOwner() {
   return (
     <div className="shell flex min-h-svh flex-col items-center justify-center gap-4 text-center">
       <Mascot mood="worry" size={120} />
-      <h1 className="font-hand text-4xl text-primary">Owner only</h1>
-      <p className="max-w-sm text-muted">
-        You&apos;re signed in as staff, so you can run the order board — but menu
-        edits and sales reports belong to the owner account.
+      <h1 className="font-hand text-primary text-4xl">Owner only</h1>
+      <p className="text-muted max-w-sm">
+        You&apos;re signed in as staff, so you can run the order board — but
+        menu edits and sales reports belong to the owner account.
       </p>
       <Card className="w-full max-w-xs p-4 text-left text-sm">
-        <p className="font-semibold text-ink">Demo owner account</p>
-        <p className="tnum mt-1 text-muted">
+        <p className="text-ink font-semibold">Demo owner account</p>
+        <p className="tnum text-muted mt-1">
           {DEMO_CREDENTIALS.owner.email} / {DEMO_CREDENTIALS.owner.password}
         </p>
       </Card>

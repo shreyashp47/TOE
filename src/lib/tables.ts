@@ -1,4 +1,4 @@
-/** Table-number plumbing for `/order?table=N` (requirements.md §5.5). */
+/** Table-number plumbing for `/order?table=N` (docs/requirements.md §5.5). */
 
 import { getTableNumbers } from "./config";
 

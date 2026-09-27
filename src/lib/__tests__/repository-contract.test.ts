@@ -58,15 +58,17 @@ function collect<T>(subscribe: (cb: (v: T) => void) => () => void): {
 describe("repository contract: menu", () => {
   it("emits the current value immediately on subscribe", async () => {
     CONTRACT.repos.menu = demoMenuRepo;
-    const { values, stop } = collect<MenuItem[]>((cb) => demoMenuRepo.subscribe(cb));
+    const { values, stop } = collect<MenuItem[]>((cb) =>
+      demoMenuRepo.subscribe(cb),
+    );
     expect(values).toHaveLength(1);
     expect(values[0].length).toBeGreaterThan(0);
     stop();
   });
 
   it("emits again on every write", async () => {
-    const { values, stop } = collect<MenuItem[]>(
-      (cb) => demoMenuRepo.subscribe(cb),
+    const { values, stop } = collect<MenuItem[]>((cb) =>
+      demoMenuRepo.subscribe(cb),
     );
     const before = values.length;
     await demoMenuRepo.create({
@@ -86,15 +88,21 @@ describe("repository contract: menu", () => {
       price: 140,
       category: "Bites",
     });
-    expect((await demoMenuRepo.list()).some((i) => i.id === created.id)).toBe(true);
+    expect((await demoMenuRepo.list()).some((i) => i.id === created.id)).toBe(
+      true,
+    );
 
     await demoMenuRepo.update(created.id, { price: 160, available: false });
-    const updated = (await demoMenuRepo.list()).find((i) => i.id === created.id);
+    const updated = (await demoMenuRepo.list()).find(
+      (i) => i.id === created.id,
+    );
     expect(updated?.price).toBe(160);
     expect(updated?.available).toBe(false);
 
     await demoMenuRepo.remove(created.id);
-    expect((await demoMenuRepo.list()).some((i) => i.id === created.id)).toBe(false);
+    expect((await demoMenuRepo.list()).some((i) => i.id === created.id)).toBe(
+      false,
+    );
   });
 
   it("sorts by sortOrder then name", async () => {
@@ -111,7 +119,11 @@ describe("repository contract: menu", () => {
   });
 
   it("persists so a second repo instance sees the change", async () => {
-    await demoMenuRepo.create({ name: "Persisted", price: 10, category: "Sweets" });
+    await demoMenuRepo.create({
+      name: "Persisted",
+      price: 10,
+      category: "Sweets",
+    });
     // a fresh read path stands in for a page reload / a second device
     const reloaded = loadDemoState();
     expect(reloaded.menu.some((i) => i.name === "Persisted")).toBe(true);
@@ -216,9 +228,9 @@ describe("repository contract: orders", () => {
 
   it("stamps completedAt only on completion", async () => {
     const order = await place();
-    const afterReady = (await demoOrderRepo.listRange(0, Date.now() + 1000)).find(
-      (o) => o.id === order.id,
-    );
+    const afterReady = (
+      await demoOrderRepo.listRange(0, Date.now() + 1000)
+    ).find((o) => o.id === order.id);
     expect(afterReady?.completedAt).toBeUndefined();
 
     await demoOrderRepo.setStatus(order.id, "completed");
@@ -257,21 +269,23 @@ describe("repository contract: orders", () => {
 
   it("lists every active status on the board", () => {
     for (const status of ACTIVE_STATUSES) {
-      expect(selectActiveOrders({
-        ...loadDemoState(),
-        orders: [
-          {
-            id: "o",
-            orderNumber: 1,
-            tableNumber: 1,
-            items: [],
-            total: 0,
-            status,
-            createdAt: 1,
-            paymentMethod: "counter",
-          },
-        ],
-      })).toHaveLength(1);
+      expect(
+        selectActiveOrders({
+          ...loadDemoState(),
+          orders: [
+            {
+              id: "o",
+              orderNumber: 1,
+              tableNumber: 1,
+              items: [],
+              total: 0,
+              status,
+              createdAt: 1,
+              paymentMethod: "counter",
+            },
+          ],
+        }),
+      ).toHaveLength(1);
     }
   });
 });
@@ -284,7 +298,9 @@ describe("repository contract: auth", () => {
   });
 
   it("rejects a wrong PIN", async () => {
-    await expect(demoAuthRepo.signInWithPin("0000")).rejects.toThrow(/wrong pin/i);
+    await expect(demoAuthRepo.signInWithPin("0000")).rejects.toThrow(
+      /wrong pin/i,
+    );
   });
 
   it("signs a barista in and reports the staff role", async () => {

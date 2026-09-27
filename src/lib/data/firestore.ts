@@ -1,6 +1,6 @@
 /**
  * Firestore implementation of the storage contracts, matching the collection
- * layout in requirements.md §8:
+ * layout in docs/requirements.md §8:
  *
  *   /orders/{orderId}  tableNumber, items[{name,qty,price}], total, status,
  *                      createdAt, completedAt?, paymentMethod
@@ -165,7 +165,7 @@ export const firestoreMenuRepo: MenuRepository = {
       category: input.category,
       available: input.available ?? true,
       art: input.art,
-      sortOrder: 900_000 + Date.now() % 100_000,
+      sortOrder: 900_000 + (Date.now() % 100_000),
     };
     await fs.setDoc(ref, menuDoc(item));
     return item;
@@ -196,7 +196,8 @@ export const firestoreMenuRepo: MenuRepository = {
   async replaceAll(items) {
     const { db, fs } = await dbAndFs();
     const batch = fs.writeBatch(db);
-    for (const item of items) batch.set(fs.doc(db, MENU, item.id), menuDoc(item));
+    for (const item of items)
+      batch.set(fs.doc(db, MENU, item.id), menuDoc(item));
     await batch.commit();
   },
 };
@@ -290,9 +291,7 @@ export const firestoreOrderRepo: OrderRepository = {
       fs.orderBy("createdAt", "asc"),
     );
     const snap = await fs.getDocs(query);
-    return snap.docs
-      .map(readOrder)
-      .filter((o): o is Order => o !== null);
+    return snap.docs.map(readOrder).filter((o): o is Order => o !== null);
   },
 };
 
@@ -350,7 +349,7 @@ export const firestoreAuthRepo: AuthRepository = {
     const { signInWithEmailAndPassword } = await import("firebase/auth");
     const credential = await signInWithEmailAndPassword(auth, email, password);
 
-    // Role comes from /staff/{uid} (requirements.md §8). A missing doc
+    // Role comes from /staff/{uid} (docs/requirements.md §8). A missing doc
     // defaults to `staff` so a barista can always work the board.
     const snap = await fs.getDoc(fs.doc(db, STAFF, credential.user.uid));
     const role: StaffUser["role"] =

@@ -80,8 +80,12 @@ describe("buildReport", () => {
 
   it("reconciles revenue with the sum of the lines", () => {
     const orders = [
-      order({ items: [{ menuItemId: "m1", name: "Cappuccino", qty: 2, price: 180 }] }),
-      order({ items: [{ menuItemId: "m2", name: "Scone", qty: 1, price: 160 }] }),
+      order({
+        items: [{ menuItemId: "m1", name: "Cappuccino", qty: 2, price: 180 }],
+      }),
+      order({
+        items: [{ menuItemId: "m2", name: "Scone", qty: 1, price: 160 }],
+      }),
     ];
     const report = buildReport(orders, range);
     // totals are recomputed from lines, not trusted from the stored field
@@ -105,8 +109,12 @@ describe("buildReport", () => {
   it("ranks top sellers by revenue and gives shares that sum to 1", () => {
     const report = buildReport(
       [
-        order({ items: [{ menuItemId: "a", name: "Coffee", qty: 1, price: 200 }] }),
-        order({ items: [{ menuItemId: "b", name: "Scone", qty: 1, price: 100 }] }),
+        order({
+          items: [{ menuItemId: "a", name: "Coffee", qty: 1, price: 200 }],
+        }),
+        order({
+          items: [{ menuItemId: "b", name: "Scone", qty: 1, price: 100 }],
+        }),
       ],
       range,
     );
@@ -120,8 +128,12 @@ describe("buildReport", () => {
   it("aggregates the same item across orders", () => {
     const report = buildReport(
       [
-        order({ items: [{ menuItemId: "a", name: "Coffee", qty: 2, price: 100 }] }),
-        order({ items: [{ menuItemId: "a", name: "Coffee", qty: 3, price: 100 }] }),
+        order({
+          items: [{ menuItemId: "a", name: "Coffee", qty: 2, price: 100 }],
+        }),
+        order({
+          items: [{ menuItemId: "a", name: "Coffee", qty: 3, price: 100 }],
+        }),
       ],
       range,
     );
@@ -172,6 +184,16 @@ describe("buildReport", () => {
     expect(report.statusCounts.preparing).toBe(1);
   });
 
+  it("gives each day bucket a dense day-of-month for the chart axis", () => {
+    const report = buildReport(
+      [order({ createdAt: new Date(2026, 2, 22, 12).getTime() })],
+      monthRange(2026, 2),
+    );
+    // "22 Sept" does not fit under 27 bars; the axis uses 22
+    expect(report.byDay[0].dayOfMonth).toBe(22);
+    expect(report.byDay[0].label).toMatch(/22/);
+  });
+
   it("keys days in local time", () => {
     expect(dayKey(new Date(2026, 0, 5).getTime())).toBe("2026-01-05");
   });
@@ -196,7 +218,9 @@ describe("ordersToCsv", () => {
   it("escapes commas and quotes so the file opens cleanly", () => {
     const csv = ordersToCsv([
       order({
-        items: [{ menuItemId: "a", name: 'Cheese, chilli "hot"', qty: 1, price: 50 }],
+        items: [
+          { menuItemId: "a", name: 'Cheese, chilli "hot"', qty: 1, price: 50 },
+        ],
       }),
     ]);
     expect(csv).toContain('"Cheese, chilli ""hot"""');

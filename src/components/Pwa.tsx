@@ -3,7 +3,7 @@
 /**
  * Service-worker registration + "add to home screen" hint.
  *
- * requirements.md §3: "No app installs required for customers or staff
+ * docs/requirements.md §3: "No app installs required for customers or staff
  * (mobile web / PWA)". A PWA install is offered, never required — the app is
  * fully usable in a plain browser tab.
  */
@@ -25,11 +25,9 @@ export function PwaRegister() {
     if (process.env.NODE_ENV !== "production") return;
     if (!("serviceWorker" in navigator)) return;
     const register = () => {
-      navigator.serviceWorker
-        .register("/sw.js", { scope: "/" })
-        .catch(() => {
-          /* offline support is a bonus, never a requirement */
-        });
+      navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch(() => {
+        /* offline support is a bonus, never a requirement */
+      });
     };
     window.addEventListener("load", register);
     return () => window.removeEventListener("load", register);
@@ -80,11 +78,11 @@ export function InstallHint({ appName }: { appName: string }) {
 
   return (
     <div className="shell-wide mb-3">
-      <div className="flex items-center gap-3 rounded-lg border-2 border-dashed border-secondary/50 bg-highlight-soft/40 p-3">
+      <div className="border-secondary/50 bg-highlight-soft/40 flex items-center gap-3 rounded-lg border-2 border-dashed p-3">
         <Mascot size={44} className="shrink-0" />
         <div className="min-w-0 flex-1">
-          <p className="font-semibold text-ink">Install {appName}</p>
-          <p className="text-sm text-muted">
+          <p className="text-ink font-semibold">Install {appName}</p>
+          <p className="text-muted text-sm">
             Add it to your home screen for a full-screen board. No app store, no
             install required to use it.
           </p>
@@ -103,7 +101,7 @@ export function InstallHint({ appName }: { appName: string }) {
           type="button"
           onClick={() => void dismiss()}
           aria-label="Dismiss install hint"
-          className="grid size-11 shrink-0 place-items-center rounded-pill border-2 border-line bg-paper text-muted"
+          className="rounded-pill border-line bg-paper text-muted grid size-11 shrink-0 place-items-center border-2"
         >
           <svg
             viewBox="0 0 24 24"

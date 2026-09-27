@@ -34,7 +34,10 @@ export interface MenuWriteInput {
 
 export interface MenuRepository {
   /** Live menu. Fires immediately with the current value. */
-  subscribe(listener: Listener<MenuItem[]>, onError?: ErrorListener): Unsubscribe;
+  subscribe(
+    listener: Listener<MenuItem[]>,
+    onError?: ErrorListener,
+  ): Unsubscribe;
   list(): Promise<MenuItem[]>;
   create(input: MenuWriteInput): Promise<MenuItem>;
   update(id: string, patch: Partial<MenuWriteInput>): Promise<void>;

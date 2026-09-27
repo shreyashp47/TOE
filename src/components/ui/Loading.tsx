@@ -11,12 +11,12 @@ export function Loading({ label = "Warming up…" }: { label?: string }) {
       aria-live="polite"
     >
       <Mascot mood="sleepy" size={104} />
-      <p className="font-hand text-xl text-muted">{label}</p>
+      <p className="font-hand text-muted text-xl">{label}</p>
     </div>
   );
 }
 
-/** Empty state (theme doc §4: mascot in empty states). */
+/** Empty state (docs/anime-theme.md §4: mascot in empty states). */
 export function EmptyState({
   title,
   body,
@@ -31,8 +31,8 @@ export function EmptyState({
   return (
     <div className="flex flex-col items-center gap-3 px-6 py-14 text-center">
       <Mascot mood={mood} size={116} />
-      <h3 className="font-hand text-2xl text-ink">{title}</h3>
-      {body ? <p className="max-w-xs text-sm text-muted">{body}</p> : null}
+      <h3 className="font-hand text-ink text-2xl">{title}</h3>
+      {body ? <p className="text-muted max-w-xs text-sm">{body}</p> : null}
       {action ? <div className="mt-1">{action}</div> : null}
     </div>
   );
@@ -44,7 +44,7 @@ export function Spinner({ className }: { className?: string }) {
       role="status"
       aria-label="Loading"
       className={cn(
-        "inline-block size-5 animate-spin-slow rounded-full border-[3px] border-current border-t-transparent",
+        "animate-spin-slow inline-block size-5 rounded-full border-[3px] border-current border-t-transparent",
         className,
       )}
     />

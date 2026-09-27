@@ -41,7 +41,10 @@ describe("money", () => {
   });
 
   it("sums a cart to an exact integer", () => {
-    const cart = [line({ qty: 2 }), line({ menuItemId: "m2", price: 120, qty: 1 })];
+    const cart = [
+      line({ qty: 2 }),
+      line({ menuItemId: "m2", price: 120, qty: 1 }),
+    ];
     expect(cartTotal(cart)).toBe(480);
   });
 
@@ -136,10 +139,7 @@ describe("priceCart — authoritative pricing at order time", () => {
   });
 
   it("keeps the good lines and reports only the bad ones", () => {
-    const result = priceCart(
-      [line(), line({ menuItemId: "gone" })],
-      [item()],
-    );
+    const result = priceCart([line(), line({ menuItemId: "gone" })], [item()]);
     expect(result.ok).toBe(false);
     expect(result.lines).toHaveLength(1);
     expect(result.total).toBe(180);

@@ -5,7 +5,7 @@ import { getCafeName } from "@/lib/config";
 import "./globals.css";
 
 /**
- * Exactly three families, only the weights we actually use (theme doc §6:
+ * Exactly three families, only the weights we actually use (docs/anime-theme.md §6:
  * "load only the weights used, to keep the page light for mobile data").
  * next/font self-hosts them, so there is no render-blocking Google request.
  */

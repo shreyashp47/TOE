@@ -14,6 +14,9 @@ next-env.d.ts
 
 # testing
 coverage
+tsconfig.tsbuildinfo
+
+# local visual-check output (see scripts/screenshot.mjs)
 
 # misc
 .DS_Store
@@ -24,3 +27,13 @@ coverage
 # firebase
 .firebase
 firebase-debug.log
+firestore-debug.log
+ui-debug.log
+.firebase/
+
+# env
+*.local
+.firebase/
+
+# visual-check output
+.screenshots/

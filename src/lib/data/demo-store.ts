@@ -36,7 +36,12 @@ interface DemoState {
 }
 
 function emptyState(): DemoState {
-  return { menu: [], orders: [], offer: { enabled: false, text: "" }, seq: 100 };
+  return {
+    menu: [],
+    orders: [],
+    offer: { enabled: false, text: "" },
+    seq: 100,
+  };
 }
 
 function seedState(): DemoState {
@@ -259,7 +264,9 @@ export function demoWriteMenu(
 ): void {
   mutate((state) => ({
     ...state,
-    menu: state.menu.map((item) => (item.id === id ? { ...item, ...patch } : item)),
+    menu: state.menu.map((item) =>
+      item.id === id ? { ...item, ...patch } : item,
+    ),
   }));
 }
 
@@ -286,6 +293,25 @@ export function demoDeleteMenu(id: string): void {
 
 export function demoReplaceMenu(items: MenuItem[]): void {
   mutate((state) => ({ ...state, menu: items }));
+}
+
+/**
+ * Replaces the order history with a sample month (demo mode only). Used by the
+ * "Add a sample month" button so the reports page can be evaluated before there
+ * is real data to look at.
+ */
+export function demoSeedOrders(
+  orders: Array<Omit<Order, "id" | "orderNumber">>,
+): number {
+  let firstNumber = 100;
+  mutate((state) => {
+    const withIds = orders.map((order) => {
+      firstNumber += 1;
+      return { ...order, id: makeId("o"), orderNumber: firstNumber };
+    });
+    return { ...state, seq: firstNumber, orders: withIds };
+  });
+  return orders.length;
 }
 
 export function demoSaveOffer(offer: SpecialOffer): void {

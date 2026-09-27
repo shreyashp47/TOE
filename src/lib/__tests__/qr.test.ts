@@ -62,7 +62,9 @@ describe("qr encoder", () => {
   });
 
   it("refuses a payload that cannot fit", () => {
-    expect(() => encodeQr("x".repeat(maxPayloadBytes() + 1))).toThrow(/too long/i);
+    expect(() => encodeQr("x".repeat(maxPayloadBytes() + 1))).toThrow(
+      /too long/i,
+    );
   });
 
   it("rejects an empty payload", () => {

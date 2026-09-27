@@ -16,21 +16,21 @@ export default function OfflinePage() {
   return (
     <main className="relative flex min-h-svh flex-col items-center justify-center gap-4 px-6 py-12 text-center">
       <Mascot mood="sleepy" size={136} />
-      <h1 className="font-hand text-4xl text-primary">Signal lost</h1>
-      <p className="max-w-sm text-muted">
+      <h1 className="font-hand text-primary text-4xl">Signal lost</h1>
+      <p className="text-muted max-w-sm">
         This page needs the cafe&apos;s wifi. Reconnect and it will load by
         itself — your basket and your order are safe on this phone.
       </p>
       <div className="flex flex-col gap-2 sm:flex-row">
         <Link
           href="/order"
-          className="inline-flex min-h-11 items-center justify-center rounded-pill bg-primary px-5 font-round font-semibold text-on-dark"
+          className="rounded-pill bg-primary font-round text-on-dark inline-flex min-h-11 items-center justify-center px-5 font-semibold"
         >
           Try again
         </Link>
         <Link
           href="/staff"
-          className="inline-flex min-h-11 items-center justify-center rounded-pill border-2 border-line bg-paper px-5 font-round font-semibold text-ink"
+          className="rounded-pill border-line bg-paper font-round text-ink inline-flex min-h-11 items-center justify-center border-2 px-5 font-semibold"
         >
           Order board
         </Link>

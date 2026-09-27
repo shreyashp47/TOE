@@ -3,7 +3,7 @@
  *
  * A cart is scoped to a *table* and persisted per table, so a dropped
  * connection or a phone that reloads mid-order never loses a basket
- * (requirements.md §5.2: "cart-based ordering per table session").
+ * (docs/requirements.md §5.2: "cart-based ordering per table session").
  */
 
 import { clampQty, MAX_QTY_PER_LINE } from "./money";
@@ -135,7 +135,8 @@ export function readStoredCart(tableNumber: number): CartLine[] {
 
 export function writeStoredCart(tableNumber: number, lines: CartLine[]) {
   try {
-    if (lines.length === 0) globalThis.localStorage?.removeItem(cartKey(tableNumber));
+    if (lines.length === 0)
+      globalThis.localStorage?.removeItem(cartKey(tableNumber));
     else
       globalThis.localStorage?.setItem(
         cartKey(tableNumber),

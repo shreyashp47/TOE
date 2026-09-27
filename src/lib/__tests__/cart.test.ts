@@ -47,7 +47,9 @@ describe("cartReducer", () => {
 
   it("refuses to add an unavailable item", () => {
     const soldOut = { ...menu[0], available: false };
-    expect(cartReducer(emptyCart(), { type: "add", item: soldOut })).toHaveLength(0);
+    expect(
+      cartReducer(emptyCart(), { type: "add", item: soldOut }),
+    ).toHaveLength(0);
   });
 
   it("takes the newest price when the price changed under the cart", () => {
@@ -160,7 +162,13 @@ describe("cart persistence", () => {
     localStorage.setItem(
       "cafe-qr-order.cart.v1.t3",
       JSON.stringify([
-        { menuItemId: "m1", name: "Cappuccino", price: 180, qty: 9999, category: "Drinks" },
+        {
+          menuItemId: "m1",
+          name: "Cappuccino",
+          price: 180,
+          qty: 9999,
+          category: "Drinks",
+        },
       ]),
     );
     expect(readStoredCart(3)[0].qty).toBe(clampQty(MAX_QTY_PER_LINE));

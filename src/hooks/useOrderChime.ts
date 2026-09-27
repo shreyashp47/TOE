@@ -3,7 +3,7 @@
 /**
  * New-order chime.
  *
- * Requirements.md §5.3 wants an audible/vibration alert, and the theme doc §5
+ * Requirements.md §5.3 wants an audible/vibration alert, and the docs/anime-theme.md §5
  * insists it be more than a toast. WebAudio is used instead of an <audio> file
  * so there is nothing to download and nothing to ship — and because browsers
  * block audio until a user gesture, `unlock()` is wired to the first tap.

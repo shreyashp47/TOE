@@ -1,5 +1,5 @@
 /**
- * Report aggregation (requirements.md §4.3 steps 3–4, §5.4).
+ * Report aggregation (docs/requirements.md §4.3 steps 3–4, §5.4).
  *
  * Pure functions over an order list so the maths can be unit-tested and reused
  * by both the dashboard and the CSV export. Everything is whole rupees.
@@ -26,7 +26,10 @@ export interface TopItem {
 export interface DayBucket {
   /** YYYY-MM-DD in local time */
   date: string;
+  /** "22 Sept" — used where there is room for it */
   label: string;
+  /** 22 — used for a dense axis, where "22 Sept" would collide */
+  dayOfMonth: number;
   revenue: number;
   orders: number;
 }
@@ -76,7 +79,10 @@ export function monthRange(year: number, month0: number): Range {
   };
 }
 
-export function currentMonth(now = Date.now()): { year: number; month0: number } {
+export function currentMonth(now = Date.now()): {
+  year: number;
+  month0: number;
+} {
   const d = new Date(now);
   return { year: d.getFullYear(), month0: d.getMonth() };
 }
@@ -127,12 +133,16 @@ export function buildReport(orders: Order[], range: Range): Report {
       revenue: v.revenue,
       share: revenue > 0 ? v.revenue / revenue : 0,
     }))
-    .sort((a, b) => b.revenue - a.revenue || b.qty - a.qty || a.name.localeCompare(b.name));
+    .sort(
+      (a, b) =>
+        b.revenue - a.revenue || b.qty - a.qty || a.name.localeCompare(b.name),
+    );
 
   const byDay: DayBucket[] = [...dayMap.entries()]
     .map(([date, v]) => ({
       date,
       label: dayLabelOf(date),
+      dayOfMonth: Number(date.slice(8, 10)),
       revenue: v.revenue,
       orders: v.orders,
     }))
@@ -177,8 +187,7 @@ export function ordersToCsv(orders: Order[]): string {
   ];
 
   const rows: string[] = [];
-  const fmt = (ms?: number) =>
-    ms ? new Date(ms).toISOString() : "";
+  const fmt = (ms?: number) => (ms ? new Date(ms).toISOString() : "");
 
   for (const order of [...orders].sort((a, b) => a.createdAt - b.createdAt)) {
     const total = orderTotal(order.items);

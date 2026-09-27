@@ -46,9 +46,9 @@ export function StatusBadge({
     <span
       data-status={status}
       className={cn(
-        "inline-flex shrink-0 items-center gap-1 rounded-pill border-2 font-round font-semibold",
+        "rounded-pill font-round inline-flex shrink-0 items-center gap-1 border-2 font-semibold",
         look.className,
-        size === "sm" ? "px-2.5 py-0.5 text-2xs" : "px-3 py-1 text-sm",
+        size === "sm" ? "text-2xs px-2.5 py-0.5" : "px-3 py-1 text-sm",
         className,
       )}
     >

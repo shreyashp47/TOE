@@ -44,7 +44,7 @@ function StaffScreen() {
   const [freshIds, setFreshIds] = useState<Set<string>>(new Set());
 
   // New-order alert: sound + vibration, once per unseen order id
-  // (requirements.md §5.3, theme doc §5 — not just a toast).
+  // (docs/requirements.md §5.3, docs/anime-theme.md §5 — not just a toast).
   useEffect(() => {
     if (ordersLoading) return;
 
@@ -60,10 +60,7 @@ function StaffScreen() {
     if (fresh.length === 0) return;
 
     setFreshIds(new Set(fresh.map((o) => o.id)));
-    const timer = setTimeout(
-      () => setFreshIds(new Set()),
-      4200,
-    );
+    const timer = setTimeout(() => setFreshIds(new Set()), 4200);
     chime();
     buzz();
     return () => clearTimeout(timer);
@@ -92,22 +89,19 @@ function StaffScreen() {
     [orders, tableFilter],
   );
 
-  const advance = useCallback(
-    async (order: Order, to: OrderStatus) => {
-      setBusyId(order.id);
-      try {
-        // Guard the transition client-side too; the Firestore rules are the
-        // real enforcement, this keeps the UI honest in demo mode.
-        if (!transition(order.status, to)) return;
-        const { loadBundle } = await import("@/lib/data");
-        const bundle = await loadBundle();
-        await bundle.orders.setStatus(order.id, to);
-      } finally {
-        setBusyId(null);
-      }
-    },
-    [],
-  );
+  const advance = useCallback(async (order: Order, to: OrderStatus) => {
+    setBusyId(order.id);
+    try {
+      // Guard the transition client-side too; the Firestore rules are the
+      // real enforcement, this keeps the UI honest in demo mode.
+      if (!transition(order.status, to)) return;
+      const { loadBundle } = await import("@/lib/data");
+      const bundle = await loadBundle();
+      await bundle.orders.setStatus(order.id, to);
+    } finally {
+      setBusyId(null);
+    }
+  }, []);
 
   if (loading) return <Loading label="Checking your badge…" />;
 
@@ -124,12 +118,12 @@ function StaffScreen() {
 
   return (
     <div className="min-h-svh pb-10">
-      <header className="safe-t sticky top-0 z-30 border-b-2 border-line-soft bg-cream/95 backdrop-blur">
+      <header className="safe-t border-line-soft bg-cream/95 sticky top-0 z-30 border-b-2 backdrop-blur">
         <div className="shell-wide flex items-center gap-2.5 py-2.5">
           <Mascot size={40} className="shrink-0" />
           <div className="min-w-0 flex-1">
             <h1 className="truncate text-lg leading-tight">Order board</h1>
-            <p className="truncate text-2xs font-semibold uppercase tracking-[0.12em] text-muted">
+            <p className="text-2xs text-muted truncate font-semibold tracking-[0.12em] uppercase">
               {getCafeName()} · {user.displayName}
               {user.role === "owner" ? " (owner)" : ""}
             </p>
@@ -139,10 +133,12 @@ function StaffScreen() {
             type="button"
             onClick={() => setMuted(!muted)}
             aria-pressed={muted}
-            aria-label={muted ? "Unmute new order sound" : "Mute new order sound"}
+            aria-label={
+              muted ? "Unmute new order sound" : "Mute new order sound"
+            }
             title={muted ? "Sound off" : "Sound on"}
             className={[
-              "grid size-11 shrink-0 place-items-center rounded-pill border-2 transition-colors",
+              "rounded-pill grid size-11 shrink-0 place-items-center border-2 transition-colors",
               muted
                 ? "border-line bg-tan text-muted"
                 : "border-primary bg-paper text-primary",
@@ -155,7 +151,7 @@ function StaffScreen() {
             <Link
               href="/admin"
               aria-label="Owner dashboard"
-              className="grid size-11 shrink-0 place-items-center rounded-pill border-2 border-primary bg-paper text-primary"
+              className="rounded-pill border-primary bg-paper text-primary grid size-11 shrink-0 place-items-center border-2"
             >
               <Icon name="chart" size={20} />
             </Link>
@@ -165,14 +161,14 @@ function StaffScreen() {
             type="button"
             onClick={() => void signOut()}
             aria-label="Sign out"
-            className="grid size-11 shrink-0 place-items-center rounded-pill border-2 border-line bg-paper text-muted"
+            className="rounded-pill border-line bg-paper text-muted grid size-11 shrink-0 place-items-center border-2"
           >
             <Icon name="logout" size={20} />
           </button>
         </div>
 
         {!armed && !muted ? (
-          <p className="shell-wide pb-2 text-2xs font-semibold text-secondary">
+          <p className="shell-wide text-2xs text-secondary pb-2 font-semibold">
             Tap anywhere to switch the order sound on.
           </p>
         ) : null}
@@ -184,7 +180,7 @@ function StaffScreen() {
         {error ? (
           <p
             role="alert"
-            className="mb-3 rounded-md border-2 border-berry bg-paper px-3 py-2 text-sm text-berry"
+            className="border-berry bg-paper text-berry mb-3 rounded-md border-2 px-3 py-2 text-sm"
           >
             Live updates dropped: {error.message}
           </p>
@@ -213,7 +209,9 @@ function StaffScreen() {
         ) : visible.length === 0 ? (
           <EmptyState
             mood="sleepy"
-            title={orders.length === 0 ? "All caught up" : "Nothing on that table"}
+            title={
+              orders.length === 0 ? "All caught up" : "Nothing on that table"
+            }
             body={
               orders.length === 0
                 ? "New orders appear here the moment a customer taps Place order."
@@ -253,7 +251,7 @@ function FilterChip({
       onClick={onClick}
       aria-pressed={active}
       className={[
-        "min-h-11 shrink-0 rounded-pill border-2 px-4 font-round text-sm transition-colors",
+        "rounded-pill font-round min-h-11 shrink-0 border-2 px-4 text-sm transition-colors",
         active
           ? "border-primary bg-primary text-on-dark"
           : "border-line bg-paper text-ink",
@@ -295,23 +293,25 @@ function OrderTicket({
         isFresh ? "animate-alert-flash border-berry" : "",
       ].join(" ")}
     >
-      <div className="flex items-center gap-3 border-b-2 border-line-soft px-3 py-2.5">
+      <div className="border-line-soft flex items-center gap-3 border-b-2 px-3 py-2.5">
         <div className="min-w-0 flex-1">
           <p className="flex items-baseline gap-1.5">
-            <span className="text-2xs font-semibold uppercase tracking-[0.12em] text-muted">
+            <span className="text-2xs text-muted font-semibold tracking-[0.12em] uppercase">
               Table
             </span>
-            <span className="font-round text-3xl leading-none text-primary">
+            <span className="font-round text-primary text-3xl leading-none">
               {order.tableNumber}
             </span>
-            <span className="tnum text-sm text-muted">#{order.orderNumber}</span>
+            <span className="tnum text-muted text-sm">
+              #{order.orderNumber}
+            </span>
           </p>
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1">
           <StatusBadge status={order.status} size="sm" />
           <span
             className={[
-              "tnum flex items-center gap-1 font-round text-sm",
+              "tnum font-round flex items-center gap-1 text-sm",
               urgent ? "text-berry" : warn ? "text-secondary" : "text-muted",
             ].join(" ")}
           >
@@ -321,19 +321,19 @@ function OrderTicket({
         </div>
       </div>
 
-      <ul className="flex-1 divide-y divide-line-soft">
+      <ul className="divide-line-soft flex-1 divide-y">
         {order.items.map((line) => (
           <li
             key={`${line.menuItemId}-${line.name}`}
             className="flex items-baseline gap-2 px-3 py-1.5"
           >
-            <span className="tnum w-7 shrink-0 font-round text-lg text-primary">
+            <span className="tnum font-round text-primary w-7 shrink-0 text-lg">
               {line.qty}×
             </span>
-            <span className="min-w-0 flex-1 text-[0.95rem] leading-snug text-ink">
+            <span className="text-ink min-w-0 flex-1 text-[0.95rem] leading-snug">
               {line.name}
             </span>
-            <span className="tnum shrink-0 text-sm text-muted">
+            <span className="tnum text-muted shrink-0 text-sm">
               {formatINR(lineSubtotal(line))}
             </span>
           </li>
@@ -341,18 +341,18 @@ function OrderTicket({
       </ul>
 
       {order.notes ? (
-        <p className="mx-3 mb-2 rounded-sm border-2 border-dashed border-line bg-tan/60 px-2.5 py-1.5 text-sm text-body">
+        <p className="border-line bg-tan/60 text-body mx-3 mb-2 rounded-sm border-2 border-dashed px-2.5 py-1.5 text-sm">
           <span className="font-semibold">Note:</span> {order.notes}
         </p>
       ) : null}
 
-      <div className="flex items-center justify-between gap-2 border-t-2 border-line-soft px-3 py-2">
-        <span className="tnum font-round text-lg text-ink">
+      <div className="border-line-soft flex items-center justify-between gap-2 border-t-2 px-3 py-2">
+        <span className="tnum font-round text-ink text-lg">
           {formatINR(order.total)}
         </span>
         <div className="flex flex-wrap justify-end gap-2">
           {actions.length === 0 ? (
-            <span className="text-sm text-muted">Closed</span>
+            <span className="text-muted text-sm">Closed</span>
           ) : (
             actions
               .slice()
@@ -386,7 +386,9 @@ function StaffLogin({
   isDemo: boolean;
   onFirstGesture: () => void;
 }) {
-  const [mode, setMode] = useState<"pin" | "password">(isDemo ? "pin" : "password");
+  const [mode, setMode] = useState<"pin" | "password">(
+    isDemo ? "pin" : "password",
+  );
   const [pin, setPin] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -420,13 +422,13 @@ function StaffLogin({
     <main className="relative flex min-h-svh flex-col items-center justify-center gap-4 px-5 py-10">
       <Mascot mood="worry" size={120} />
       <div className="text-center">
-        <h1 className="font-hand text-4xl text-primary">Staff only</h1>
-        <p className="text-sm text-muted">Counter view for {getCafeName()}</p>
+        <h1 className="font-hand text-primary text-4xl">Staff only</h1>
+        <p className="text-muted text-sm">Counter view for {getCafeName()}</p>
       </div>
 
       <form
         onSubmit={submit}
-        className="flex w-full max-w-sm flex-col gap-3 rounded-lg border-2 border-line bg-paper p-4 shadow-card"
+        className="border-line bg-paper shadow-card flex w-full max-w-sm flex-col gap-3 rounded-lg border-2 p-4"
       >
         {isDemo ? (
           <div className="flex gap-2">
@@ -440,7 +442,7 @@ function StaffLogin({
                 }}
                 aria-pressed={mode === m}
                 className={[
-                  "min-h-11 flex-1 rounded-pill border-2 font-round text-sm capitalize",
+                  "rounded-pill font-round min-h-11 flex-1 border-2 text-sm capitalize",
                   mode === m
                     ? "border-primary bg-primary text-on-dark"
                     : "border-line bg-cream text-ink",
@@ -454,7 +456,7 @@ function StaffLogin({
 
         {mode === "pin" ? (
           <label className="flex flex-col gap-1.5">
-            <span className="text-sm font-semibold text-ink">
+            <span className="text-ink text-sm font-semibold">
               Today&apos;s PIN
             </span>
             <input
@@ -464,33 +466,33 @@ function StaffLogin({
               maxLength={6}
               value={pin}
               onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))}
-              className="tnum min-h-14 rounded-sm border-2 border-line bg-cream-soft text-center font-round text-3xl tracking-[0.5em] text-ink focus:border-primary focus:outline-none"
+              className="tnum border-line bg-cream-soft font-round text-ink focus:border-primary min-h-14 rounded-sm border-2 text-center text-3xl tracking-[0.5em] focus:outline-none"
               placeholder="••••"
             />
           </label>
         ) : (
           <>
             <label className="flex flex-col gap-1.5">
-              <span className="text-sm font-semibold text-ink">Email</span>
+              <span className="text-ink text-sm font-semibold">Email</span>
               <input
                 type="email"
                 autoComplete="username"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="min-h-12 rounded-sm border-2 border-line bg-cream-soft px-3 text-ink focus:border-primary focus:outline-none"
+                className="border-line bg-cream-soft text-ink focus:border-primary min-h-12 rounded-sm border-2 px-3 focus:outline-none"
                 placeholder="staff@cafe.com"
               />
             </label>
             <label className="flex flex-col gap-1.5">
-              <span className="text-sm font-semibold text-ink">Password</span>
+              <span className="text-ink text-sm font-semibold">Password</span>
               <input
                 type="password"
                 autoComplete="current-password"
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="min-h-12 rounded-sm border-2 border-line bg-cream-soft px-3 text-ink focus:border-primary focus:outline-none"
+                className="border-line bg-cream-soft text-ink focus:border-primary min-h-12 rounded-sm border-2 px-3 focus:outline-none"
                 placeholder="••••••••"
               />
             </label>
@@ -498,7 +500,7 @@ function StaffLogin({
         )}
 
         {error ? (
-          <p role="alert" className="text-sm font-semibold text-berry">
+          <p role="alert" className="text-berry text-sm font-semibold">
             {error}
           </p>
         ) : null}
@@ -508,7 +510,7 @@ function StaffLogin({
         </Button>
 
         {isDemo ? (
-          <div className="rounded-sm border-2 border-dashed border-secondary/50 bg-highlight-soft/40 p-2.5 text-center text-2xs leading-relaxed text-primary-dark">
+          <div className="border-secondary/50 bg-highlight-soft/40 text-2xs text-primary-dark rounded-sm border-2 border-dashed p-2.5 text-center leading-relaxed">
             <p className="font-semibold">Demo accounts</p>
             <p className="tnum">
               PIN 1122 · staff@demo.cafe / cafe1122 · owner@demo.cafe / cafe1122
@@ -517,14 +519,14 @@ function StaffLogin({
               <button
                 type="button"
                 onClick={() => fillDemo("staff")}
-                className="min-h-9 rounded-pill border-2 border-secondary px-3 font-semibold"
+                className="rounded-pill border-secondary min-h-9 border-2 px-3 font-semibold"
               >
                 Fill staff
               </button>
               <button
                 type="button"
                 onClick={() => fillDemo("owner")}
-                className="min-h-9 rounded-pill border-2 border-secondary px-3 font-semibold"
+                className="rounded-pill border-secondary min-h-9 border-2 px-3 font-semibold"
               >
                 Fill owner
               </button>

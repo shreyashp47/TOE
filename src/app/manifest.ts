@@ -3,7 +3,7 @@ import type { MetadataRoute } from "next";
 import { getCafeName, getCafeTagline } from "@/lib/config";
 
 /**
- * Web app manifest (requirements.md §3, §7).
+ * Web app manifest (docs/requirements.md §3, §7).
  *
  * `start_url` is /staff because that is the screen the cafe actually installs to
  * its counter phone; the customer flow is reached by scanning a QR code and never

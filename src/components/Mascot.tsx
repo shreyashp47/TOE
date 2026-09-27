@@ -124,9 +124,7 @@ const MOOD: Record<
         />
       </>
     ),
-    mouth: (
-      <ellipse cx="60" cy="70" rx="4" ry="3.4" fill={EYE} />
-    ),
+    mouth: <ellipse cx="60" cy="70" rx="4" ry="3.4" fill={EYE} />,
   },
 };
 

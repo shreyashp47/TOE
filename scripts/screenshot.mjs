@@ -85,7 +85,10 @@ const routes = [
   ...known,
   ...only
     .filter((p) => !known.some((r) => r.path.split("?")[0] === p))
-    .map((p) => ({ path: p, name: p.replace(/\W+/g, "-").replace(/^-|-$/g, "") || "root" })),
+    .map((p) => ({
+      path: p,
+      name: p.replace(/\W+/g, "-").replace(/^-|-$/g, "") || "root",
+    })),
 ];
 
 const dev = process.env.BASE_URL ? null : startDev();
@@ -121,14 +124,16 @@ for (const vp of VIEWPORTS) {
       }
     });
     page.on("pageerror", (err) => {
-      consoleErrors.push(`[${route.name}/${vp.name}] pageerror: ${err.message}`);
+      consoleErrors.push(
+        `[${route.name}/${vp.name}] pageerror: ${err.message}`,
+      );
     });
 
-    if (route.auth) {
+    if (route.auth || route.name === "staff") {
       await page.goto(BASE, { waitUntil: "domcontentloaded" });
       await page.evaluate(
         ([key, value]) => localStorage.setItem(key, value),
-        [SESSION_KEY, JSON.stringify(DEMO_SESSION[route.auth])],
+        [SESSION_KEY, JSON.stringify(DEMO_SESSION[route.auth ?? "staff"])],
       );
     }
 
@@ -136,6 +141,16 @@ for (const vp of VIEWPORTS) {
       waitUntil: "networkidle",
       timeout: 45_000,
     });
+
+    // Fill the demo store with a sample month so the reports screen shows real
+    // figures. Done the way a user would: click the button it offers.
+    if (route.name === "reports") {
+      const seed = page.getByRole("button", { name: /Add a sample month/ });
+      await seed.waitFor({ state: "visible", timeout: 20_000 });
+      await seed.click();
+      await page.waitForTimeout(1500);
+    }
+
     await page.waitForTimeout(700);
 
     // Horizontal overflow is the #1 mobile-layout bug — assert it here.
@@ -150,7 +165,9 @@ for (const vp of VIEWPORTS) {
 
     const file = `${OUT}/${route.name}-${vp.name}.png`;
     await page.screenshot({ path: file, fullPage: vp.width < 768 });
-    console.log(`shot ${file}${overflow > 1 ? `  (OVERFLOW +${overflow}px)` : ""}`);
+    console.log(
+      `shot ${file}${overflow > 1 ? `  (OVERFLOW +${overflow}px)` : ""}`,
+    );
     await page.close();
   }
   await context.close();

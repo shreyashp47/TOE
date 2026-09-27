@@ -32,9 +32,7 @@ beforeEach(() => {
 describe("Mascot", () => {
   it("is labelled for screen readers", () => {
     render(<Mascot />);
-    expect(
-      screen.getByRole("img", { name: /mascot/i }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: /mascot/i })).toBeInTheDocument();
   });
 
   it("renders every mood", () => {
@@ -49,7 +47,10 @@ describe("Mascot", () => {
 describe("Icon", () => {
   it("is hidden from assistive tech unless given a title", () => {
     const { container, rerender } = render(<Icon name="cart" />);
-    expect(container.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
+    expect(container.querySelector("svg")).toHaveAttribute(
+      "aria-hidden",
+      "true",
+    );
 
     rerender(<Icon name="cart" title="Your order" />);
     expect(screen.getByRole("img", { name: "Your order" })).toBeInTheDocument();
@@ -70,7 +71,9 @@ describe("StatusBadge", () => {
 
   it("exposes the status to tests and CSS alike", () => {
     const { container } = render(<StatusBadge status="ready" />);
-    expect(container.querySelector("[data-status='ready']")).toBeInTheDocument();
+    expect(
+      container.querySelector("[data-status='ready']"),
+    ).toBeInTheDocument();
   });
 });
 
@@ -170,10 +173,18 @@ describe("cart maths in the UI", () => {
         ))}
         {lines[0] ? (
           <>
-            <Button onClick={() => dispatch({ type: "increment", menuItemId: lines[0].menuItemId })}>
+            <Button
+              onClick={() =>
+                dispatch({ type: "increment", menuItemId: lines[0].menuItemId })
+              }
+            >
               More
             </Button>
-            <Button onClick={() => dispatch({ type: "decrement", menuItemId: lines[0].menuItemId })}>
+            <Button
+              onClick={() =>
+                dispatch({ type: "decrement", menuItemId: lines[0].menuItemId })
+              }
+            >
               Less
             </Button>
           </>
@@ -183,8 +194,24 @@ describe("cart maths in the UI", () => {
   }
 
   const menu: MenuItem[] = [
-    { id: "m1", name: "Cappuccino", description: "", price: 180, category: "Drinks", available: true, sortOrder: 10 },
-    { id: "m2", name: "Scone", description: "", price: 160, category: "Bites", available: false, sortOrder: 20 },
+    {
+      id: "m1",
+      name: "Cappuccino",
+      description: "",
+      price: 180,
+      category: "Drinks",
+      available: true,
+      sortOrder: 10,
+    },
+    {
+      id: "m2",
+      name: "Scone",
+      description: "",
+      price: 160,
+      category: "Bites",
+      available: false,
+      sortOrder: 20,
+    },
   ];
 
   it("adds, steps up and down, and shows the running total", async () => {
@@ -286,7 +313,9 @@ describe("menu editing through the repository", () => {
     await demoMenuRepo.update(target.id, { available: false });
 
     await waitFor(() => {
-      expect(seen.at(-1)?.find((i) => i.id === target.id)?.available).toBe(false);
+      expect(seen.at(-1)?.find((i) => i.id === target.id)?.available).toBe(
+        false,
+      );
     });
     stop();
   });
@@ -298,7 +327,10 @@ describe("menu editing through the repository", () => {
     expect(cart).toHaveLength(1);
 
     await demoMenuRepo.update(target.id, { available: false });
-    cart = cartReducer(cart, { type: "reconcile", menu: await demoMenuRepo.list() });
+    cart = cartReducer(cart, {
+      type: "reconcile",
+      menu: await demoMenuRepo.list(),
+    });
     expect(cart).toHaveLength(0);
   });
 });
@@ -310,7 +342,9 @@ describe("order placement end to end (demo backend)", () => {
 
     const order = await demoOrderRepo.create({
       tableNumber: 5,
-      items: [{ menuItemId: line.id, name: line.name, qty: 2, price: line.price }],
+      items: [
+        { menuItemId: line.id, name: line.name, qty: 2, price: line.price },
+      ],
       total: line.price * 2,
     });
 
@@ -318,14 +352,22 @@ describe("order placement end to end (demo backend)", () => {
     expect(order.total).toBe(line.price * 2);
 
     const received: Order[][] = [];
-    const stop = demoOrderRepo.subscribeActive((orders) => received.push(orders));
+    const stop = demoOrderRepo.subscribeActive((orders) =>
+      received.push(orders),
+    );
     expect(received.at(-1)?.map((o) => o.id)).toContain(order.id);
     stop();
   });
 
   it("stores a per-table cart key that matches what the UI reads", () => {
     const lines: CartLine[] = [
-      { menuItemId: "m1", name: "Cappuccino", price: 180, qty: 1, category: "Drinks" },
+      {
+        menuItemId: "m1",
+        name: "Cappuccino",
+        price: 180,
+        qty: 1,
+        category: "Drinks",
+      },
     ];
     localStorage.setItem("cafe-qr-order.cart.v1.t7", JSON.stringify(lines));
     expect(readStoredCart(7)).toEqual(lines);
@@ -349,8 +391,12 @@ describe("accessible table markup", () => {
         </tbody>
       </table>,
     );
-    expect(screen.getByRole("columnheader", { name: "Item" })).toBeInTheDocument();
-    expect(screen.getByRole("rowheader", { name: "Cappuccino" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("columnheader", { name: "Item" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("rowheader", { name: "Cappuccino" }),
+    ).toBeInTheDocument();
   });
 
   it("groups a form control under its label", () => {

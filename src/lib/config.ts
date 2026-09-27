@@ -24,19 +24,18 @@ const firebaseKeysFilled = [
 ].every((value) => value.length > 0);
 
 /** Raw Firebase config, or `null` when the app should use the demo store. */
-export const firebaseConfig: Record<string, string> | null =
-  firebaseKeysFilled
-    ? {
-        apiKey: read(process.env.NEXT_PUBLIC_FIREBASE_API_KEY),
-        authDomain: read(process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN),
-        projectId: read(process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID),
-        storageBucket: read(process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET),
-        messagingSenderId: read(
-          process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-        ),
-        appId: read(process.env.NEXT_PUBLIC_FIREBASE_APP_ID),
-      }
-    : null;
+export const firebaseConfig: Record<string, string> | null = firebaseKeysFilled
+  ? {
+      apiKey: read(process.env.NEXT_PUBLIC_FIREBASE_API_KEY),
+      authDomain: read(process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN),
+      projectId: read(process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID),
+      storageBucket: read(process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET),
+      messagingSenderId: read(
+        process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+      ),
+      appId: read(process.env.NEXT_PUBLIC_FIREBASE_APP_ID),
+    }
+  : null;
 
 /**
  * True when no Firebase project is configured. The UI surfaces a small banner
@@ -64,7 +63,9 @@ export function getTableNumbers(): number[] {
     .split(",")
     .map((part) => Number.parseInt(part.trim(), 10))
     .filter((n) => Number.isInteger(n) && n > 0);
-  return parsed.length > 0 ? [...new Set(parsed)].sort((a, b) => a - b) : [1, 2, 3, 4, 5, 6];
+  return parsed.length > 0
+    ? [...new Set(parsed)].sort((a, b) => a - b)
+    : [1, 2, 3, 4, 5, 6];
 }
 
 /** Absolute base URL baked into printed QR codes, if the owner pinned one. */
