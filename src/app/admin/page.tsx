@@ -284,9 +284,17 @@ function AddItemCard({
   const [description, setDescription] = useState("");
   const [price, setPrice] = useState("");
   // null until the owner picks one: the menu loads after the first render, so
-  // the default has to follow it rather than be fixed at mount.
-  const [picked, setPicked] = useState<string | null>(null);
-  const category = picked ?? categories[0] ?? "";
+  // the default has to follow it rather than be fixed at mount. A picked
+  // category that has since left the menu (its last item moved or deleted)
+  // falls back to the default too, so the form never files an item under a
+  // category the select no longer shows.
+  const [picked, setPicked] = useState<{ name: string; isNew: boolean } | null>(
+    null,
+  );
+  const category =
+    picked && (picked.isNew || categories.includes(picked.name))
+      ? picked.name
+      : (categories[0] ?? "");
   // Remounts the picker after an add, so a just-created category shows as a
   // normal choice in the list instead of an open "new category" box.
   const [formKey, setFormKey] = useState(0);
@@ -322,7 +330,7 @@ function AddItemCard({
       setName("");
       setDescription("");
       setPrice("");
-      setPicked(category.trim());
+      setPicked({ name: category.trim(), isNew: false });
       setFormKey((k) => k + 1);
     } catch (err) {
       onError(err instanceof Error ? err.message : "Could not add that item.");
@@ -360,7 +368,7 @@ function AddItemCard({
             id="new-category"
             categories={categories}
             value={category}
-            onChange={setPicked}
+            onChange={(name, isNew) => setPicked({ name, isNew })}
           />
         </Field>
         <Field label="Short description" htmlFor="new-desc" hint="Optional.">

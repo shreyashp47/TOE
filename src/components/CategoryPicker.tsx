@@ -27,7 +27,8 @@ export function CategoryPicker({
   id: string;
   categories: string[];
   value: string;
-  onChange: (category: string) => void;
+  /** `isNew` is true while the owner is typing a category that isn't listed. */
+  onChange: (category: string, isNew: boolean) => void;
 }) {
   const [adding, setAdding] = useState(false);
   // An empty menu has nothing to pick from, so it can only be a new category.
@@ -38,7 +39,7 @@ export function CategoryPicker({
       id={categories.length === 0 ? id : `${id}-new`}
       aria-label={categories.length === 0 ? undefined : "New category name"}
       value={value}
-      onChange={(e) => onChange(e.target.value)}
+      onChange={(e) => onChange(e.target.value, true)}
       placeholder="Bakes"
       autoFocus={adding}
       required
@@ -55,10 +56,10 @@ export function CategoryPicker({
         onChange={(e) => {
           if (e.target.value === NEW) {
             setAdding(true);
-            onChange("");
+            onChange("", true);
           } else {
             setAdding(false);
-            onChange(e.target.value);
+            onChange(e.target.value, false);
           }
         }}
       >

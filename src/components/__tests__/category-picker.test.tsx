@@ -11,9 +11,15 @@ import { describe, expect, it } from "vitest";
 
 import { CategoryPicker } from "@/components/CategoryPicker";
 
+// Mirrors how the add-item form derives its category from the picker.
 function Harness({ categories }: { categories: string[] }) {
-  const [picked, setPicked] = useState<string | null>(null);
-  const value = picked ?? categories[0] ?? "";
+  const [picked, setPicked] = useState<{ name: string; isNew: boolean } | null>(
+    null,
+  );
+  const value =
+    picked && (picked.isNew || categories.includes(picked.name))
+      ? picked.name
+      : (categories[0] ?? "");
   return (
     <>
       <label htmlFor="cat">Category</label>
@@ -21,7 +27,7 @@ function Harness({ categories }: { categories: string[] }) {
         id="cat"
         categories={categories}
         value={value}
-        onChange={setPicked}
+        onChange={(name, isNew) => setPicked({ name, isNew })}
       />
       <output data-testid="value">{value}</output>
     </>
@@ -78,5 +84,14 @@ describe("CategoryPicker", () => {
     expect(input.tagName).toBe("INPUT");
     await user.type(input, "Drinks");
     expect(screen.getByTestId("value")).toHaveTextContent("Drinks");
+  });
+
+  it("falls back to the first category when the picked one leaves the menu", async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(<Harness categories={CATEGORIES} />);
+    await user.selectOptions(screen.getByLabelText("Category"), "Tea");
+    rerender(<Harness categories={["Bakes", "Coffee"]} />);
+    expect(screen.getByLabelText("Category")).toHaveValue("Bakes");
+    expect(screen.getByTestId("value")).toHaveTextContent("Bakes");
   });
 });
