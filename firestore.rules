@@ -279,11 +279,13 @@ service cloud.firestore {
     match /tableKeys/{table} {
       allow read: if isOwner();
       allow create, update: if isOwner()
-        && table.matches("^[1-9][0-9]?$")
+        // Tables are 1..50, as on an order; letters and digits only, which is
+        // all the app generates and all the order page accepts from a QR code.
+        // Anything else would be a code no printed card could ever carry.
+        && table.matches("^([1-9]|[1-4][0-9]|50)$")
         && request.resource.data.keys().hasOnly(["key"])
         && request.resource.data.key is string
-        && request.resource.data.key.size() >= 10
-        && request.resource.data.key.size() <= 64;
+        && request.resource.data.key.matches("^[A-Za-z0-9]{10,64}$");
       allow delete: if isOwner();
     }
 

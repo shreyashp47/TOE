@@ -1085,6 +1085,16 @@ await t(
   ),
 );
 await t(
+  "the owner cannot file a code for a table above 50",
+  denied(() =>
+    setDoc(doc(ownerC.db, "tableKeys", "51"), { key: "Code123456" }),
+  ),
+);
+await t(
+  "the owner cannot save a code a QR link could not carry",
+  denied(() => setDoc(keyDoc(ownerC, 42), { key: "Fresh Code 42" })),
+);
+await t(
   "the owner can delete a code, reopening the table",
   allowed(async () => {
     await deleteDoc(keyDoc(ownerC, 42));
