@@ -537,8 +537,71 @@ one.** Plus order size caps in the rules, and a staff **Reject** (a terminal
 - **Expiry (added later):** the phone keeps a scanned code for 3 hours
   (`TABLE_CODE_TTL_MS`) and `/order` removes `k` from the address at once, so
   a past visit, a bookmark or a shared link no longer orders from home. A photo
-  of the card still works until _New code_. Part 2, staff confirming new guests
-  at a table marked closed, is coming separately.
+  of the card still works until _New code_; for that, staff can confirm new
+  guests: see
+  [Staff confirm new guests](#staff-confirm-new-guests-open-tables-not-location)
+  below.
 - **Caps** (20 lines, 20 of each, ₹10,000) check the first and last line only:
   the rules cannot loop. The total cap, the board's re-derived totals and
   Reject cover a doctored middle line.
+
+### Staff confirm new guests: open tables, not location
+
+Table codes stop a typed-in address, but not someone who visited once or
+photographed a card: the link works from home. Nothing a static site on the
+free plan can check tells "at table 4" from "has table 4's link". A person at
+the counter can, by looking.
+
+**Decision: a table's first order waits (`pending`) until staff accept it.
+Accept opens the table (`tableSessions/{n} = { openUntil }`); the rules take a
+`preparing` order only while `openUntil > request.time`.** `pending` is always
+allowed, with every other check (code, caps, throttle). The phone reads the
+table and the setting (both public: whether a table is open is harmless) and
+picks the status the rules will take; if `preparing` is refused because the
+table closed a moment earlier, it retries once as `pending`.
+
+- **Cost:** one tap per new group, and two extra document reads per order
+  (the table's session, and `config/ordering` when the table is closed). The
+  board listens to `tableSessions`, at most one small document per table.
+- **Closing:** by time, with no writes: `openUntil` passes. Accept sets it to
+  now + 3h. Staff moving an open table's order to preparing, ready or served
+  push it to now + 3h in the same commit — so a table closes 3 hours after the
+  last thing staff did for it. Completing or rejecting does not extend it
+  (completing is usually the group paying), and nothing reopens a table that
+  has closed, so **Close** (`openUntil = request.time`) sticks. The rules
+  allow staff to set `openUntil` anywhere in `[request.time, request.time +
+4h]` and nothing else: the extra hour covers a tablet with a fast clock, and
+  the ceiling bounds how long a leaked link can skip the check without a
+  person doing something. Staff-set times use the tablet's clock (only Close
+  uses the server's), so a tablet more than an hour fast cannot open tables.
+- **Not a sale:** `pending` is on the board but not kitchen work, and reports
+  leave it out of revenue like `rejected`. It has one way on (Accept →
+  `preparing`) and can be rejected; nothing goes back to it.
+- **Switch:** `config/ordering { confirmNewGuests }`, owner-only, shape-checked.
+  **A missing document means ON**, so the protection is the default — which
+  also means the deploy that introduces it changes behaviour at once: every
+  table starts closed, and the first order from each table after the deploy
+  waits for Accept. That is intended; the owner can switch it off.
+- **Deploying it:** the new pages work with the old rules (a refused
+  `pending` is retried once as `preparing`, which the old rules take and the
+  new ones refuse on a closed table), so rules and Hosting can go out in either
+  order. An **old page** still open on a phone always sends `preparing`, which
+  the new rules refuse on a closed table, and it then says the link has
+  expired. There is no way to let it through in the rules without reopening
+  the hole, so the answer is a reload: the counter tablet should reload after
+  the deploy (the app offers _Reload_), and a customer rescanning gets the new
+  page anyway (pages are served `no-cache`).
+- **Day numbers wait for Accept.** The board numbers every order it sees
+  except a `pending` one, and the rules refuse to number an order while it is
+  `pending`. So a waiting order has no number, and gets the next one the
+  moment staff accept it (numbering stays its own update, after the Accept).
+  Numbering it on arrival was the alternative; it was rejected because the
+  orders turned away here are mostly strangers', and each would leave a gap
+  in the day's list — and a link passed around outside could burn through
+  the day's 9,999. The cost: a new guest's number follows orders that were
+  accepted before it, not the minute it was placed, and the waiting screen
+  shows no number (it never shows a stand-in either). Reject a waiting order
+  and it simply never gets one.
+- **Limits:** while a table is open (a group is sitting there), a leaked link
+  for it also goes straight to the kitchen; staff Close the table when the
+  group leaves to shorten that window.

@@ -50,20 +50,28 @@ except adding a new barista's account.
 - **The counter phone** — open **toe-cafe.web.app/staff** and sign in. New orders appear on their
   own, oldest first, with a wait timer, a chime and a vibration. Browsers only
   allow sound after a tap, so tap the screen once at the start of a shift (the
-  board says so until you do). New orders arrive already marked
-  _Preparing_; move each one along with its button: _Mark ready → Mark served →
-  Complete_. A ticket whose total does not
+  board says so until you do). A table's **first order** lands in **New guests
+  — check the table** at the top of the board: look at that table, and if
+  someone is sitting there tap **Accept** (it goes to the kitchen), otherwise
+  **Reject** (_No one at this table_ is already picked). Accepting opens the
+  table, shown under **Open tables** with its time left: its next orders go
+  straight to _Preparing_ for 3 hours after the last thing you did for that
+  table. Tap **Close** on a table when the group leaves, so the next person
+  with its link waits for you again. Kitchen orders move along with their
+  button: _Mark ready → Mark served → Complete_. A ticket whose total does not
   match the menu is flagged in red — check it before taking payment. A prank or
-  duplicate order can be turned away with **Reject** (while _Preparing_ or
-  _Ready_): the ticket asks to confirm, offers a quick reason, then leaves the
+  duplicate order can be turned away with **Reject** (while waiting, _Preparing_
+  or _Ready_): the ticket asks to confirm, offers a quick reason, then leaves the
   board, and the customer's phone says the counter couldn't accept it.
   Rejected orders are not counted in the reports.
 - **Order numbers** start again at **#0001** every day (midnight, India time)
   and count up in the order orders arrive. The order board hands them out, so
   keep it open during service: an order that arrives while no board is open
   gets its number the moment one opens (the customer's phone says "number
-  coming…" meanwhile). A rejected order keeps its number, so the day's list can
-  have gaps. Orders from before daily numbers keep their old three-digit number.
+  coming…" meanwhile). A new guest's first order gets its number when you
+  **Accept** it, not before, so one you reject never uses a number. Any other
+  rejected order keeps its number, so the day's list can have gaps. Orders
+  from before daily numbers keep their old three-digit number.
 - **The owner** signs in on the same `/staff` page and goes straight to the owner
   dashboard. An **Orders | Owner** switch at the top moves between the dashboard
   and the order board; baristas never see it.
@@ -81,7 +89,9 @@ except adding a new barista's account.
   carries its table's secret code, and orders without it are turned away (see
   [Orders from outside the cafe](#orders-from-outside-the-cafe)). A card never
   needs reprinting after a menu or price change; only after **New code** for
-  that table.
+  that table. The same page has **Confirm new guests before orders reach the
+  kitchen**, on unless you switch it off; see
+  [Orders from outside the cafe](#orders-from-outside-the-cafe).
 - **Reports** — _Reports_ (`/admin/reports`) shows revenue, order count, average
   order, revenue by day and best sellers for a month or a custom range, with a
   CSV export. Group the CSV by _Order ID_, not _Order #_: order numbers start
@@ -581,7 +591,7 @@ fails if they disagree.
 
 Ordering is pay-at-the-counter, and the order page used to need nothing but a
 table number, so anyone who had seen the address could order for table 2 from
-home. Three things now stand in the way, all in `firestore.rules`, so they work
+home. Four things now stand in the way, all in `firestore.rules`, so they work
 on the free plan:
 
 - **A secret code per table.** _Create codes for all tables_ on `/admin/qr`
@@ -595,6 +605,20 @@ on the free plan:
   expired — please scan the QR code on your table."_ If a card is photographed
   or goes missing, press **New code** on that table's card and reprint it; the
   old card stops working at once.
+- **Staff confirm new guests.** A table's first order arrives as _Waiting for
+  the counter_ (`pending`) in its own section of the board, and the customer's
+  phone says _"Waiting for the counter to confirm your table"_. Staff glance at
+  the table and tap **Accept** — the order goes to the kitchen and the table
+  opens (`tableSessions/{table}`) — or **Reject**. While a table is open its
+  orders skip the wait; it closes by itself 3 hours after staff last accepted
+  or moved on one of its orders, or at once with **Close** on the board. The
+  rules refuse a straight-to-the-kitchen order on a closed table, so a phone
+  cannot skip the step. The cost is one tap per new group. The owner can switch
+  it off on `/admin/qr` (**Confirm new guests before orders reach the
+  kitchen**); it is **on by default**, including straight after the deploy
+  that introduces it, when every table starts closed. After that deploy,
+  reload the counter tablet: a page from before it cannot accept guests, and
+  an old customer page is refused on a closed table until it reloads.
 - **Size caps:** at most 20 different items, 20 of each, and ₹10,000 per order.
 - **Reject** on the staff board, for whatever still gets through.
 
@@ -603,8 +627,12 @@ code takes orders without one, so old cards keep working. After creating codes,
 put the new cards out straight away — the old ones stop working. A table added
 later gets a code automatically once codes are in use.
 
-What it does not stop: someone who photographs a card can order for that table
-from anywhere until its code is renewed. The code is also stored on each order,
+What it does not stop: someone who photographs a card can still send an order
+for that table from anywhere — but while the table is closed it only reaches
+the counter's _New guests_ list, where nobody at the table means **Reject**; and
+while it is open (a group is sitting there) it goes to the kitchen, until the
+table is closed or its code renewed. Waiting orders are not counted in the
+reports. The code is also stored on each order,
 where staff can see it. See [docs/decisions.md](./docs/decisions.md#table-codes-in-the-qr-card-not-location-or-wifi).
 
 ---

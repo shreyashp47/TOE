@@ -21,6 +21,19 @@ Work that is built but not yet merged is tracked in
   Older orders keep their three-digit number
 - A _Placed (IST)_ column in the orders CSV, beside the UTC _Placed at_, so the
   date an order's day number counts in is readable without converting
+- **Staff confirm new guests.** A table's first order waits as _Waiting for
+  the counter_ (`pending`) in a **New guests — check the table** section at the
+  top of the staff board, with a chime. **Accept** sends it to the kitchen and
+  opens the table (`tableSessions/{n}`), so the group's next orders skip the
+  wait; **Reject** suggests _No one at this table_. Tables close by themselves
+  3 hours after staff last accepted or moved on one of their orders, or with
+  **Close** in the board's new **Open tables** strip. The customer's phone
+  says _"Waiting for the counter to confirm your table"_ and moves on by
+  itself. The rules only take a straight-to-the-kitchen order from an open
+  table. The owner can switch this off on _/admin/qr_ (**Confirm new guests
+  before orders reach the kitchen**, stored in `config/ordering`); it is on by
+  default. Waiting orders are left out of report revenue, and get their day
+  number only once accepted, so a turned-away order never uses one up
 
 - A secret code per table, carried in its QR card (`/order?table=N&k=CODE`)
   and checked by the order rules, so an order can no longer be placed from
