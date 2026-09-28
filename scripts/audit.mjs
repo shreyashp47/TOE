@@ -12,9 +12,14 @@
  * Fails on: any console error, any horizontal overflow, any WCAG A/AA violation,
  * and any route that fails to render in WebKit.
  *
- *   node scripts/audit.mjs
- *   node scripts/audit.mjs --engine=webkit      # iOS/Safari only
- *   BASE_URL=https://x.web.app node scripts/...  # against a deployed build
+ *   npm run audit                          # this script; NOT `npm audit`
+ *   npm run audit -- --engine=webkit       # iOS/Safari only
+ *   BASE_URL=http://127.0.0.1:4320 npm run audit   # against `npm run preview`
+ *
+ * Starts `next dev` unless BASE_URL is set; CI points it at the served build.
+ * Staff and owner screens are reached by planting a demo-mode session in
+ * localStorage, so against a Firebase-configured build (the live site) they
+ * only show the sign-in screen. Needs `npx playwright install chromium webkit`.
  */
 import { mkdir, rm } from "node:fs/promises";
 import { spawn } from "node:child_process";

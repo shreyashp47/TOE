@@ -34,6 +34,7 @@ body:
       label: Screen
       multiple: true
       options:
+        - Table picker (home page)
         - Customer menu / cart
         - Order confirmation
         - Staff board

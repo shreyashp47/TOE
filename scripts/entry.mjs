@@ -11,8 +11,11 @@
  * This script drives each entry separately and prints what actually rendered, so
  * a difference between two ways in is obvious rather than inferred.
  *
- *   node scripts/entry.mjs                  # spawns `next dev`
- *   BASE_URL=https://toe-cafe.web.app node scripts/entry.mjs
+ *   npm run test:entry                       # spawns `next dev`
+ *   BASE_URL=https://toe-cafe.web.app npm run test:entry
+ *
+ * Read-only: it navigates and reads the page, and never places an order, so
+ * pointing it at the live site is safe. CI runs it against the built `out/`.
  */
 import { spawn } from "node:child_process";
 import process from "node:process";

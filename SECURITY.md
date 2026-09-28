@@ -1,92 +1,143 @@
 # Security policy
 
+TOE Cafe runs at <https://toe-cafe.web.app>, a Firebase Hosting site in the
+Firebase project `toi-cafe`. <https://toi-cafe.web.app> only redirects there.
+There is one supported version: whatever is on `main`, which is what is live.
+
 ## Reporting a vulnerability
 
-Please **do not open a public issue** for a security problem.
+Please **do not open a public issue, pull request or discussion** with the
+details of a security problem.
 
-Email the maintainer, or use GitHub's private reporting on the Security tab of
-the repository. Include what you found, how to reproduce it, and the impact you
-believe it has.
+Report it privately to the maintainer, [@shreyashp47](https://github.com/shreyashp47):
 
-You can expect an acknowledgement within a few days.
+- If the repository's **Security** tab offers _Report a vulnerability_, use
+  that. It keeps the report private until a fix ships.
+- If it does not, open an issue titled "Security contact request" with **no
+  details**, and the maintainer will reply with a private channel.
 
-## What this project handles
+Include what you found, how to reproduce it, and the impact you believe it has.
+You can expect an acknowledgement within a few days. This is a one-maintainer
+project for one cafe, so there is no bug bounty.
 
-Worth knowing when judging severity:
+Please test against your own Firebase project or the local emulators
+(README, "Going live with Firebase"; `npm run test:rules` shows how the rules
+are exercised), not against the live site. The live order book is a real cafe's
+counter during service: don't place fake orders there, and don't script
+requests against it.
 
-- **Unauthenticated writes.** Customers place orders with no login, by design
-  (`docs/requirements.md` §3). Anything reachable without a session is in scope
-  for a hostile user, not just a careless one.
-- **Money.** `src/lib/money.ts` re-prices every basket against the live menu, and
-  `firestore.rules` type-checks and bounds the total. But the rules language cannot
-  recompute a total (no loops, no lambdas), so a tampered client **can** post a
-  false `total` and have it accepted. The staff board re-derives every order from
-  its lines and the live menu and flags a mismatch before payment
-  (`src/lib/order-integrity.ts`) — detection at the counter, not prevention in
-  the database. A bug in the pricing maths, in that check, or a report built on a
-  forged total, is high severity.
-- **Staff and owner accounts.** Email + password via Firebase Authentication,
-  with the role read from `/staff/{uid}` and enforced by `firestore.rules`.
-  A privilege-escalation path from `staff` to `owner` is high severity.
-- **Owner scripts.** `npm run seed:staff` and `npm run cleanup:orders` run on the
-  owner's own machine with the OAuth token from their `firebase login`, so they
-  act as the project's owner over IAM and `firestore.rules` does not apply to
-  them. They are only as safe as that laptop's login. Nothing in them ships to a
-  browser, and they store neither a credential nor a generated password.
-  `cleanup:orders` is a dry run unless given `--confirm`, and refuses to delete
-  anything under six months old.
-- **Anonymous customers.** A customer signs in anonymously and the order rules
-  scope reads to `resource.data.customerUid == request.auth.uid`. So the customer
-  read path is a real security boundary: any change that makes `isStaff()` true
-  for an anonymous user exposes the entire order book. Membership is by presence
-  of a `/staff/{uid}` document, so the default is closed.
-- **Customer order history.** Kept in `localStorage` per table, never synced. Not
-  sensitive in the way a customer account would be, but it is still somebody's
-  order.
+## Scope
 
-## What is already handled
+**In scope**, roughly in order of how much it matters:
 
-- Public users can **create** orders and **read** the menu. Nothing else, apart
-  from the throttle stamp on their own `/orderThrottle/{uid}` that must accompany
-  each order (below). See `firestore.rules`. (Until issue #30 there was one more thing: a
-  world-writable `/meta/counters` order counter. It is gone; the display number
-  is derived from the order id, and `/meta` is denied to everyone.)
-- `status` is pinned to `preparing` on create, `createdAt` is required to equal
-  `request.time` so a phone cannot backdate an order out of a reporting month, and
-  the document is restricted to an exact field set.
-- Status transitions are enumerated in the rules, so a staff account cannot skip a
-  state or edit a price after the order is placed.
-- **Not handled:** the order `total` is client-supplied and is not re-derived
-  server-side. It is re-derived on the staff board, and a mismatch is flagged
-  there, but the forged figure is still stored. See the money bullet above — this
-  is a known gap, tracked in issue #27, whose real fix needs the Blaze plan.
-- Order creation is throttled to **one order per anonymous uid per 30 seconds**.
-  The order must be written in the same batch as a stamp on
-  `/orderThrottle/{uid}` naming that order, and the rules refuse the stamp inside
-  the gap. The stamp cannot be deleted, backdated, or written for somebody
-  else's uid, and one stamp cannot carry two orders.
-- **Not handled:** a script that mints a fresh anonymous uid for every order is
-  only slowed by Firebase Auth's per-IP limit on new accounts, not stopped. The
-  purpose-built fix is Firebase App Check, which needs the Blaze plan and is not
-  enabled. A bypass of the per-uid throttle that does not involve minting new
-  uids is in scope.
-- Completed orders are immutable, so history cannot be rewritten.
-- The Firebase SDK is never loaded unless the Firebase env block is set, and it
-  is never used to hold a secret — the config values are public by design.
-- `dependencies` are covered by Dependabot, and CI fails on lint, typecheck,
-  tests and a production build.
+- Any way around `firestore.rules`: reading someone else's order, listing the
+  order book without a `/staff/{uid}` document, editing or deleting an order,
+  skipping or reversing a status, writing the menu, `config` or `/staff`
+  without an owner account, or getting a malformed `config/tables` past its
+  shape check.
+- Privilege escalation: an anonymous customer treated as staff, or `staff`
+  becoming `owner`.
+- Bypassing the order throttle (one order per anonymous uid per 30 seconds)
+  **without** minting a new anonymous uid for each order.
+- Script injection (XSS) through anything a customer or owner can type: order
+  notes, menu names and descriptions, the table list, or a crafted `/order` URL.
+- Bugs in the pricing maths or in the staff board's integrity check
+  (`src/lib/order-integrity.ts`) that let a wrong total through **unflagged**.
+- A secret committed to the repository, or a way for a pull request to reach
+  the deploy credentials in `.github/workflows/`.
+
+**Out of scope**, because they are public by design or already known:
+
+- **The Firebase web config.** The `NEXT_PUBLIC_FIREBASE_*` values (API key,
+  project id, app id and so on) ship in every page's JavaScript. They identify
+  the project; they grant nothing. `firestore.rules` is what protects the data.
+- **A forged order total being stored** (issue #27). The rules language cannot
+  sum a list, so a tampered client can post any bounded total. The staff board
+  re-derives every order from its lines and the live menu and flags the
+  mismatch before payment. A real fix needs a server-side function on the Blaze
+  plan.
+- **Throttle bypass by signing in anonymously again** for each order. Firebase
+  Auth's per-IP limit on new accounts slows this; stopping it needs App Check,
+  which needs the Blaze plan.
+- **Demo mode.** With no Firebase config, the app stores everything in the
+  visitor's own `localStorage` and the staff PIN (`1122` by default) is in the
+  source. It is a local sandbox, not a security boundary, and the live site
+  does not run in it.
+- Volumetric denial of service, spam, social engineering, and vulnerabilities in
+  Firebase or Google Cloud themselves (report those to Google).
+- Missing hardening headers or best-practice findings with no working exploit.
+
+## What protects what
+
+- **Customers** place orders with no login, by design (`docs/requirements.md`
+  §3). Each one signs in anonymously so the rules can let them `get` their own
+  order (`customerUid == request.auth.uid`) and nothing else. They can read the
+  menu and `config`, and create orders.
+- **Order creation** is the only public write, and the rule is written to be
+  hostile: an exact field set, `status` pinned to `preparing`, `createdAt` equal
+  to `request.time` (no backdating out of a report month), table 1–50, bounded
+  item count, quantity and total. It must be written in the same batch as a
+  stamp on `/orderThrottle/{uid}` naming that order, and the rules refuse the
+  stamp within 30 seconds of the previous one. The stamp cannot be deleted,
+  backdated, or written for another uid, and one stamp cannot carry two orders.
+- **Staff and owners** sign in with email and password. Staff membership is the
+  presence of a `/staff/{uid}` document, so the default is closed; the role in
+  that document decides `staff` or `owner`. Staff can list orders and advance
+  the status one legal step at a time, changing only `status` and
+  `completedAt`. Completed orders cannot change. Only owners write the menu,
+  `config`, and `/staff`, and delete orders.
+- **The table list** (`config/tables`, saved on `/admin/qr`) is owner-only and
+  shape-checked: only a `tables` field, 1–50 entries, first and last entries
+  whole numbers 1–50. The client also drops any entry outside 1–50 when it
+  reads the list (`normalizeTables` in `src/lib/tables.ts`).
+- **The old `/meta/counters` document** is gone (issue #30). Order numbers are
+  derived from the order id, and `/meta`, like every path not listed in the
+  rules, is denied to everyone.
+- **The Firebase SDK** is only loaded when the Firebase config is set, and it
+  never holds a secret.
+
+## Secrets that do matter
+
+- **`FIREBASE_SERVICE_ACCOUNT`**, the deploy key stored as a GitHub Actions
+  secret for `.github/workflows/deploy.yml`. It can deploy Hosting and Firestore
+  rules, so whoever holds it can effectively rewrite the rules and open the
+  whole database. It is only used by the deploy workflow, which runs on `main`
+  after CI passes (never for a pull request), in the `production` environment.
+  Never commit it or keep a local copy. Rotate it by adding a new key in the
+  Google Cloud console, setting the secret again, and deleting the old key.
+- **The owner's `firebase login`.** `npm run seed:staff` and
+  `npm run cleanup:orders` run on the owner's machine with the token that login
+  stored, act as a project owner or editor over IAM, and bypass
+  `firestore.rules`. They are only as safe as that laptop. Neither stores a
+  credential or a generated password. `cleanup:orders` is a dry run unless given
+  `--confirm`, and refuses to delete anything under six months old.
+- **Staff and owner passwords.** `seed:staff` prints a generated password once
+  and saves it nowhere.
+
+## Keeping it that way
+
+- CI attacks the rules on every pull request (`scripts/rules-test.mjs` against
+  the emulators), alongside lint, typecheck, unit tests and a production build.
+  Nothing deploys unless the whole CI workflow passed on `main`.
+- Dependabot opens weekly dependency updates, and GitHub raises security
+  updates regardless.
+- Rules and hosting deploy in one command, so the app and the rules it was
+  tested against go live together.
 
 ## Deployment notes for the owner
 
-The one thing that is easy to get wrong: **`firebase deploy --only
-firestore:rules,firestore:indexes`**. A Firestore database left in test mode
-lets anyone who knows the project id read and write everything, which for this
-app means reading other people's orders and writing their own at any price.
-
-If you have deployed, confirm it took effect:
+The one thing that is easy to get wrong: **deploy the rules**. A Firestore
+database left in test mode lets anyone who knows the project id read and write
+everything, which for this app means reading other people's orders and writing
+their own at any price. The automatic deploy includes the rules; by hand it is:
 
 ```bash
-firebase firestore:databases:get-default
+npm run build && firebase deploy --only firestore:rules,hosting
 ```
 
-and check that the rules in the console match `firestore.rules` in this repo.
+Add `firestore:indexes` to `--only` when `firestore.indexes.json` changes; the
+automatic deploy does not deploy indexes.
+
+To confirm the rules took effect, open **Firestore → Rules** in the Firebase
+console for `toi-cafe` and check they match `firestore.rules` on `main`, with
+the latest publish time matching the deploy.

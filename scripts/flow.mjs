@@ -6,7 +6,12 @@
  * Runs against `next dev` (or BASE_URL) in demo mode, where "live" is
  * localStorage + BroadcastChannel. Also fails on any console error.
  *
- *   node scripts/flow.mjs
+ *   npm run flow                 # same as: node scripts/flow.mjs
+ *
+ * DEMO MODE ONLY. It signs in to the staff board with the demo PIN and places a
+ * real order, so never set BASE_URL to the live site (toe-cafe.web.app), and
+ * move a .env.local with real Firebase keys aside first: the `next dev` this
+ * starts reads it, and the order would land in the real project.
  */
 import { mkdir, rm } from "node:fs/promises";
 import { spawn } from "node:child_process";

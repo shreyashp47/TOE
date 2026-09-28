@@ -21,6 +21,14 @@
  *
  *   npm run emulators            # terminal 1
  *   npm run test:rules           # terminal 2
+ *
+ * or in one command, which starts and stops the emulators itself:
+ *
+ *   firebase emulators:exec --only auth,firestore --project demo-cafe "npm run test:rules"
+ *
+ * The emulators need Java 21+. The project id defaults to demo-cafe
+ * (FIRESTORE_EMULATOR_PROJECT overrides it); a demo- project cannot reach any
+ * real Firebase project. CI runs this on every pull request.
  */
 import { initializeApp, deleteApp } from "firebase/app";
 import {
