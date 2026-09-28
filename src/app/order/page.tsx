@@ -16,6 +16,7 @@ import {
   useIsDemo,
   useMenu,
   useSpecialOffer,
+  useTables,
 } from "@/components/providers/DataProvider";
 import { Button } from "@/components/ui/Button";
 import { EmptyState, Loading } from "@/components/ui/Loading";
@@ -25,7 +26,7 @@ import { useCart } from "@/hooks/useCart";
 import { useTableQuery } from "@/hooks/useTableQuery";
 import { getCafeName, getCafeTagline } from "@/lib/config";
 import { formatINR, lineSubtotal, priceCart } from "@/lib/money";
-import { getTableNumbers, orderHref } from "@/lib/tables";
+import { orderHref } from "@/lib/tables";
 import type { MenuItem } from "@/lib/types";
 
 export default function OrderPage() {
@@ -46,23 +47,33 @@ export default function OrderPage() {
 
 function OrderScreen() {
   const { ready, tableNumber, raw } = useTableQuery();
-  const known = getTableNumbers();
+  // The owner's live table list (config/tables), or the env default until one
+  // is saved. Wait for it rather than judging the URL against the default: a
+  // QR code for table 9 is valid in a cafe that saved 1..12, and must not be
+  // flashed "that table number looks odd" while the list is on its way.
+  const { tables: known, loading } = useTables();
 
-  if (!ready) return <Loading label="Finding your table…" />;
-  if (tableNumber === null) return <TablePicker query={raw} />;
+  if (!ready || loading) return <Loading label="Finding your table…" />;
+  if (tableNumber === null) return <TablePicker query={raw} tables={known} />;
   // A number that parses but is not a table this cafe has. Reachable by editing
   // the URL, or by scanning a QR code left over from a table that has since been
   // removed. Worth catching here rather than at checkout: the rules accept
   // tableNumber 1..50 while the parser accepts 1..999, so without this the
   // customer builds a whole basket and is refused by Firestore at the last step,
   // with an error about a number they never chose.
-  if (!known.includes(tableNumber)) return <TablePicker query={raw} />;
+  if (!known.includes(tableNumber))
+    return <TablePicker query={raw} tables={known} />;
 
   return <MenuScreen tableNumber={tableNumber} />;
 }
 
-function TablePicker({ query }: { query: string | null }) {
-  const tables = getTableNumbers();
+function TablePicker({
+  query,
+  tables,
+}: {
+  query: string | null;
+  tables: number[];
+}) {
   return (
     <main className="relative mx-auto flex min-h-svh max-w-md flex-col items-center justify-center gap-5 px-5 py-10 text-center">
       <Doodles />
