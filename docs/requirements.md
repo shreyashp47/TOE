@@ -81,6 +81,11 @@ A minimal-infrastructure web-based ordering system for a small cafe (6–10 tabl
 - One static QR code per table, encoding table number in the URL
 - Generated once, printed, placed on table — no dynamic regeneration needed
 
+> **As built:** the owner sets which tables exist on `/admin/qr` (saved in
+> Firestore, `config/tables`), and the cards, the customer's table picker and the
+> check on a scanned number all follow that list — no rebuild to add a table. See
+> [decisions](./decisions.md#the-table-list-lives-in-firestore-with-the-env-var-as-the-default).
+
 ## 6. Non-Functional Requirements
 
 - **Cost:** Free tier hosting, database, and domain (subdomain); only optional cost is a custom domain (~₹500–800/year)
@@ -125,6 +130,12 @@ A minimal-infrastructure web-based ordering system for a small cafe (6–10 tabl
 /staff/{userId}   (Phase 2, if role-based access needed)
   - name, role
 ```
+
+> **As built:** `/staff/{userId}` was needed from v1 (owner vs. staff). The
+> status field follows `received → preparing → ready → served → completed`.
+> Two collections were added: `/config/{docId}` (today's special, and
+> `config/tables`, the table list) and `/orderThrottle/{uid}` (the per-customer
+> order limit). See [decisions](./decisions.md).
 
 ## 9. Out of Scope (v1)
 
