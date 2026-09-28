@@ -10,6 +10,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { CategoryPicker } from "@/components/CategoryPicker";
 import { Icon, categoryIcon, itemArtIcon } from "@/components/icons";
 import {
   useConfigRepo,
@@ -282,14 +283,14 @@ function AddItemCard({
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [price, setPrice] = useState("");
-  const [category, setCategory] = useState(categories[0] ?? "Drinks");
+  // null until the owner picks one: the menu loads after the first render, so
+  // the default has to follow it rather than be fixed at mount.
+  const [picked, setPicked] = useState<string | null>(null);
+  const category = picked ?? categories[0] ?? "";
+  // Remounts the picker after an add, so a just-created category shows as a
+  // normal choice in the list instead of an open "new category" box.
+  const [formKey, setFormKey] = useState(0);
   const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    if (categories.length > 0 && !categories.includes(category)) {
-      setCategory(categories[0]);
-    }
-  }, [categories, category]);
 
   const priceError =
     price.trim() === ""
@@ -305,6 +306,10 @@ function AddItemCard({
       onError("Give the item a name and a valid price.");
       return;
     }
+    if (!category.trim()) {
+      onError("Give the new category a name.");
+      return;
+    }
     onError(null);
     setBusy(true);
     try {
@@ -312,11 +317,13 @@ function AddItemCard({
         name: name.trim(),
         description: description.trim(),
         price: Math.round(Number(price)),
-        category: category.trim() || "Drinks",
+        category: category.trim(),
       });
       setName("");
       setDescription("");
       setPrice("");
+      setPicked(category.trim());
+      setFormKey((k) => k + 1);
     } catch (err) {
       onError(err instanceof Error ? err.message : "Could not add that item.");
     } finally {
@@ -348,18 +355,13 @@ function AddItemCard({
           />
         </Field>
         <Field label="Category" htmlFor="new-category">
-          <Input
+          <CategoryPicker
+            key={formKey}
             id="new-category"
-            list="category-options"
+            categories={categories}
             value={category}
-            onChange={(e) => setCategory(e.target.value)}
-            required
+            onChange={setPicked}
           />
-          <datalist id="category-options">
-            {categories.map((c) => (
-              <option key={c} value={c} />
-            ))}
-          </datalist>
         </Field>
         <Field label="Short description" htmlFor="new-desc" hint="Optional.">
           <Textarea
