@@ -15,6 +15,7 @@
 
 import { useState } from "react";
 
+import { Icon } from "@/components/icons";
 import { Button } from "@/components/ui/Button";
 import { Field, Input } from "@/components/ui/Input";
 import {
@@ -135,14 +136,12 @@ export function TableListEditor({
           }
         >
           <div className="flex max-w-xs items-center gap-2">
-            <Button
-              variant="ghost"
-              aria-label="One table fewer"
+            <StepButton
+              label="One table fewer"
+              icon="minus"
               onClick={() => step(-1)}
               disabled={count <= 1}
-            >
-              −
-            </Button>
+            />
             <Input
               id="table-count"
               type="number"
@@ -153,14 +152,12 @@ export function TableListEditor({
               onChange={(e) => edit({ count: e.target.value })}
               className="tnum text-center text-lg"
             />
-            <Button
-              variant="ghost"
-              aria-label="One table more"
+            <StepButton
+              label="One table more"
+              icon="plus"
               onClick={() => step(1)}
               disabled={count >= MAX_TABLE_NUMBER}
-            >
-              +
-            </Button>
+            />
           </div>
         </Field>
       ) : (
@@ -232,5 +229,34 @@ export function TableListEditor({
         ) : null}
       </div>
     </div>
+  );
+}
+
+/**
+ * A round 48px − / + button, drawn with the app's icons like the customer's
+ * quantity stepper. The bare "−" and "+" characters it replaces rendered small
+ * and thin, and looked like text rather than something to tap.
+ */
+function StepButton({
+  label,
+  icon,
+  onClick,
+  disabled,
+}: {
+  label: string;
+  icon: "plus" | "minus";
+  onClick: () => void;
+  disabled: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      onClick={onClick}
+      disabled={disabled}
+      className="rounded-pill border-primary bg-paper text-primary hover:bg-highlight-soft/60 focus-visible:outline-ring grid size-12 shrink-0 place-items-center border-2 transition-transform focus-visible:outline-3 active:scale-90 disabled:pointer-events-none disabled:opacity-45"
+    >
+      <Icon name={icon} size={22} />
+    </button>
   );
 }
