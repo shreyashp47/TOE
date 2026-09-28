@@ -23,7 +23,7 @@ body:
     attributes:
       label: Where
       options:
-        - Live site (toi-cafe.web.app)
+        - Live site (toe-cafe.web.app)
         - Local, demo mode
         - Local, against Firebase
     validations:

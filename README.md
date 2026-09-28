@@ -19,7 +19,9 @@ Built for a 6–10 table cafe on free-tier infrastructure.
 
 ### Live deployment
 
-**https://toi-cafe.web.app** — Firebase project `toi-cafe`, Firestore in
+**https://toe-cafe.web.app** — Firebase project `toi-cafe` (a project id can't be
+renamed, so the app is a second Hosting site, `toe-cafe`; the original
+<https://toi-cafe.web.app> redirects every path to it), Firestore in
 `asia-south1`, 12 menu items seeded.
 
 | Screen             | URL                                     | State                                |
@@ -262,7 +264,7 @@ You land on `https://<project-id>.web.app`. `firebase.json` sets `cleanUrls`, so
 For `toi-cafe`, deploying by hand is the fallback. Every push to `main` that
 passes the whole CI workflow is deployed by `.github/workflows/deploy.yml`: it
 builds that exact commit, deploys rules and hosting in one command, and then
-checks that `https://toi-cafe.web.app/sw.js` carries the new build's cache
+checks that `https://toe-cafe.web.app/sw.js` carries the new build's cache
 version. A push that fails CI never deploys. If an older commit's CI finishes
 after a newer one's, the older commit is skipped rather than rolling the site
 back. _Run workflow_ on the Deploy workflow redeploys `main` by hand.
@@ -302,8 +304,8 @@ refuses a read, or a query missing an index, both fail silently at the browser.
 Drive the real thing:
 
 ```bash
-BASE_URL=https://toi-cafe.web.app npm run test:entry   # every way a customer reaches the menu
-BASE_URL=https://toi-cafe.web.app npm run audit         # contrast + WebKit, both engines
+BASE_URL=https://toe-cafe.web.app npm run test:entry   # every way a customer reaches the menu
+BASE_URL=https://toe-cafe.web.app npm run audit         # contrast + WebKit, both engines
 ```
 
 `npm run audit` is this project's script, not npm's built-in `npm audit`; the

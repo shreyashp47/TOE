@@ -8,7 +8,7 @@ _Last updated: 2026-09-28_
 
 ## Live
 
-**https://toi-cafe.web.app** — Firebase project `toi-cafe`.
+**https://toe-cafe.web.app** — Firebase project `toi-cafe`.
 
 **v0.2.0** deployed on 2026-09-28, rules and hosting together (service-worker
 cache version `727acf676c24`). See the [changelog](../CHANGELOG.md) for what

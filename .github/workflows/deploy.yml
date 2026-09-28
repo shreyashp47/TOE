@@ -32,7 +32,7 @@ jobs:
     timeout-minutes: 20
     environment:
       name: production
-      url: https://toi-cafe.web.app
+      url: https://toe-cafe.web.app
 
     env:
       SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
@@ -135,11 +135,11 @@ jobs:
         run: |
           want=$(grep -o 'const VERSION = "[^"]*"' out/sw.js)
           for _ in $(seq 1 20); do
-            got=$(curl -sf https://toi-cafe.web.app/sw.js | grep -o 'const VERSION = "[^"]*"' || true)
+            got=$(curl -sf https://toe-cafe.web.app/sw.js | grep -o 'const VERSION = "[^"]*"' || true)
             if [ "$got" = "$want" ]; then
               echo "live: $got"
               for path in / /order /order?table=1 /staff /admin; do
-                code=$(curl -s -o /dev/null -w '%{http_code}' "https://toi-cafe.web.app$path")
+                code=$(curl -s -o /dev/null -w '%{http_code}' "https://toe-cafe.web.app$path")
                 echo "$path → $code"
                 [ "$code" = 200 ] || [ "$code" = 301 ] || [ "$code" = 302 ] || exit 1
               done

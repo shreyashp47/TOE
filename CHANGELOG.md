@@ -21,6 +21,10 @@ Work that is built but not yet merged is tracked in
 
 ### Changed
 
+- The app now lives at <https://toe-cafe.web.app>, a second Hosting site in the
+  same `toi-cafe` project, since a project id cannot be renamed. The old
+  address redirects every path there, query string included, so old links and
+  QR codes keep working
 - The owner goes straight to the owner dashboard after signing in on `/staff`;
   the Orders | Owner switch still opens the order board
 - `/order` waits for the saved table list before judging a scanned table

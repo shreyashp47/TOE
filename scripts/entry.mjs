@@ -12,7 +12,7 @@
  * a difference between two ways in is obvious rather than inferred.
  *
  *   node scripts/entry.mjs                  # spawns `next dev`
- *   BASE_URL=https://toi-cafe.web.app node scripts/entry.mjs
+ *   BASE_URL=https://toe-cafe.web.app node scripts/entry.mjs
  */
 import { spawn } from "node:child_process";
 import process from "node:process";
