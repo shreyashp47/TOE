@@ -1,43 +1,79 @@
-# Cafe QR Ordering System
+# TOE Cafe — QR ordering
 
 Customers scan a QR code on their table, browse the menu on their own phone, and
 place an order with no app to install. Staff see new orders appear live on a
-counter phone. The owner edits the menu and reads the monthly numbers — without a
-developer.
+counter phone. The owner edits the menu, sets the tables and reads the monthly
+numbers — without a developer.
 
 Built for a 6–10 table cafe on free-tier infrastructure.
 
 <!-- prettier-ignore -->
 | | |
 |---|---|
-| **Stack** | Next.js 15 (App Router) · TypeScript · Tailwind CSS v4 · Firebase (Firestore + Auth) |
+| **Live** | <https://toe-cafe.web.app> |
+| **Stack** | Next.js 15 (App Router, static export) · TypeScript · Tailwind CSS v4 · Firebase (Firestore + Auth) |
 | **Hosting** | Firebase Hosting — free `*.web.app` subdomain, optional custom domain |
 | **Live updates** | Firestore `onSnapshot` — no polling loops, no separate realtime service |
 | **Install** | Nothing to install. Optional PWA for the staff phone. |
 | **Cost** | Free tier. A custom domain is the only expected expense (~₹500–800/year). |
-| **Docs** | [Requirements](./docs/requirements.md) · [Theme](./docs/anime-theme.md) · [Decisions](./docs/decisions.md) · [Progress](./docs/progress.md) |
+| **Docs** | [Requirements](./docs/requirements.md) · [Theme](./docs/anime-theme.md) · [Decisions](./docs/decisions.md) · [Progress](./docs/progress.md) · [Changelog](./CHANGELOG.md) · [Contributing](./CONTRIBUTING.md) |
 
 ### Live deployment
 
-**https://toe-cafe.web.app** — Firebase project `toi-cafe` (a project id can't be
-renamed, so the app is a second Hosting site, `toe-cafe`; the original
-<https://toi-cafe.web.app> redirects every path to it), Firestore in
-`asia-south1`, 12 menu items seeded.
+**https://toe-cafe.web.app** — Firebase project `toi-cafe`, Firestore in
+`asia-south1`. A project id can't be renamed, so the app is served from a second
+Hosting site in that project, `toe-cafe`. The cafe's first address,
+<https://toi-cafe.web.app>, now answers every path with a 302 to the same path on
+toe-cafe.web.app, query string included, so old bookmarks and any QR card printed
+with the old address keep working.
 
-| Screen             | URL                                     | State                                |
-| ------------------ | --------------------------------------- | ------------------------------------ |
-| Customer menu      | `/order?table=1` … `/order?table=6`     | Working — browse, order, live status |
-| Table picker       | `/`                                     | Working                              |
-| Order confirmation | `/order/confirmation?table=3&id=…`      | Working                              |
-| Staff board        | `/staff`                                | Working — sign in with an account    |
-| Owner              | `/admin`, `/admin/reports`, `/admin/qr` | Working — owner account              |
-| Offline            | `/offline`                              | Working                              |
+| Screen             | URL                                     | Who                  |
+| ------------------ | --------------------------------------- | -------------------- |
+| Table picker       | `/`                                     | Customer             |
+| Customer menu      | `/order?table=N`                        | Customer             |
+| Order confirmation | `/order/confirmation?table=N&id=…`      | Customer             |
+| Staff board        | `/staff`                                | Staff and owner      |
+| Owner dashboard    | `/admin`, `/admin/reports`, `/admin/qr` | Owner                |
+| Offline            | `/offline`                              | Anyone, when offline |
 
-The customer half needs no account and is usable as-is. The staff half needs an
-email and password: Email/Password and Anonymous sign-in are both enabled, and
-one owner account exists with its `/staff/{uid}` document. Baristas each need
-their own account and document — see
-[section 3](#3-create-staff-and-owner-accounts).
+The customer half needs no account. The staff half needs an email and password,
+and every account also needs a role record — see
+[Create staff and owner accounts](#3-create-staff-and-owner-accounts).
+
+---
+
+## Running the cafe
+
+For the owner and the people at the counter. Nothing here needs a developer
+except adding a new barista's account.
+
+- **The counter phone** — open `/staff` and sign in. New orders appear on their
+  own, oldest first, with a wait timer, a chime and a vibration. Browsers only
+  allow sound after a tap, so tap the screen once at the start of a shift (the
+  board says so until you do). Move each ticket along with its button: _Start
+  preparing → Mark ready → Mark served → Complete_. A ticket whose total does not
+  match the menu is flagged in red — check it before taking payment.
+- **The owner** signs in on the same `/staff` page and goes straight to the owner
+  dashboard. An **Orders | Owner** switch at the top moves between the dashboard
+  and the order board; baristas never see it.
+- **Sold out** — on _Menu_ (`/admin`), each item has an **Available / Sold out**
+  switch. One tap, and customers see it immediately.
+- **Change an item** — tap its row to open its editor (name, price, description,
+  category; Save, Cancel or Delete). **+ Add item** adds a new one, in an existing
+  category or a new one. The category chips at the top jump to that section.
+- **Today's special** — the line pinned to the top of the customer menu. Edit
+  it, flip **Show to customers**, and Save.
+- **Tables and QR cards** — on _Table QR codes_ (`/admin/qr`), set the number of
+  tables (or type them out, e.g. `1-8, 12`) and save. Customers can only pick, or
+  scan into, a table on that list. Then _Print_ one card per table. The cards
+  only depend on the address printed on them, so they never need reprinting
+  after a menu or price change.
+- **Reports** — _Reports_ (`/admin/reports`) shows revenue, order count, average
+  order, revenue by day and best sellers for a month or a custom range, with a
+  CSV export. Group the CSV by _Order ID_, not _Order #_: order numbers are
+  short and repeat (see [below](#order-numbers-are-short-and-not-unique-on-their-own)).
+- **"A new version is ready · Reload"** — the app was updated. Tap _Reload_ when
+  there is a quiet moment; nothing is lost if you wait.
 
 ---
 
@@ -68,20 +104,21 @@ and when staff tap _Mark ready_, the customer's status screen updates live.
 | ---------------- | ------------------------------ |
 | `/staff`         | PIN `1122`                     |
 | `/staff`         | `staff@demo.cafe` / `cafe1122` |
-| `/admin` (owner) | `owner@demo.cafe` / `cafe1122` |
+| `/staff` (owner) | `owner@demo.cafe` / `cafe1122` |
 
-Demo data lives in this browser only. Clearing site data resets it; the owner
-screen has a _Reset samples_ button.
+The owner signs in on `/staff` too, and is taken to `/admin`. Demo data lives in
+this browser only. Clearing site data resets it; the owner's menu screen has a
+_Reset samples_ button, and _Reports_ can add a sample month of orders.
 
 ---
 
 ## Screens
 
-Everything below is a real screenshot at phone width, from the demo build.
+Everything below is a real screenshot of the demo build.
 
 <table>
 <tr>
-<td width="33%"><img src="docs/screens/01-order.png" alt="Customer menu with category rail and card grid"></td>
+<td width="33%"><img src="docs/screens/01-order.png" alt="Customer menu with category rail, item cards, a quantity stepper and a sold-out item"></td>
 <td width="33%"><img src="docs/screens/02-cart.png" alt="Cart bottom sheet with quantity steppers"></td>
 <td width="33%"><img src="docs/screens/03-status.png" alt="Order confirmation with a live status timeline"></td>
 </tr>
@@ -92,31 +129,38 @@ Everything below is a real screenshot at phone width, from the demo build.
 </tr>
 <tr>
 <td width="33%"><img src="docs/screens/04-staff-board.png" alt="Staff live order board"></td>
+<td width="33%"><img src="docs/screens/07-owner-menu.png" alt="Owner menu: compact rows, each with an Available or Sold out switch"></td>
 <td width="33%"><img src="docs/screens/05-reports.png" alt="Monthly revenue report"></td>
-<td width="33%"><img src="docs/screens/06-qr-cards.png" alt="Printable per-table QR cards"></td>
 </tr>
 <tr>
 <td align="center"><em>Staff board — oldest first, wait timer</em></td>
+<td align="center"><em>Owner menu — one-tap sold out</em></td>
 <td align="center"><em>Reports — revenue, chart, best sellers</em></td>
-<td align="center"><em>QR — one printable card per table</em></td>
+</tr>
+<tr>
+<td width="33%"><img src="docs/screens/06-qr-cards.png" alt="Table settings and printable per-table QR cards"></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td align="center"><em>QR — set the tables, print a card each</em></td>
+<td></td>
+<td></td>
 </tr>
 </table>
 
 ### Routes
 
-| Route                              | Who      | What it does                                                  |
-| ---------------------------------- | -------- | ------------------------------------------------------------- |
-| `/order?table=N`                   | Customer | Menu with category rail, cart bottom sheet, place order       |
-| `/order/confirmation?table=N&id=…` | Customer | Order number and live `Received → Preparing → Ready → Served` |
-| `/staff`                           | Staff    | Live order board, status actions, sound + vibration alert     |
-| `/admin`                           | Owner    | Menu management, availability toggles, today's special        |
-| `/admin/reports`                   | Owner    | Monthly / custom-range revenue, AOV, best sellers, CSV        |
-| `/admin/qr`                        | Owner    | Set the number of tables; printable QR tent card per table    |
-| `/offline`                         | Anyone   | Service-worker fallback when the wifi drops                   |
-
-The owner signs in on `/staff` like everyone else and lands on the order board.
-An **Orders | Owner** switch under the header title moves between the board and
-the owner dashboard; baristas never see it.
+| Route                              | Who      | What it does                                                      |
+| ---------------------------------- | -------- | ----------------------------------------------------------------- |
+| `/`                                | Customer | Table picker, for anyone who arrives without a QR code            |
+| `/order?table=N`                   | Customer | Menu with category rail, cart bottom sheet, place order           |
+| `/order/confirmation?table=N&id=…` | Customer | Order number and live `Received → Preparing → Ready → Served`     |
+| `/staff`                           | Staff    | Sign-in, then the live order board with sound + vibration alert   |
+| `/admin`                           | Owner    | Menu: sold-out switches, inline editor, add item, today's special |
+| `/admin/reports`                   | Owner    | Monthly / custom-range revenue, AOV, best sellers, CSV            |
+| `/admin/qr`                        | Owner    | Set the cafe's tables; printable QR tent card per table           |
+| `/offline`                         | Anyone   | Service-worker fallback when the wifi drops                       |
 
 ---
 
@@ -125,11 +169,10 @@ the owner dashboard; baristas never see it.
 The app is designed so this step cannot break the build: no code changes, six
 environment variables.
 
-> **For the `toi-cafe` deployment in this repo, every section below is already
-> done** — the project, the database, both sign-in providers, the web app, the
-> hosted site, the deployed rules, the seeded menu and the owner account. The
-> only thing left to repeat is section 3, once for each barista who needs to
-> work the board.
+> **For the `toi-cafe` deployment in this repo, sections 1–4 are already done**
+> — the project, the database, both sign-in providers, the web app, both Hosting
+> sites, the deployed rules, the menu and the owner account. The only thing left
+> to repeat is section 3, once for each barista who needs to work the board.
 
 ### 1. Create the project
 
@@ -167,7 +210,7 @@ NEXT_PUBLIC_FIREBASE_APP_ID=…
 Optionally brand it and set the default tables:
 
 ```ini
-NEXT_PUBLIC_CAFE_NAME="Mochi & Beans"
+NEXT_PUBLIC_CAFE_NAME="TOE Cafe"
 NEXT_PUBLIC_TABLES=1,2,3,4,5,6,7,8
 NEXT_PUBLIC_BASE_URL=https://yourcafe.web.app
 ```
@@ -229,47 +272,80 @@ rules can let each one read back its own order, and a rule that treated "any
 signed-in user" as staff would hand the whole order book to everyone who scans a
 QR code.
 
-`role` may be `staff` (works the board) or `owner` (also edits the menu and sees
-the reports). An account with no document can sign in, but `/staff` and `/admin`
-then say _"Your account isn't set up yet — ask the owner"_ and show its email,
-user ID and the exact `seed:staff` command to run, instead of an empty board.
+`role` may be `staff` (works the board) or `owner` (also edits the menu, sets
+the tables and sees the reports). An account with no document can sign in, but
+`/staff` and `/admin` then say _"Your account isn't set up yet — ask the
+owner"_ and show its email, user ID and the exact `seed:staff` command to run,
+instead of an empty board.
 
-### 4. Seed the menu
+### 4. Add the menu
 
-Create your first item in `/admin`, or add a temporary seeding snippet in
-`src/lib/data/seed.ts` to the Firestore path. The sample menu's structure —
-`name`, `description`, `price`, `category`, `available`, `sortOrder` — is exactly
-the `/menu/{itemId}` document from the requirements.
+Sign in as the owner and use **+ Add item** on `/admin`. Each item is a
+`/menu/{itemId}` document — `name`, `description`, `price`, `category`,
+`available`, `sortOrder` — the same shape as the sample menu in
+[`src/lib/data/seed.ts`](./src/lib/data/seed.ts). _Reset samples_ exists in demo
+mode only.
 
-### 5. Deploy the app
+### 5. Deploy
 
 The app is a **static export** (`output: "export"` in `next.config.ts`), so it can
 be served by Firebase Hosting with no Node runtime. That is safe here: there are
-no route handlers, no server actions and no dynamic rendering, so all nine routes
-prerender to plain HTML and every piece of data is fetched in the browser.
+no route handlers, no server actions and no dynamic rendering, so every route
+prerenders to plain HTML and every piece of data is fetched in the browser.
+
+**For `toi-cafe`**, from a checkout with the real `.env.local`:
+
+```bash
+firebase login
+npm run build                                        # emits ./out and stamps out/sw.js
+firebase deploy --only firestore:rules,hosting       # rules and both Hosting sites
+```
+
+`firebase.json` has two Hosting targets, mapped to sites in `.firebaserc`:
+`app` (the `toe-cafe` site, serving `./out`) and `legacy` (the `toi-cafe` site,
+which only redirects). `--only hosting` deploys both. Build with
+`npm run build`, not a bare `next build`, or the service worker's version is
+never stamped and phones keep the old app.
+
+**For your own project**, point the targets at your own site first:
 
 ```bash
 npm i -g firebase-tools
 firebase login
-firebase use --add          # pick your project; this writes .firebaserc
-npm run build              # emits ./out, and stamps out/sw.js with a new cache version
-firebase deploy            # hosting + firestore rules + indexes
+firebase use --add                                   # pick your project
+firebase target:apply hosting app <your-site-id>     # usually the project id
 ```
 
-You land on `https://<project-id>.web.app`. `firebase.json` sets `cleanUrls`, so
-`/order` is served from `out/order.html` and the printed QR URLs work unchanged.
+Then delete the `legacy` entry from the `hosting` list in `firebase.json` (you
+have no old address to redirect), build, and `firebase deploy`. You land on
+`https://<your-site-id>.web.app`. `firebase.json` sets `cleanUrls`, so `/order`
+is served from `out/order.html` and the printed QR URLs work unchanged.
 
-#### Automatic deploys from `main`
+**Deploy the rules too — this is the part people skip.** Without them,
+Firestore's default "test mode" rules leave the database readable and writable
+by anyone with the project id. The rules in this repo are what make the
+requirements' §6 security clause true: the public can read the menu and the
+cafe's settings, **create** an order (with its throttle stamp) and read back its
+own order — nothing else. See the comments in
+[`firestore.rules`](./firestore.rules) for each clause.
 
-For `toi-cafe`, deploying by hand is the fallback. Every push to `main` that
-passes the whole CI workflow is deployed by `.github/workflows/deploy.yml`: it
-builds that exact commit, deploys rules and hosting in one command, and then
-checks that `https://toe-cafe.web.app/sw.js` carries the new build's cache
-version. A push that fails CI never deploys. If an older commit's CI finishes
-after a newer one's, the older commit is skipped rather than rolling the site
-back. _Run workflow_ on the Deploy workflow redeploys `main` by hand.
+To attach a custom domain later, add it under **Hosting → Add custom domain**. The
+QR codes do not need regenerating as long as `/order?table=N` keeps working, which
+is why `NEXT_PUBLIC_BASE_URL` exists if you want to print cards against a staging
+address first.
 
-It needs two things in the GitHub repository, set up once:
+#### Automatic deploys from `main` (not switched on yet)
+
+`.github/workflows/deploy.yml` is written to deploy every push to `main` that
+passes the whole CI workflow: it builds that exact commit, deploys rules and
+hosting in one command, then checks that `https://toe-cafe.web.app/sw.js`
+carries the new build's cache version. A push that fails CI never deploys; if an
+older commit's CI finishes after a newer one's, the older one is skipped rather
+than rolling the site back; _Run workflow_ redeploys `main` by hand.
+
+**It does not deploy anything yet.** The repository secret and variables below
+have not been set, so the workflow stops at _Check the Firebase config is set_,
+and `toi-cafe` is still deployed by hand as above. To switch it on, set up once:
 
 1. **A service account key**, as the secret `FIREBASE_SERVICE_ACCOUNT`. In the
    Google Cloud console for the project, go to _IAM & Admin → Service accounts_
@@ -311,59 +387,53 @@ BASE_URL=https://toe-cafe.web.app npm run audit         # contrast + WebKit, bot
 `npm run audit` is this project's script, not npm's built-in `npm audit`; the
 `run` matters. Against a live site it checks the staff and owner screens as a
 signed-out visitor would see them. `npm run flow` is not in this list on
-purpose: it signs in with the demo PIN, so it only works in demo mode (see
-below), and pointed at a live site it would place a real order.
+purpose: it signs in with the demo PIN, so it only works in demo mode, and
+pointed at a live site it would place a real order.
 
 `test:entry` is the one that catches the class of bug that hides best. Tapping a
 table number is a client-side navigation, so a hook that reads the query string
 once on mount will look correct for every scanned QR code and wrong for every
 tap. Both used to end on the same URL and show different screens.
 
-To confirm the database side, with the console open in another tab:
+To confirm the database side:
 
 ```bash
 npm run emulators    # terminal 1
-npm run test:rules   # terminal 2 — 61 assertions, 0 failures
+npm run test:rules   # terminal 2 — 81 checks, 0 failures
 ```
 
-**Verify before you trust it** — the emulator applies the real routing and header
-rules from `firebase.json`, with no account needed:
-
-```bash
-npm run build
-firebase emulators:start --only hosting
-```
-
-Then check that `/`, `/order?table=3`, `/staff`, `/admin/reports` and `/sw.js` all
-return 200, and that a 404 still returns 404.
+To check the routing and header rules from `firebase.json` before a deploy, with
+no account needed, run `npm run build` and then
+`firebase emulators:start --only hosting`, and check that `/`, `/order?table=3`,
+`/staff`, `/admin/reports` and `/sw.js` return 200 and that a 404 still returns 404.
 
 #### Updating a phone that already has the app
 
 Every `npm run build` writes a hash of the exported site into `out/sw.js` as its
 cache version (`scripts/stamp-sw.mjs`). A new deploy is therefore a new service
-worker: phones pick it up on their next page load, and the staff board also
-checks hourly and whenever the tab comes back into view. The new worker takes
-over straight away and deletes the previous build's caches.
+worker: phones pick it up on their next page load, and an open page also checks
+hourly and whenever the tab comes back into view. The new worker takes over
+straight away and deletes the previous build's caches.
 
 It does **not** reload the page by itself. A reload on the counter phone would
 silently switch the order sound off (browsers need a tap before they play audio)
 and could land mid-tap, so the page shows _"A new version is ready · Reload"_ and
-the barista chooses when. Build with `npm run build`, not a bare `next build`,
-or the version is never stamped and `public/sw.js`'s placeholder ships as-is.
+the barista chooses when.
 
-To attach a custom domain later, add it under **Hosting → Add custom domain**. The
-QR codes do not need regenerating as long as `/order?table=N` keeps working, which
-is why `NEXT_PUBLIC_BASE_URL` exists if you want to print cards against a staging
-address first.
+> **The headers are declared twice, on purpose.** `next.config.ts` has the
+> `headers()` block for `next start`, and `firebase.json` re-declares the
+> security headers, because Next _silently discards_ `headers()` when exporting.
+> It prints a warning during the build but ships the site without them. If you
+> change a security header in one place, change it in both. `firebase.json` also
+> sets the caching: hashed `/_next/static/**` files are kept for a year, while
+> pages, their `.txt` router data and `/sw.js` are revalidated on every load — a
+> page and its router data cached from different deploys once sent the owner to
+> raw text at `/admin.txt`.
 
-> **The security headers are declared twice, on purpose.** `next.config.ts` has the
-> `headers()` block for `next start`, and `firebase.json` re-declares the same
-> values, because Next _silently discards_ `headers()` when exporting. It prints a
-> warning during the build but ships the site without them. Firebase sends
-> `no-store` for everything by default too, which would re-download every hashed
-> chunk on each visit and defeat the 103 kB budget — so `firebase.json` also pins
-> `/_next/static/**` to `max-age=31536000, immutable`. If you change a header in one
-> place, change it in both.
+> **Upgrading from before 0.2.0?** That release changed the shape of an order
+> write, so rules and hosting must go out in one command and open pages need a
+> reload. The steps are in [CHANGELOG 0.2.0](./CHANGELOG.md#020--2026-09-28).
+> A leftover `meta/counters` document is inert; delete it whenever you like.
 
 <details>
 <summary>Vercel instead (one-line alternative)</summary>
@@ -376,6 +446,26 @@ for all three environments. Vercel runs the Next.js runtime, so it honours
 redeploy, not just a restart.
 
 </details>
+
+### Old orders
+
+Nothing deletes orders automatically: the requirement is to keep _at least_ six
+months, and a Firestore TTL policy that would enforce a ceiling needs the Blaze
+plan. When you want to clear old ones out:
+
+```bash
+npm run cleanup:orders                                   # dry run: how many are over 6 months old
+npm run cleanup:orders -- --older-than=1y --confirm      # delete orders over a year old
+```
+
+It only deletes with `--confirm`, refuses anything under six months, and uses the
+same `firebase login` as `seed:staff`. Deleted orders disappear from
+`/admin/reports` too, so export those months as CSV first. The reasoning is in
+[`docs/decisions.md`](./docs/decisions.md#order-retention-is-an-operational-practice-not-a-feature).
+
+---
+
+## Troubleshooting
 
 ### "A tree hydrated but some attributes of the server rendered HTML didn't match"
 
@@ -408,12 +498,14 @@ calls in `src/app/layout.tsx` for `next/font/local`. The CSS variables and every
 component stay exactly as they are — nothing else in the app knows which loader
 produced the font.
 
-### What the rules cannot do
+---
+
+## What the rules cannot do
 
 Worth reading before you rely on the money figures.
 
 `firestore.rules` is a real boundary, not a formality: `scripts/rules-test.mjs`
-runs 61 assertions against the emulators covering the anonymous customer, a
+runs 81 checks against the emulators covering the anonymous customer, a
 signed-out caller, a signed-in barista and a signed-in owner. A barista cannot
 edit the menu, cannot read another barista's role record, cannot skip a status
 and cannot change a price after the order is placed.
@@ -448,7 +540,7 @@ payment ever moves online, detection is not enough.
 The real fix is a Firestore-triggered function that rewrites `total` from the
 stored lines and the menu. That requires the Blaze plan (Cloud Functions 2nd gen
 includes 2M invocations a month free — far more than a cafe uses), and it stays
-the documented follow-up in issue #27.
+the documented follow-up.
 
 **Order volume is limited per customer, not per device.** Placing an order is the
 one write the public can make, so the rules throttle it: each customer's anonymous
@@ -466,58 +558,6 @@ board ever fills with junk; nothing in the throttle needs to change to add it.
 The number lives in two places — `firestore.rules` and `ORDER_GAP_SECONDS` in
 [`src/lib/order-throttle.ts`](./src/lib/order-throttle.ts) — and a unit test
 fails if they disagree.
-
-### Old orders
-
-Nothing deletes orders automatically: the requirement is to keep _at least_ six
-months, and a Firestore TTL policy that would enforce a ceiling needs the Blaze
-plan. When you want to clear old ones out:
-
-```bash
-npm run cleanup:orders                                   # dry run: how many are over 6 months old
-npm run cleanup:orders -- --older-than=1y --confirm      # delete orders over a year old
-```
-
-It only deletes with `--confirm`, refuses anything under six months, and uses the
-same `firebase login` as `seed:staff`. Deleted orders disappear from
-`/admin/reports` too, so export those months as CSV first. The reasoning is in
-[`docs/decisions.md`](./docs/decisions.md#order-retention-is-an-operational-practice-not-a-feature).
-
-### Deploy the rules too — this is the part people skip
-
-```bash
-firebase deploy --only firestore:rules,firestore:indexes
-```
-
-Without this, Firestore's default "test mode" rules leave the database readable
-and writable by anyone with the project id. The rules in this repo are what make
-§6's security requirement true: the public can **create** orders and **read** the
-menu, and nothing else. See the comments in [`firestore.rules`](./firestore.rules)
-for each clause.
-
-#### Upgrading a live project past the order-counter and throttle change
-
-The release that removed `/meta/counters` (issue #30) and added the order
-throttle (issue #32) changes what an order write looks like, and the old app and
-the new rules do not work together in either direction: old rules refuse the new
-app's orders, and new rules refuse the old app's. Ship both halves **in one
-command**, at a quiet time:
-
-```bash
-npm run build && firebase deploy --only firestore:rules,hosting
-```
-
-Then:
-
-- **Reload the staff board on the counter phone.** An old board shows every new
-  order as `#0`, because it only knows how to read a stored number.
-- **Reload any customer pages left open** (a phone on the menu can still be
-  running the old app). A customer who does not gets "We couldn't send that
-  order. Please tell the counter." until they reload.
-
-A leftover `meta/counters` document is inert after this; delete it from the
-console whenever you like. Ordinary deploys after this one can go back to the
-command above.
 
 ---
 
@@ -546,6 +586,7 @@ place order ──────────┴───┴──────┘
 | Money + order maths | [`src/lib/money.ts`](./src/lib/money.ts)                   |
 | Cart reducer        | [`src/lib/cart.ts`](./src/lib/cart.ts)                     |
 | Report aggregation  | [`src/lib/reports.ts`](./src/lib/reports.ts)               |
+| Table list          | [`src/lib/tables.ts`](./src/lib/tables.ts)                 |
 | QR encoder          | [`src/lib/qr.ts`](./src/lib/qr.ts)                         |
 | Theme tokens        | [`src/app/globals.css`](./src/app/globals.css)             |
 | Mascot + icons      | [`src/components/`](./src/components)                      |
@@ -557,12 +598,9 @@ Two rules worth knowing before you change anything:
    [`docs/anime-theme.md`](./docs/anime-theme.md) §2 and lives in CSS variables.
    Add a token; don't add a hex to a component.
 2. **Money is only partly server-checked, and you should know where the gap is.**
-   `firestore.rules` can bound and type-check a total but **cannot recompute it**
-   — the rules language has no loops and no lambdas, so an arbitrary-length
-   basket cannot be summed server-side. The total is therefore client-supplied;
-   the staff board flags a total that does not match the menu, but that is
-   detection, not prevention. See [the limits section](#what-the-rules-cannot-do)
-   before you rely on it.
+   The total is client-supplied; the staff board flags a total that does not
+   match the menu, but that is detection, not prevention. See
+   [What the rules cannot do](#what-the-rules-cannot-do) before you rely on it.
 
 ### Order numbers are short, and not unique on their own
 
@@ -576,11 +614,9 @@ _some_ two orders share a number are much higher — about 19% with 20 open — 
 read the table first.
 
 It used to come from a `/meta/counters` document that every customer phone
-incremented, which meant the document had to be writable by anyone — so anyone
-could reset it or run it up (issue #30). Nothing writes `/meta` now, and the rules
-deny it to everyone. Orders placed under the old counter keep their stored number.
-If your project has a leftover `meta/counters` document, it is inert; delete it
-from the console whenever you like.
+incremented, which meant anyone could reset it or run it up. Nothing writes
+`/meta` now, and the rules deny it to everyone. Orders placed under the old
+counter keep their stored number.
 
 ---
 
@@ -593,21 +629,23 @@ npm run verify     # lint → typecheck → test → build
 | Command                  | What it does                                                 |
 | ------------------------ | ------------------------------------------------------------ |
 | `npm run dev`            | Dev server                                                   |
+| `npm run build`          | Static export to `./out`, then stamps the `sw.js` version    |
 | `npm run preview`        | Serve `./out` on port 4320, with clean URLs as Firebase does |
-| `npm run flow`           | Customer → staff → customer, end to end (demo mode only)     |
-| `npm run audit`          | WCAG A/AA in Chromium and WebKit (not `npm audit`)           |
-| `npm run test:rules`     | Attack `firestore.rules` (needs `npm run emulators`)         |
-| `npm run seed:staff`     | Create a staff/owner account and its role document           |
-| `npm run cleanup:orders` | Count (or with `--confirm`, delete) orders over 6 months old |
 | `npm run lint`           | ESLint 9, `next/core-web-vitals` + TypeScript rules          |
 | `npm run typecheck`      | `tsc --noEmit`, `strict`                                     |
-| `npm test`               | Vitest + Testing Library, 354 tests                          |
+| `npm test`               | Vitest + Testing Library, 423 tests in 28 files              |
 | `npm run test:coverage`  | Coverage, fails below 70% on all four metrics                |
-| `npm run build`          | Production build, then stamps the `sw.js` version            |
+| `npm run test:rules`     | Attack `firestore.rules` (needs `npm run emulators`)         |
+| `npm run test:entry`     | Every way a customer reaches the menu, in a real browser     |
+| `npm run flow`           | Customer → staff → customer, end to end (demo mode only)     |
+| `npm run audit`          | WCAG A/AA in Chromium and WebKit (not `npm audit`)           |
+| `npm run seed:staff`     | Create a staff/owner account and its role document           |
+| `npm run cleanup:orders` | Count (or with `--confirm`, delete) orders over 6 months old |
 | `npm run format`         | Prettier, incl. Tailwind class sorting                       |
 
-There are also three Playwright scripts for checking things a unit test cannot.
-Each starts `next dev` itself, or uses `BASE_URL` if set:
+The browser scripts check what a unit test cannot. Each starts `next dev` itself,
+or uses `BASE_URL` if set — for example against `npm run build && npm run preview`
+with `BASE_URL=http://127.0.0.1:4320`:
 
 ```bash
 node scripts/screenshot.mjs            # every screen at 320/390/430/768/1280 px
@@ -630,6 +668,12 @@ first.
   the locked palette cannot legally carry body text — see below.
 - **`flow.mjs`** places a real order and asserts the staff board sees it and the
   customer's screen tracks the status changes.
+
+CI (`.github/workflows/ci.yml`) runs lint, typecheck, tests and the build on
+every push and pull request, and the rules attack against the emulators. On
+`main` it also runs the browser checks and a `self-check` job that deliberately
+breaks the money calculation and fails if the suite stays green. A test suite
+nobody has seen go red is not a quality gate.
 
 ### What the tests cover
 
@@ -664,10 +708,6 @@ purpose — icons, chart bars, borders, category accents — and adds
 enough to carry text. `scripts/audit.mjs` is the gate that keeps this true, and
 it runs in CI.
 
-The `self-check` CI job deliberately breaks the money calculation on `main` and
-fails if the suite stays green. A test suite nobody has seen go red is not a
-quality gate.
-
 ---
 
 ## Design
@@ -689,6 +729,7 @@ Accessibility and mobile ergonomics are not afterthoughts:
 - prices and item names stay in a plain sans-serif; the handwritten font is
   decorative only
 - the cart sheet is a real modal dialog (Escape, focus, backdrop)
+- on/off settings are real switches (`role="switch"`) with a visible label
 - status changes are announced via `aria-live`
 
 ---
@@ -696,14 +737,15 @@ Accessibility and mobile ergonomics are not afterthoughts:
 ## Roadmap
 
 Delivered in this repository: customer ordering, live staff board, menu
-management, reporting, QR generation, PWA, security rules, tests, CI.
+management, owner-set tables, reporting, QR generation, PWA, security rules,
+tests, CI. What is in flight is in [docs/progress.md](./docs/progress.md).
 
 Not built, and the requirements already scope it out:
 
 - **Payments.** Pay-at-counter for v1. `paymentMethod` is on the order document
   so adding UPI is a UI change, not a migration.
-- **Background push.** FCM/Web Push for when the staff phone is locked — needs a
-  service worker + VAPID keys, and a real device to be worth testing on.
+- **Background push.** FCM/Web Push for when the staff phone is locked — needs
+  VAPID keys, and a real device to be worth testing on.
 - **Scheduled monthly reports** by email/PDF. The aggregation is already a pure
   function, so this is a scheduled job calling `buildReport()`.
 - **Customer accounts** and order history. The per-table localStorage session
