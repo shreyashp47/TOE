@@ -523,6 +523,8 @@ function OrderTicket({
   return (
     <Card
       data-order-id={order.id}
+      // The board renders tickets straight into a <ul>.
+      role="listitem"
       className={[
         "flex flex-col overflow-hidden",
         isFresh ? "animate-alert-flash border-berry" : "",

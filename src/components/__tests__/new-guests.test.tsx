@@ -138,10 +138,12 @@ describe("staff board: new guests", () => {
     expect(within(section).getAllByText("Number on Accept")).toHaveLength(2);
 
     // Turned away: it never gets a number, so the day's list has no gap.
+    // Table 5's ticket: two unnumbered tickets can share a 3-digit stand-in.
+    const turnedAwayTicket = within(section)
+      .getAllByText("5")[0]
+      .closest<HTMLElement>("[role=listitem]")!;
     await user.click(
-      screen.getByRole("button", {
-        name: `Reject order #${turnedAway.orderNumber}`,
-      }),
+      within(turnedAwayTicket).getByRole("button", { name: /^Reject order/ }),
     );
     await user.click(screen.getByRole("button", { name: "Reject order" }));
     await waitFor(() =>
