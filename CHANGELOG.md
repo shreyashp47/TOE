@@ -41,6 +41,13 @@ Work that is built but not yet merged is tracked in
   labelled **Orders | Owner** switch in the header, instead of an unlabelled
   chart icon (and a cart icon back). Baristas see no change
 
+### Fixed
+
+- Tapping between owner screens after a deploy could land on raw text at
+  `/admin.txt`: pages and their router data are now revalidated on every load
+  instead of cached for an hour, and the service worker fetches that data
+  fresh and sends a tab stranded on a `.txt` back to its page
+
 ## [0.2.0] — 2026-09-28
 
 Closes the two open holes in the rules, and fixes the service-worker cache, the

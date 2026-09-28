@@ -10,6 +10,7 @@
  *     isn't;
  *   - static assets under /_next/static: cache-first (they are immutable and
  *     content-hashed, so this is safe);
+ *   - page router data (*.txt): network-first, cache only when offline;
  *   - icons: stale-while-revalidate.
  *
  * Deliberately NOT cached: Firestore/Auth traffic (always network) and anything
@@ -87,6 +88,18 @@ self.addEventListener("fetch", (event) => {
 
   const url = new URL(request.url);
 
+  // Every .txt in the export is a page's router data (/admin.txt is /admin's),
+  // fetched by Next when a link is tapped. When that data comes from a
+  // different build than the open page, Next falls back to a full navigation —
+  // to the .txt address itself, leaving the owner looking at raw text on
+  // /admin.txt. Send any navigation to one of these back to its page. This
+  // runs before the /staff and /admin exclusion below on purpose.
+  if (request.mode === "navigate" && url.pathname.endsWith(".txt")) {
+    const page = url.pathname.slice(0, -".txt".length).replace(/\/index$/, "");
+    event.respondWith(Response.redirect(url.origin + (page || "/"), 302));
+    return;
+  }
+
   // Never serve live data from cache.
   if (isLiveOnly(url)) return;
 
@@ -131,6 +144,24 @@ self.addEventListener("fetch", (event) => {
           const cached = await caches.match(request);
           return cached || caches.match("/offline");
         }),
+    );
+    return;
+  }
+
+  // Router data: network-first. It must come from the same build as the page
+  // showing it, so a cached copy from an earlier deploy is only good offline.
+  // Served stale-while-revalidate like the icons, it was the previous build's
+  // data after every deploy, and so the .txt navigation above.
+  if (url.origin === self.location.origin && url.pathname.endsWith(".txt")) {
+    event.respondWith(
+      caches.open(ASSET_CACHE).then((cache) =>
+        fetch(request)
+          .then((response) => {
+            if (response.ok) cache.put(request, response.clone());
+            return response;
+          })
+          .catch(async () => (await cache.match(request)) || Response.error()),
+      ),
     );
     return;
   }

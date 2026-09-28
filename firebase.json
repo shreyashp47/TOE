@@ -44,6 +44,16 @@
         ]
       },
       {
+        "//": "Firebase's default is max-age=3600 for everything else, pages included. A page and its router data (/admin and /admin.txt) cached from different deploys make Next navigate the tab to the .txt itself. no-cache still lets the browser keep them, but it asks first, and an unchanged file costs a 304.",
+        "source": "**/*.@(html|txt)",
+        "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
+      },
+      {
+        "//": "The same, for pages served by cleanUrls without their .html.",
+        "regex": "^/[^.]*$",
+        "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
+      },
+      {
         "source": "/manifest.webmanifest",
         "headers": [{ "key": "Cache-Control", "value": "public, max-age=3600" }]
       }

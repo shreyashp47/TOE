@@ -141,7 +141,7 @@ function fakeCacheStorage(initial) {
 }
 
 /** Evaluates a stamped sw.js in a fake ServiceWorkerGlobalScope. */
-function bootWorker(version, caches) {
+function bootWorker(version, caches, { fetch: fetchImpl } = {}) {
   const listeners = {};
   const calls = { skipWaiting: 0, claim: 0 };
   const self = {
@@ -161,10 +161,19 @@ function bootWorker(version, caches) {
   vm.runInNewContext(stampSource(SW_SOURCE, version), {
     self,
     caches,
-    fetch: async () => {
-      throw new Error("offline in tests");
+    fetch:
+      fetchImpl ??
+      (async () => {
+        throw new Error("offline in tests");
+      }),
+    Response: class {
+      static redirect(location, status) {
+        return { redirect: location, status };
+      }
+      static error() {
+        return { error: true };
+      }
     },
-    Response: class {},
     URL,
     Promise,
   });
@@ -174,7 +183,18 @@ function bootWorker(version, caches) {
     listeners[type]({ waitUntil: (p) => pending.push(p) });
     await Promise.all(pending);
   }
-  return { fire, calls };
+  /** Dispatches a fetch; resolves to the worker's response, or undefined. */
+  async function request(url, mode = "cors") {
+    let responded;
+    listeners.fetch({
+      request: { method: "GET", url, mode },
+      respondWith: (p) => {
+        responded = p;
+      },
+    });
+    return responded === undefined ? undefined : await responded;
+  }
+  return { fire, calls, request };
 }
 
 describe("public/sw.js activation", () => {
@@ -226,5 +246,50 @@ describe("public/sw.js activation", () => {
     await second.fire("install");
     await second.fire("activate");
     expect([...caches.store.keys()]).toEqual(["cafe-shell-bbbbbbbbbbbb"]);
+  });
+});
+
+describe("public/sw.js page router data (*.txt)", () => {
+  it("sends a tab that navigated to a page's .txt back to the page", async () => {
+    const worker = bootWorker("aaaaaaaaaaaa", fakeCacheStorage([]));
+    for (const [from, to] of [
+      ["https://cafe.test/admin.txt?_rsc=1x2y", "https://cafe.test/admin"],
+      ["https://cafe.test/admin/qr.txt", "https://cafe.test/admin/qr"],
+      ["https://cafe.test/index.txt", "https://cafe.test/"],
+      ["https://cafe.test/order.txt", "https://cafe.test/order"],
+    ]) {
+      expect(await worker.request(from, "navigate")).toEqual({
+        redirect: to,
+        status: 302,
+      });
+    }
+  });
+
+  it("fetches router data fresh, not the previous deploy's cached copy", async () => {
+    const caches = fakeCacheStorage([]);
+    const worker = bootWorker("aaaaaaaaaaaa", caches, {
+      fetch: async () => ({ ok: true, body: "new build", clone: () => "copy" }),
+    });
+    const url = "https://cafe.test/order.txt?_rsc=abc";
+    (await caches.open("cafe-assets-aaaaaaaaaaaa")).put(url, "old build");
+
+    const response = await worker.request(url);
+    expect(response.body).toBe("new build");
+  });
+
+  it("falls back to the cached router data when offline", async () => {
+    const caches = fakeCacheStorage([]);
+    const worker = bootWorker("aaaaaaaaaaaa", caches);
+    const url = "https://cafe.test/order.txt?_rsc=abc";
+    (await caches.open("cafe-assets-aaaaaaaaaaaa")).put(url, "cached");
+
+    expect(await worker.request(url)).toBe("cached");
+  });
+
+  it("still leaves the order board's data to the network alone", async () => {
+    const worker = bootWorker("aaaaaaaaaaaa", fakeCacheStorage([]));
+    expect(
+      await worker.request("https://cafe.test/staff.txt?_rsc=1"),
+    ).toBeUndefined();
   });
 });
