@@ -408,7 +408,7 @@ function Filters({
   onChange: (next: HistoryFilters) => void;
 }) {
   return (
-    <Card className="grid gap-3 p-4 sm:grid-cols-[1fr_1fr_2fr]">
+    <Card className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-[1fr_1fr_2fr]">
       <Field label="Status" htmlFor="history-status">
         <Select
           id="history-status"
@@ -416,7 +416,7 @@ function Filters({
           onChange={(e) => onChange({ ...filters, status: e.target.value })}
         >
           <option value="all">All</option>
-          <option value="active">Active (on the board)</option>
+          <option value="active">Active</option>
           {TERMINAL_STATUSES.map((s) => (
             <option key={s} value={s}>
               {statusLabel(s)}
@@ -443,19 +443,21 @@ function Filters({
           ))}
         </Select>
       </Field>
-      <Field
-        label="Search"
-        htmlFor="history-search"
-        hint="An order number like 417, or an item like chai."
-      >
-        <Input
-          id="history-search"
-          type="search"
-          value={filters.search}
-          autoComplete="off"
-          onChange={(e) => onChange({ ...filters, search: e.target.value })}
-        />
-      </Field>
+      <div className="col-span-2 sm:col-span-1">
+        <Field
+          label="Search"
+          htmlFor="history-search"
+          hint="An order number like 417, or an item like chai."
+        >
+          <Input
+            id="history-search"
+            type="search"
+            value={filters.search}
+            autoComplete="off"
+            onChange={(e) => onChange({ ...filters, search: e.target.value })}
+          />
+        </Field>
+      </div>
     </Card>
   );
 }
