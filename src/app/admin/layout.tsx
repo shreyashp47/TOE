@@ -30,6 +30,8 @@ import { DEMO_CREDENTIALS } from "@/lib/data/seed";
 const NAV: Array<{ href: string; label: string; icon: IconName }> = [
   { href: "/admin", label: "Menu", icon: "drink" },
   { href: "/admin/reports", label: "Reports", icon: "chart" },
+  // "History", not "Orders": the Orders | Owner switch above means the live board
+  { href: "/admin/orders", label: "History", icon: "clock" },
   { href: "/admin/qr", label: "Table QR codes", icon: "qr" },
 ];
 

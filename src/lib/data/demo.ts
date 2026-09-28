@@ -136,8 +136,12 @@ export const demoOrderRepo: OrderRepository = {
     store.demoSetStatus(id, status);
   },
 
-  async listRange(fromMs, toMs) {
-    return store.selectOrdersInRange(store.loadDemoState(), fromMs, toMs);
+  async listRange(fromMs, toMs, limit) {
+    const all = store.selectOrdersInRange(store.loadDemoState(), fromMs, toMs);
+    // Same contract as Firestore: the newest `limit`, still oldest first
+    return limit !== undefined && all.length > limit
+      ? all.slice(all.length - limit)
+      : all;
   },
 };
 

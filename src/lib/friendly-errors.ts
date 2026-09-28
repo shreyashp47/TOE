@@ -67,3 +67,21 @@ export function friendlyStatusError(error: unknown): string {
   if (code && WRITE[code]) return WRITE[code];
   return humanOrNull(error) ?? "Couldn't update that order. Try again.";
 }
+
+const READ: Record<string, string> = {
+  "permission-denied":
+    "This account isn't allowed to read past orders. Sign in with the owner account, or check that it has a staff record.",
+  unauthenticated: "You've been signed out. Sign in again to see past orders.",
+  unavailable: "Can't reach the database — the connection dropped. Try again.",
+  "deadline-exceeded":
+    "The database took too long to answer. Try again, or pick a shorter range.",
+  "resource-exhausted":
+    "Today's free database allowance is used up. History will load again tomorrow.",
+};
+
+/** Loading a list of orders (the owner's history). */
+export function friendlyLoadError(error: unknown): string {
+  const code = codeOf(error);
+  if (code && READ[code]) return READ[code];
+  return humanOrNull(error) ?? "Couldn't load orders. Try again.";
+}

@@ -11,6 +11,12 @@ Work that is built but not yet merged is tracked in
 
 ### Added
 
+- _History_ (`/admin/orders`) for the owner: past orders for Today, Yesterday,
+  the last 7 days, this month or any range up to 31 days, filterable by status
+  and table, searchable by order number or item, each row expanding to its
+  items, times, payment and order ID, with Refresh and a CSV of the filtered
+  view. One capped query per look (at most 1,000 orders) keeps it inside the
+  free tier
 - The owner sets the cafe's tables on _/admin/qr_: a number of tables with −/+,
   or typed-out numbers with ranges (`1-8, 12, 14`). The list is saved to
   `config/tables`, and the customer's table picker, the check on a scanned table

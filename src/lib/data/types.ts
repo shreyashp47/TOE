@@ -62,8 +62,12 @@ export interface OrderRepository {
   ): Unsubscribe;
   create(input: NewOrderInput): Promise<Order>;
   setStatus(id: string, status: Order["status"]): Promise<void>;
-  /** Bounded range query — keeps Firestore reads inside the free tier. */
-  listRange(fromMs: number, toMs: number): Promise<Order[]>;
+  /**
+   * Bounded range query — keeps Firestore reads inside the free tier.
+   * Always returned oldest first. With `limit`, only the newest `limit` orders
+   * in the range are read, so one busy month can't cost a day's read quota.
+   */
+  listRange(fromMs: number, toMs: number, limit?: number): Promise<Order[]>;
 }
 
 /**
