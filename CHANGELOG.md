@@ -11,6 +11,15 @@ Work that is built but not yet merged is tracked in
 
 ### Added
 
+- Daily order numbers: every day starts again at **#0001** (midnight India
+  time) and counts up in arrival order, shown on the staff board, the
+  customer's live status, History (searchable as `#0007`, `0007` or `7`),
+  Reports and the CSV. The staff board assigns them, in a transaction on a
+  staff-only `dayCounters/{YYYY-MM-DD}` document that the rules check, so no
+  number is handed out twice even with two boards open; nothing a customer can
+  write is involved (issue #30). The customer sees "number coming…" until then.
+  Older orders keep their three-digit number
+
 - A secret code per table, carried in its QR card (`/order?table=N&k=CODE`)
   and checked by the order rules, so an order can no longer be placed from
   anywhere by typing the address. The owner turns it on with **Create codes for

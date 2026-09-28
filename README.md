@@ -58,6 +58,12 @@ except adding a new barista's account.
   _Ready_): the ticket asks to confirm, offers a quick reason, then leaves the
   board, and the customer's phone says the counter couldn't accept it.
   Rejected orders are not counted in the reports.
+- **Order numbers** start again at **#0001** every day (midnight, India time)
+  and count up in the order orders arrive. The order board hands them out, so
+  keep it open during service: an order that arrives while no board is open
+  gets its number the moment one opens (the customer's phone says "number
+  coming…" meanwhile). A rejected order keeps its number, so the day's list can
+  have gaps. Orders from before daily numbers keep their old three-digit number.
 - **The owner** signs in on the same `/staff` page and goes straight to the owner
   dashboard. An **Orders | Owner** switch at the top moves between the dashboard
   and the order board; baristas never see it.
@@ -78,8 +84,8 @@ except adding a new barista's account.
   that table.
 - **Reports** — _Reports_ (`/admin/reports`) shows revenue, order count, average
   order, revenue by day and best sellers for a month or a custom range, with a
-  CSV export. Group the CSV by _Order ID_, not _Order #_: order numbers are
-  short and repeat (see [below](#order-numbers-are-short-and-not-unique-on-their-own)).
+  CSV export. Group the CSV by _Order ID_, not _Order #_: order numbers start
+  again every day (see [below](#order-numbers-start-at-0001-every-day)).
 - **Look up a past order** — _History_ (`/admin/orders`) lists every order for
   a day, a week or up to 31 days, newest first. Filter by status or table, search
   by order number or item, and tap a row for its items, times and order ID.
@@ -642,21 +648,27 @@ Two rules worth knowing before you change anything:
    match the menu, but that is detection, not prevention. See
    [What the rules cannot do](#what-the-rules-cannot-do) before you rely on it.
 
-### Order numbers are short, and not unique on their own
+### Order numbers start at #0001 every day
 
-The `#417` on the staff board and the customer's screen is derived from the
-order's document id ([`src/lib/order-number.ts`](./src/lib/order-number.ts)), not
-allocated from a counter. It is three digits because a barista reads it out, and
-it is always shown next to the table, which is what actually tells two orders
-apart. Two orders in a day can share a number; two open orders on the same table
-sharing one is about a 1-in-900 chance per pair. Across a busy board the odds that
-_some_ two orders share a number are much higher — about 19% with 20 open — so
-read the table first.
+The `#0007` on the staff board and the customer's screen is today's number: it
+starts again at `#0001` at midnight India time and counts up in arrival order
+([`src/lib/order-number.ts`](./src/lib/order-number.ts),
+[`src/lib/day-number.ts`](./src/lib/day-number.ts)). The **staff board** hands it
+out, in a transaction on a staff-only `dayCounters/{YYYY-MM-DD}` document, and
+the rules only accept exactly the counter's next number, once per order — so two
+boards open at once still never give out the same number. A customer never
+writes a counter. The cost is that numbers only appear while a board is open;
+until then the customer's screen says "number coming…".
 
-It used to come from a `/meta/counters` document that every customer phone
-incremented, which meant anyone could reset it or run it up. Nothing writes
-`/meta` now, and the rules deny it to everyone. Orders placed under the old
-counter keep their stored number.
+It is unique within a day, not across days — every day has a `#0007` — so History
+and the CSV show the date alongside it, and the CSV's _Order ID_ column is the one
+to group by.
+
+Orders from before daily numbers keep what they showed: a stored number from
+the original `/meta/counters` (which every customer phone could write, issue
+#30, and which the rules now deny to everyone), else a three-digit number
+derived from the order id, which is not unique. The full reasoning is in
+[docs/decisions.md](./docs/decisions.md).
 
 ---
 

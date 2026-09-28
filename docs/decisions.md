@@ -257,6 +257,62 @@ Orders placed under the counter keep their stored `orderNumber`, so old receipts
 and exported reports do not renumber. The demo store does the same derivation, so
 the demo no longer promises sequential numbers the real backend does not give.
 
+### Superseded: daily numbers, assigned by the staff board
+
+The owner asked for "every day the order should start with #0001". The derived
+number above cannot do that, and the objection to a counter was never to
+counting — it was to **customers** writing the counter. So the counter came
+back, with the writer changed.
+
+**Decision: the staff board numbers each order, #0001 upwards per IST day, in a
+transaction on a staff-only counter.**
+
+- `dayCounters/{YYYY-MM-DD}` holds `{ next }`. Only a staff or owner account
+  can read or write it; customers and signed-out callers are refused. It can
+  only be created at 2 (the day's first order took 1), only step up by one, and
+  never be deleted, so the day's numbers can never be handed out twice.
+- The board (`src/lib/day-number.ts`) sees an order with no `dayNumber` and, in
+  one transaction, re-reads the order, reads the counter, writes `dayNumber` and
+  `dayKey` on the order and `next + 1` on the counter. The rules accept the
+  order update only as its own update (never mixed with a status change), only
+  when the order has no number yet, only for a whole number 1–9999, and only if
+  it equals the counter's `next` before the commit and the counter is `next + 1`
+  after it (`get` / `getAfter`). Two boards that race: one commits; the other
+  is retried or refused, re-reads the order, finds it numbered and stops.
+- The day is the IST date of the order's **own createdAt**, which the rules
+  recompute (`createdAt + 5h30m`, read as a UTC date; India has no daylight
+  saving). So a board with a wrong clock cannot file an order under another
+  day, and an order placed at 23:59:59 is numbered in that day's sequence even
+  if the board gets to it after midnight.
+- The board does it one order at a time, oldest first, so numbers follow
+  arrival; it backs off when a transaction fails and stops (with a note on the
+  board) after repeated permission refusals rather than looping on them.
+
+**Why this is safe where `/meta/counters` was not:** nobody on the internet can
+touch this counter. The worst a staff account can do is waste numbers (bump the
+counter by one, leaving a gap), which it could achieve anyway by rejecting
+orders.
+
+**What it costs:**
+
+- **A board must be open.** Numbers are handed out by the board, not by the
+  customer's phone and not by a server (Cloud Functions need Blaze). An order
+  that arrives while no board is open waits for one; the customer's screen says
+  "number coming…" and, after 45 seconds, just "the counter has it" — it never
+  shows a stand-in number that would later change. If numbering stops on the
+  board, the ticket shows the older three-digit number instead.
+- **Per order:** one more transaction — two document reads (the order and the
+  counter) plus the rules' own read of the counter, and two writes. At the free
+  tier's 20,000 writes and 50,000 reads a day that is negligible for a cafe.
+- **Gaps.** A rejected order keeps its number. So does an order numbered by a
+  board and then deleted by the owner. Gaps are harmless; duplicates would not
+  be.
+- **9,999 a day.** After that, orders simply stay unnumbered for the day.
+
+Older orders keep what they showed: a stored `orderNumber` from the original
+counter, else the derived three-digit number. `orderLabel()` picks, in that
+order, day number, stored, derived.
+
 ### Order retention is an operational practice, not a feature
 
 §5.4 says "all orders retained (no auto-deletion) — target minimum 6 months,

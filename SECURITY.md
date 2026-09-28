@@ -92,9 +92,11 @@ requests against it.
   shape-checked: only a `tables` field, 1–50 entries, first and last entries
   whole numbers 1–50. The client also drops any entry outside 1–50 when it
   reads the list (`normalizeTables` in `src/lib/tables.ts`).
-- **The old `/meta/counters` document** is gone (issue #30). Order numbers are
-  derived from the order id, and `/meta`, like every path not listed in the
-  rules, is denied to everyone.
+- **The old `/meta/counters` document** is gone (issue #30), and `/meta`, like
+  every path not listed in the rules, is denied to everyone. Daily order numbers
+  come from `dayCounters/{YYYY-MM-DD}`, which only staff and the owner can read
+  or write; it only steps up by one, cannot be deleted, and an order can only
+  be given the counter's exact next number, once.
 - **The Firebase SDK** is only loaded when the Firebase config is set, and it
   never holds a secret.
 
