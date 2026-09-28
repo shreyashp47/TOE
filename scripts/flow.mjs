@@ -403,6 +403,33 @@ check(
     .catch(() => false)),
 );
 
+step("10c", "The tab the scan opened asks again after 3 hours, no reload");
+// The tab most customers keep: opened by the camera with ?k=, never reloaded.
+// Unit tests stand in for Next's router, so only a real browser shows whether
+// the router let go of the scanned code when it left the address bar.
+{
+  const scanned = watch(await context.newPage(), "scanned-tab");
+  await scanned.clock.install();
+  await scanned.goto(`${BASE}${keyedPath}`, { waitUntil: "networkidle" });
+  await scanned.waitForURL((u) => !u.searchParams.has("k"), {
+    timeout: 5_000,
+  });
+  const notice = () =>
+    scanned
+      .getByText(/scan the QR code on your table again/)
+      .first()
+      .isVisible()
+      .catch(() => false);
+  await scanned.clock.fastForward("02:59:00");
+  await scanned.waitForTimeout(300);
+  check("no notice at 2h59", !(await notice()));
+  await scanned.clock.fastForward("00:02:00");
+  await scanned.waitForTimeout(500);
+  check("the notice appears at 3h01 on its own", await notice());
+  await scanned.screenshot({ path: `${OUT}/10-scanned-tab-expired.png` });
+  await scanned.close();
+}
+
 step(11, "Cart survives a reload");
 await customer.goto(`${BASE}/order?table=3`, { waitUntil: "networkidle" });
 await addByName(customer, "Masala Chai");

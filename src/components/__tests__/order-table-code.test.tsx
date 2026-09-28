@@ -60,11 +60,9 @@ describe("/order takes the code out of the address", () => {
     await waitFor(() =>
       expect(window.location.search).toBe("?table=3&src=card"),
     );
-    expect(spy).toHaveBeenCalledWith(
-      expect.anything(),
-      "",
-      "/order?table=3&src=card",
-    );
+    // null state, so Next's patched replaceState updates the router too (see
+    // dropKeyFromAddress); its own state would make the router keep k.
+    expect(spy).toHaveBeenCalledWith(null, "", "/order?table=3&src=card");
     expect(window.location.pathname).toBe("/order");
     expect(readTableKey(3)).toBe(CODE);
   });
