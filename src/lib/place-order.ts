@@ -7,7 +7,7 @@
  * and refuses to send a basket containing a sold-out or deleted item.
  */
 
-import { loadBundle } from "./data";
+import { loadBundle, type DataBundle, type NewOrderInput } from "./data";
 import { priceCart } from "./money";
 import { orderCapProblems } from "./order-caps";
 import {
@@ -16,6 +16,8 @@ import {
   recordOrderPlaced,
   secondsUntilNextOrder,
 } from "./order-throttle";
+import type { NewOrderStatus } from "./order-status";
+import { chooseOrderStatus } from "./table-open";
 import type { CartLine, MenuItem, Order } from "./types";
 
 export interface PlaceOrderArgs {
@@ -88,16 +90,17 @@ export async function placeOrder({
   if (wait > 0) throw new OrderThrottled(wait);
 
   const bundle = await loadBundle();
+  const input = {
+    tableNumber,
+    items: check.lines,
+    total: check.total,
+    notes: notes?.trim() || undefined,
+    paymentMethod,
+    ...(tableKey ? { tableKey } : {}),
+  };
 
   try {
-    const order = await bundle.orders.create({
-      tableNumber,
-      items: check.lines,
-      total: check.total,
-      notes: notes?.trim() || undefined,
-      paymentMethod,
-      ...(tableKey ? { tableKey } : {}),
-    });
+    const order = await createWithStatus(bundle, input);
     recordOrderPlaced(Date.now());
     return order;
   } catch (err) {
@@ -111,6 +114,53 @@ export async function placeOrder({
       throw new TableCodeRefused(Boolean(tableKey));
     }
     throw new Error(friendlyError(err));
+  }
+}
+
+/**
+ * Sends the order as `preparing` when the table is open (or the owner has
+ * switched confirmation off), otherwise as `pending` for staff to accept
+ * (src/lib/table-open.ts). The phone checks first so the rules are not asked
+ * for something they will refuse; if it cannot check, it sends `pending`,
+ * which the rules always take.
+ *
+ * A refusal gets one retry with the other status:
+ *   - `preparing` refused: the table closed in the moment between the check
+ *     and the order. `pending` goes through.
+ *   - `pending` refused: the rules may be the ones from before this change,
+ *     which only knew `preparing` (a deploy puts new pages and new rules out
+ *     a moment apart). With the current rules the retry is refused too, so it
+ *     never lets an order skip the counter.
+ * A second refusal is a real one (the table code, say) and is left to the
+ * caller.
+ */
+async function createWithStatus(
+  bundle: DataBundle,
+  input: Omit<NewOrderInput, "status">,
+): Promise<Order> {
+  let status: NewOrderStatus = "pending";
+  try {
+    const [settings, tableOpen] = await Promise.all([
+      bundle.sessions.readSettings(),
+      bundle.sessions.isOpen(input.tableNumber),
+    ]);
+    status = chooseOrderStatus({
+      confirmNewGuests: settings.confirmNewGuests,
+      tableOpen,
+    });
+  } catch {
+    /* offline or refused: `pending` is the one the rules always accept */
+  }
+
+  try {
+    return await bundle.orders.create({ ...input, status });
+  } catch (err) {
+    if (err instanceof OrderThrottled || codeOf(err) !== "permission-denied") {
+      throw err;
+    }
+    const other: NewOrderStatus =
+      status === "preparing" ? "pending" : "preparing";
+    return bundle.orders.create({ ...input, status: other });
   }
 }
 

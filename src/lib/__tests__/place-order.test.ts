@@ -13,8 +13,15 @@ import {
   rememberSessionOrder,
 } from "@/lib/order-session";
 import { orderHref, parseTableNumber, readTableFromSearch } from "@/lib/tables";
-import { demoMenuRepo } from "@/lib/data/demo";
-import { resetDemoStore } from "@/lib/data/demo-store";
+import { demoMenuRepo, demoOrderRepo, demoSessionRepo } from "@/lib/data/demo";
+import {
+  demoSaveOrdering,
+  demoSaveTableKeys,
+  demoSetTableOpenUntil,
+  loadDemoState,
+  resetDemoStore,
+} from "@/lib/data/demo-store";
+import { TableCodeRefused } from "@/lib/place-order";
 import type { CartLine, MenuItem } from "@/lib/types";
 
 beforeEach(() => {
@@ -173,7 +180,8 @@ describe("placeOrder", () => {
       ],
       menu,
     });
-    expect(order.status).toBe("preparing");
+    // Table 5 has not been confirmed by staff, so the order waits for them.
+    expect(order.status).toBe("pending");
     expect(order.tableNumber).toBe(5);
     expect(order.total).toBe(first.price * 2);
   });
@@ -246,6 +254,106 @@ describe("placeOrder", () => {
         }),
       ).rejects.toBeInstanceOf(OrderRejected);
       await expect(place()).resolves.toBeTruthy();
+    });
+  });
+
+  describe("waiting for the counter (open tables)", () => {
+    const place = (tableNumber = 4, tableKey?: string) =>
+      placeOrder({
+        tableNumber,
+        cartLines: [line()],
+        menu: [item()],
+        tableKey,
+      });
+    beforeEach(() => {
+      forgetLastOrder();
+      vi.restoreAllMocks();
+    });
+
+    it("sends an order from a closed table as pending", async () => {
+      expect((await place()).status).toBe("pending");
+      expect(loadDemoState().orders[0].status).toBe("pending");
+    });
+
+    it("sends it straight to preparing once staff have opened the table", async () => {
+      demoSetTableOpenUntil(4, Date.now() + 3600_000);
+      expect((await place()).status).toBe("preparing");
+    });
+
+    it("waits again once the table's time has run out", async () => {
+      demoSetTableOpenUntil(4, Date.now());
+      expect((await place()).status).toBe("pending");
+    });
+
+    it("skips the wait when the owner has switched confirmation off", async () => {
+      demoSaveOrdering({ confirmNewGuests: false });
+      expect((await place()).status).toBe("preparing");
+    });
+
+    it("retries once as pending when the table closed a moment ago", async () => {
+      // The phone saw the table open, the rules no longer agree.
+      vi.spyOn(demoSessionRepo, "isOpen").mockResolvedValue(true);
+      const create = vi.spyOn(demoOrderRepo, "create");
+      const order = await place();
+      expect(order.status).toBe("pending");
+      expect(create.mock.calls.map(([input]) => input.status)).toEqual([
+        "preparing",
+        "pending",
+      ]);
+      expect(loadDemoState().orders).toHaveLength(1);
+    });
+
+    it("falls back to preparing if pending is refused (rules from before this change)", async () => {
+      const real = demoOrderRepo.create.bind(demoOrderRepo);
+      const create = vi
+        .spyOn(demoOrderRepo, "create")
+        .mockImplementation(async (input) => {
+          if (input.status === "pending") {
+            throw Object.assign(new Error("denied"), {
+              code: "permission-denied",
+            });
+          }
+          demoSaveOrdering({ confirmNewGuests: false }); // what the old rules allowed
+          return real(input);
+        });
+      const order = await place();
+      expect(order.status).toBe("preparing");
+      expect(create.mock.calls.map(([input]) => input.status)).toEqual([
+        "pending",
+        "preparing",
+      ]);
+    });
+
+    it("never lets that fallback skip the counter under the current rules", async () => {
+      const create = vi.spyOn(demoOrderRepo, "create");
+      demoSaveTableKeys({ 4: "RightCode1234" });
+      await expect(place(4, "WrongCode1234")).rejects.toBeInstanceOf(
+        TableCodeRefused,
+      );
+      expect(create.mock.calls.map(([input]) => input.status)).toEqual([
+        "pending",
+        "preparing",
+      ]);
+      expect(loadDemoState().orders).toHaveLength(0);
+    });
+
+    it("sends pending when it cannot check the table", async () => {
+      vi.spyOn(demoSessionRepo, "readSettings").mockRejectedValue(
+        new Error("offline"),
+      );
+      demoSetTableOpenUntil(4, Date.now() + 3600_000);
+      expect((await place()).status).toBe("pending");
+    });
+
+    it("still reports a wrong table code after the retry", async () => {
+      demoSaveTableKeys({ 4: "RightCode1234" });
+      vi.spyOn(demoSessionRepo, "isOpen").mockResolvedValue(true);
+      const create = vi.spyOn(demoOrderRepo, "create");
+      await expect(place(4, "WrongCode1234")).rejects.toBeInstanceOf(
+        TableCodeRefused,
+      );
+      expect(create).toHaveBeenCalledTimes(2);
+      expect(loadDemoState().orders).toHaveLength(0);
     });
   });
 });

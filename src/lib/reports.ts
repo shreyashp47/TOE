@@ -51,11 +51,20 @@ export interface Report {
    * count, best sellers and the daily chart.
    */
   rejectedCount: number;
+  /**
+   * Orders still waiting for staff to confirm the table (`pending`). Left out
+   * of the figures the same way: nothing has been made yet, and most of them
+   * will either be accepted (and then count) or turned away.
+   */
+  pendingCount: number;
 }
 
-/** Whether an order counts towards takings. Rejected orders never do. */
+/**
+ * Whether an order counts towards takings. Rejected orders never do; pending
+ * ones (waiting for the counter to confirm the table) not yet.
+ */
 export function countsAsSale(order: Pick<Order, "status">): boolean {
-  return order.status !== "rejected";
+  return order.status !== "rejected" && order.status !== "pending";
 }
 
 function startOfDay(ms: number): number {
@@ -171,7 +180,8 @@ export function buildReport(orders: Order[], range: Range): Report {
     topItems,
     byDay,
     statusCounts,
-    rejectedCount: inRange.length - sales.length,
+    rejectedCount: inRange.filter((o) => o.status === "rejected").length,
+    pendingCount: inRange.filter((o) => o.status === "pending").length,
   };
 }
 

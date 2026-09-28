@@ -22,10 +22,16 @@ import { DAY_NUMBER_MAX, istDayKey, isDayNumber } from "./order-number";
 
 /** What a numbering transaction needs from the store it runs against. */
 export interface DayNumberTx {
-  /** The order as it stands inside the transaction, or null if it is gone. */
-  readOrder(
-    id: string,
-  ): Promise<{ createdAt: number; dayNumber?: unknown } | null>;
+  /**
+   * The order as it stands inside the transaction, or null if it is gone.
+   * `status` is optional only so a store that cannot say is not forced to;
+   * both real stores pass it.
+   */
+  readOrder(id: string): Promise<{
+    createdAt: number;
+    dayNumber?: unknown;
+    status?: string;
+  } | null>;
   /** The counter's `next` for that day, or null if the day has no counter. */
   readCounter(dayKey: string): Promise<number | null>;
   /**
@@ -55,9 +61,20 @@ export class DayNumbersExhausted extends Error {
 }
 
 /**
+ * An order waiting for the counter (`pending`, src/lib/table-open.ts) is not
+ * numbered until staff accept it: most of the orders turned away at that step
+ * come from people who are not in the cafe, and numbering them would leave a
+ * gap in the day's list for each (and let a leaked link use the day's numbers
+ * up). firestore.rules refuses to number a pending order too.
+ */
+export function awaitsNumbering(status: unknown): boolean {
+  return status !== "pending";
+}
+
+/**
  * One numbering attempt. Returns what was assigned, or null when there was
- * nothing to do: the order is gone, or it already has a number (another board
- * got there first).
+ * nothing to do: the order is gone, it already has a number (another board
+ * got there first), or it is still waiting for the counter.
  */
 export async function assignInTransaction(
   tx: DayNumberTx,
@@ -65,6 +82,7 @@ export async function assignInTransaction(
 ): Promise<Assigned | null> {
   const order = await tx.readOrder(id);
   if (!order || order.dayNumber !== undefined) return null;
+  if (!awaitsNumbering(order.status)) return null;
   // From when the order was placed, not from now: an order placed at 23:59:59
   // and numbered at 00:00:02 belongs to the day it was placed.
   const dayKey = istDayKey(order.createdAt);
@@ -89,6 +107,13 @@ export interface NumberingOrder {
   id: string;
   createdAt: number;
   dayNumber?: number;
+  /** A `pending` order is left alone until it is accepted. */
+  status?: string;
+}
+
+/** On the board, without a number, and ready for one. */
+function wantsNumber(o: NumberingOrder): boolean {
+  return !isDayNumber(o.dayNumber) && awaitsNumbering(o.status);
 }
 
 export interface AssignerOptions {
@@ -161,8 +186,7 @@ export function createDayNumberAssigner(
   const pick = (): NumberingOrder | undefined => {
     let best: NumberingOrder | undefined;
     for (const o of orders) {
-      if (isDayNumber(o.dayNumber) || settled.has(o.id) || skipped.has(o.id))
-        continue;
+      if (!wantsNumber(o) || settled.has(o.id) || skipped.has(o.id)) continue;
       if (!best || o.createdAt < best.createdAt) best = o;
     }
     return best;
@@ -228,10 +252,9 @@ export function createDayNumberAssigner(
   return {
     update(next) {
       orders = next;
-      // Forget ids the live list no longer has, or now shows numbered.
-      const live = new Set(
-        next.filter((o) => !isDayNumber(o.dayNumber)).map((o) => o.id),
-      );
+      // Forget ids the live list no longer has, now shows numbered, or shows
+      // waiting for the counter (so it is numbered afresh once accepted).
+      const live = new Set(next.filter(wantsNumber).map((o) => o.id));
       for (const id of settled) if (!live.has(id)) settled.delete(id);
       kick();
     },

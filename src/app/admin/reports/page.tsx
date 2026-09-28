@@ -268,6 +268,15 @@ export default function ReportsPage() {
             </p>
           ) : null}
 
+          {report.pendingCount > 0 ? (
+            <p className="border-line bg-paper text-muted rounded-md border-2 border-dashed px-3 py-2 text-sm">
+              {report.pendingCount} order
+              {report.pendingCount === 1 ? " is" : "s are"} still waiting for
+              the counter to confirm the table, and not counted yet. They are in
+              the CSV, marked &ldquo;pending&rdquo;.
+            </p>
+          ) : null}
+
           <Card className="p-4">
             <h2 className="text-lg">Revenue by day</h2>
             <RevenueChart report={report} />

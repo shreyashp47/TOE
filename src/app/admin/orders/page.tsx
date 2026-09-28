@@ -163,6 +163,8 @@ export default function OrderHistoryPage() {
   const capped = orders.length >= HISTORY_LIMIT;
   // Rejected orders: listed here, but left out of takings by buildReport.
   const notCounted = report?.rejectedCount ?? 0;
+  // Pending: still waiting for staff to confirm the table. Not a sale yet.
+  const waiting = report?.pendingCount ?? 0;
 
   function downloadCsv() {
     if (!range) return;
@@ -271,6 +273,9 @@ export default function OrderHistoryPage() {
                 <p className="text-muted text-sm">
                   {notCounted > 0
                     ? `Plus ${plural(notCounted, "rejected order")}, not counted. `
+                    : ""}
+                  {waiting > 0
+                    ? `${plural(waiting, "order")} waiting for the counter, not counted yet. `
                     : ""}
                   Sales are added up from each order&apos;s items, including
                   orders still being made — the same figures as Reports.

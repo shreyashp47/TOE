@@ -11,7 +11,9 @@ import ConfirmationPage from "@/app/order/confirmation/page";
 import StaffPage from "@/app/staff/page";
 import { demoAuthRepo, demoOrderRepo } from "@/lib/data/demo";
 import {
+  demoAcceptOrder,
   demoAssignDayNumber,
+  demoSetTableOpenUntil,
   loadDemoState,
   resetDemoStore,
 } from "@/lib/data/demo-store";
@@ -29,11 +31,26 @@ beforeEach(async () => {
   await demoAuthRepo.signOut();
 });
 
-const place = (tableNumber = 2) =>
+const HOUR = 3_600_000;
+
+// An order from a table staff have opened, so it goes straight to the kitchen
+// (`preparing`). A new guest's order waits as `pending` and is not numbered
+// until accepted; `placeWaiting` makes one of those.
+const place = (tableNumber = 2) => {
+  demoSetTableOpenUntil(tableNumber, Date.now() + HOUR);
+  return demoOrderRepo.create({
+    tableNumber,
+    items: [{ menuItemId: "m1", name: "Latte", qty: 1, price: 200 }],
+    total: 200,
+    status: "preparing",
+  });
+};
+const placeWaiting = (tableNumber = 2) =>
   demoOrderRepo.create({
     tableNumber,
     items: [{ menuItemId: "m1", name: "Latte", qty: 1, price: 200 }],
     total: 200,
+    status: "pending",
   });
 
 describe("demo store: numbering", () => {
@@ -60,6 +77,17 @@ describe("demo store: numbering", () => {
     const numbers = loadDemoState().orders.map((o) => o.dayNumber);
     expect(new Set(numbers).size).toBe(6);
     expect([...numbers].sort()).toEqual([1, 2, 3, 4, 5, 6]);
+  });
+
+  it("does not number an order waiting for the counter until it is accepted", async () => {
+    const guest = await placeWaiting(5);
+    expect(guest.status).toBe("pending");
+    expect(await demoAssignDayNumber(guest.id)).toBeNull();
+    expect(loadDemoState().dayCounters).toEqual({});
+    const other = await place(2);
+    expect(await demoAssignDayNumber(other.id)).toMatchObject({ dayNumber: 1 });
+    demoAcceptOrder(guest.id, Date.now() + HOUR);
+    expect(await demoAssignDayNumber(guest.id)).toMatchObject({ dayNumber: 2 });
   });
 
   it("only staff and the owner may number an order", async () => {

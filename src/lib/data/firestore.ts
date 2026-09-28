@@ -8,6 +8,9 @@
  *   /config/special   the "today's special" board
  *   /config/tables    { tables: number[] }, the owner's table list
  *   /tableKeys/{n}    { key }, table n's QR code; owner-only (table-keys.ts)
+ *   /tableSessions/{n} { openUntil }, table n is open until then; public
+ *                     read, staff write (table-open.ts)
+ *   /config/ordering  { confirmNewGuests }, the owner's switch (table-open.ts)
  *
  *   /dayCounters/{YYYY-MM-DD}  { next, last }: today's order numbers; staff-only
  *
@@ -26,6 +29,11 @@ import { orderTotal } from "../money";
 import { ACTIVE_STATUSES, MAX_REJECT_REASON } from "../order-status";
 import { assignInTransaction, counterNext } from "../day-number";
 import { isTableKey } from "../table-keys";
+import {
+  parseOrderingSettings,
+  parseTableSessionsDoc,
+  type TableSessions,
+} from "../table-open";
 import { OrderThrottled, throttleFromServerStamp } from "../order-throttle";
 import { checkTablesForSave, normalizeTables } from "../tables";
 import { roleFromStaffDoc, staffDisplayName } from "./roles";
@@ -46,6 +54,7 @@ import type {
   MenuWriteInput,
   NewOrderInput,
   OrderRepository,
+  SessionRepository,
   StaffRole,
 } from "./types";
 
@@ -63,6 +72,8 @@ const STAFF = "staff";
 const THROTTLE = "orderThrottle";
 const TABLE_KEYS = "tableKeys";
 const DAY_COUNTERS = "dayCounters";
+const SESSIONS = "tableSessions";
+const ORDERING_DOC = "ordering";
 
 let bundle: Promise<{
   app: import("firebase/app").FirebaseApp;
@@ -326,6 +337,9 @@ export const firestoreOrderRepo: OrderRepository = {
     const uid = await customerUid();
     const ref = fs.doc(fs.collection(db, ORDERS));
     const total = orderTotal(input.items);
+    // `preparing` only when the phone found the table open; the rules check
+    // that again (src/lib/table-open.ts). `pending` is always accepted.
+    const status = input.status ?? "pending";
     // No number is written here. It used to be allocated from a shared
     // /meta/counters document in a transaction, which meant that document had to
     // be writable by the public (issue #30). Today's number (#0001…) is written
@@ -342,7 +356,7 @@ export const firestoreOrderRepo: OrderRepository = {
       tableNumber: input.tableNumber,
       items: input.items,
       total,
-      status: "preparing",
+      status,
       createdAt: fs.serverTimestamp(),
       notes: input.notes ?? "",
       paymentMethod: input.paymentMethod ?? "counter",
@@ -368,17 +382,39 @@ export const firestoreOrderRepo: OrderRepository = {
       tableNumber: input.tableNumber,
       items: input.items,
       total,
-      status: "preparing",
+      status,
       createdAt: Date.now(),
       paymentMethod: input.paymentMethod ?? "counter",
     }) as Order;
   },
 
-  async setStatus(id, status) {
+  async setStatus(id, status, keepTableOpen) {
     const { db, fs } = await dbAndFs();
     const patch: Record<string, unknown> = { status };
     if (status === "completed") patch.completedAt = fs.serverTimestamp();
-    await fs.updateDoc(fs.doc(db, ORDERS, id), patch);
+    if (!keepTableOpen) {
+      await fs.updateDoc(fs.doc(db, ORDERS, id), patch);
+      return;
+    }
+    // One commit, so the table's time and the order move together.
+    const batch = fs.writeBatch(db);
+    batch.update(fs.doc(db, ORDERS, id), patch);
+    batch.set(fs.doc(db, SESSIONS, String(keepTableOpen.table)), {
+      openUntil: fs.Timestamp.fromMillis(keepTableOpen.openUntil),
+    });
+    await batch.commit();
+  },
+
+  async accept(id, table, openUntil) {
+    const { db, fs } = await dbAndFs();
+    // The order and the table in one commit: an accepted order on a table
+    // that failed to open would make the group's next order wait again.
+    const batch = fs.writeBatch(db);
+    batch.update(fs.doc(db, ORDERS, id), { status: "preparing" });
+    batch.set(fs.doc(db, SESSIONS, String(table)), {
+      openUntil: fs.Timestamp.fromMillis(openUntil),
+    });
+    await batch.commit();
   },
 
   async reject(id, reason) {
@@ -411,6 +447,7 @@ export const firestoreOrderRepo: OrderRepository = {
               return {
                 createdAt: order.createdAt,
                 dayNumber: raw ?? undefined,
+                status: order.status,
               };
             },
             async readCounter(dayKey) {
@@ -555,6 +592,65 @@ export const firestoreConfigRepo: ConfigRepository = {
       batch.set(fs.doc(db, TABLE_KEYS, String(table)), { key });
     }
     await batch.commit();
+  },
+};
+
+// --- open tables -----------------------------------------------------------
+
+export const firestoreSessionRepo: SessionRepository = {
+  subscribe(listener, onError) {
+    return deferred(async () => {
+      const { db, fs } = await dbAndFs();
+      // At most one small document per table, so the whole collection is a
+      // cheap listener.
+      return fs.onSnapshot(
+        fs.collection(db, SESSIONS),
+        (snap) => {
+          const sessions: TableSessions = {};
+          for (const d of snap.docs) {
+            const entry = parseTableSessionsDoc(d.id, d.data());
+            if (entry) sessions[entry[0]] = entry[1];
+          }
+          listener(sessions);
+        },
+        (error) => onError?.(error),
+      );
+    });
+  },
+  async isOpen(table) {
+    const { db, fs } = await dbAndFs();
+    const snap = await fs.getDoc(fs.doc(db, SESSIONS, String(table)));
+    const entry = parseTableSessionsDoc(table, snap.data());
+    return entry !== null && entry[1] > Date.now();
+  },
+  async close(table) {
+    const { db, fs } = await dbAndFs();
+    // The server's own clock, so a tablet with a wrong one still closes it.
+    await fs.setDoc(fs.doc(db, SESSIONS, String(table)), {
+      openUntil: fs.serverTimestamp(),
+    });
+  },
+  subscribeSettings(listener) {
+    return deferred(async () => {
+      const { db, fs } = await dbAndFs();
+      return fs.onSnapshot(
+        fs.doc(db, CONFIG, ORDERING_DOC),
+        (snap) => listener(parseOrderingSettings(snap.data())),
+        () => listener(parseOrderingSettings(undefined)),
+      );
+    });
+  },
+  async readSettings() {
+    const { db, fs } = await dbAndFs();
+    const snap = await fs.getDoc(fs.doc(db, CONFIG, ORDERING_DOC));
+    return parseOrderingSettings(snap.data());
+  },
+  async saveSettings(settings) {
+    const { db, fs } = await dbAndFs();
+    // Whole document: the rules allow this one field and nothing else.
+    await fs.setDoc(fs.doc(db, CONFIG, ORDERING_DOC), {
+      confirmNewGuests: settings.confirmNewGuests,
+    });
   },
 };
 

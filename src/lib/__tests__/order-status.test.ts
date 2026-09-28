@@ -11,7 +11,9 @@ import {
   MAX_REJECT_REASON,
   actionsFor,
   canAdvance,
+  PENDING_REJECT_REASON,
   canReject,
+  isAwaitingCounter,
   isClosedStatus,
   isActiveStatus,
   isOrderStatus,
@@ -23,6 +25,7 @@ import {
 describe("order status machine", () => {
   it("declares the documented chain", () => {
     expect(ORDER_STATUSES).toEqual([
+      "pending",
       "received",
       "preparing",
       "ready",
@@ -115,12 +118,13 @@ describe("order status machine", () => {
 });
 
 describe("rejecting an order", () => {
-  it("is allowed from preparing and ready, exactly as firestore.rules says", () => {
+  it("is allowed from pending, preparing and ready, exactly as firestore.rules says", () => {
+    expect(transition("pending", "rejected")).toBe("rejected");
     expect(transition("preparing", "rejected")).toBe("rejected");
     expect(transition("ready", "rejected")).toBe("rejected");
     for (const from of ORDER_STATUSES) {
       expect(canReject(from), from).toBe(
-        from === "preparing" || from === "ready",
+        from === "pending" || from === "preparing" || from === "ready",
       );
     }
   });
@@ -166,6 +170,56 @@ describe("rejecting an order", () => {
     expect(rules).toContain(
       `request.resource.data.rejectReason.size() <= ${MAX_REJECT_REASON}`,
     );
-    expect(rules).toContain('resource.data.status in ["preparing", "ready"]');
+    expect(rules).toContain(
+      'resource.data.status in ["pending", "preparing", "ready"]',
+    );
+  });
+});
+
+describe("waiting for the counter (pending)", () => {
+  it("has exactly one way on: Accept, to preparing", () => {
+    expect(nextStatus("pending")).toBe("preparing");
+    expect(transition("pending", "preparing")).toBe("preparing");
+    expect(actionsFor("pending")).toEqual([
+      { to: "preparing", label: "Accept", variant: "primary", primary: true },
+    ]);
+  });
+
+  it("cannot skip the kitchen", () => {
+    for (const to of ["ready", "served", "completed"] as const) {
+      expect(transition("pending", to), to).toBeNull();
+    }
+  });
+
+  it("nothing goes back to pending", () => {
+    for (const from of ORDER_STATUSES) {
+      expect(transition(from, "pending"), from).toBeNull();
+    }
+  });
+
+  it("is on the board, but not kitchen work", () => {
+    expect(isActiveStatus("pending")).toBe(true);
+    expect(isAwaitingCounter("pending")).toBe(true);
+    expect(isAwaitingCounter("preparing")).toBe(false);
+    expect(isClosedStatus("pending")).toBe(false);
+    expect(CUSTOMER_STEPS).not.toContain("pending");
+  });
+
+  it("suggests 'No one at this table' first when turning a guest away", () => {
+    expect(PENDING_REJECT_REASON).toBe("No one at this table");
+    expect(REJECT_REASONS).toContain(PENDING_REJECT_REASON);
+  });
+
+  it("matches the transitions firestore.rules spells out", () => {
+    const rules = readFileSync(
+      resolve(process.cwd(), "firestore.rules"),
+      "utf8",
+    );
+    expect(rules).toMatch(
+      /resource\.data\.status == "pending"\s+&& request\.resource\.data\.status == "preparing"/,
+    );
+    expect(rules).toContain(
+      'request.resource.data.status in ["pending", "preparing"]',
+    );
   });
 });

@@ -153,9 +153,9 @@ describe("repository contract: orders", () => {
     expect(order.total).toBe(orderTotal(order.items));
   });
 
-  it("starts in preparing, per the data model", async () => {
+  it("starts pending when no status is given: the one the rules always take", async () => {
     const order = await place();
-    expect(order.status).toBe("preparing");
+    expect(order.status).toBe("pending");
   });
 
   it("derives a short display number from the id, with no shared counter", async () => {
@@ -221,9 +221,9 @@ describe("repository contract: orders", () => {
         (o) => o.id === order.id,
       );
 
-    // the order is created as `preparing`, so the walk starts from there
-    expect((await read())?.status).toBe("preparing");
-    for (const to of ["ready", "served", "completed"] as const) {
+    // a new order waits for the counter, so the walk starts from there
+    expect((await read())?.status).toBe("pending");
+    for (const to of ["preparing", "ready", "served", "completed"] as const) {
       const current = await read();
       expect(canAdvance(current?.status as OrderStatus, to)).toBe(true);
       await demoOrderRepo.setStatus(order.id, to);

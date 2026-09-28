@@ -22,6 +22,14 @@ import { isTableKey, type TableKeys } from "../table-keys";
 import { displayNumberFromId, istDayKey } from "../order-number";
 import { assignInTransaction, type Assigned } from "../day-number";
 import {
+  MAX_OPEN_HOURS,
+  isTableOpen,
+  parseOrderingSettings,
+  parseTableSessionsDoc,
+  type OrderingSettings,
+  type TableSessions,
+} from "../table-open";
+import {
   parseMenuList,
   parseOrder,
   parseOrderList,
@@ -54,6 +62,10 @@ interface DemoState {
    * so it keeps just the number.
    */
   dayCounters: Record<string, number>;
+  /** tableSessions/{n}.openUntil in Firestore: when each table closes. */
+  tableSessions: TableSessions;
+  /** config/ordering. Missing means confirmation ON, as in Firestore. */
+  ordering: OrderingSettings;
 }
 
 function emptyState(): DemoState {
@@ -64,6 +76,8 @@ function emptyState(): DemoState {
     tables: null,
     tableKeys: {},
     dayCounters: {},
+    tableSessions: {},
+    ordering: parseOrderingSettings(undefined),
   };
 }
 
@@ -75,6 +89,8 @@ function seedState(): DemoState {
     tables: null,
     tableKeys: {},
     dayCounters: {},
+    tableSessions: {},
+    ordering: parseOrderingSettings(undefined),
   };
 }
 
@@ -134,6 +150,10 @@ function load(): DemoState {
       // is the same transition a live cafe goes through.
       tableKeys: parseTableKeys((parsed as DemoState)?.tableKeys),
       dayCounters: parseDayCounters((parsed as DemoState)?.dayCounters),
+      // States from before open tables have neither: every table is closed
+      // and confirmation is on, exactly like a fresh Firestore project.
+      tableSessions: parseTableSessions((parsed as DemoState)?.tableSessions),
+      ordering: parseOrderingSettings((parsed as DemoState)?.ordering),
       // Older saved states also carry a `seq` counter from the original public
       // counter. It is ignored, as /meta/counters is in Firestore.
     };
@@ -260,6 +280,24 @@ function parseTableKeys(raw: unknown): Record<number, string> {
   return out;
 }
 
+function parseTableSessions(raw: unknown): TableSessions {
+  const out: TableSessions = {};
+  if (!raw || typeof raw !== "object") return out;
+  for (const [table, openUntil] of Object.entries(raw)) {
+    const entry = parseTableSessionsDoc(table, { openUntil });
+    if (entry) out[entry[0]] = entry[1];
+  }
+  return out;
+}
+
+export function selectTableSessions(state: DemoState): TableSessions {
+  return state.tableSessions;
+}
+
+export function selectOrdering(state: DemoState): OrderingSettings {
+  return state.ordering;
+}
+
 /**
  * What firestore.rules says to an order, so the demo refuses the same orders the
  * live app does and the phone goes down the same error path. Firestore reports
@@ -302,12 +340,25 @@ export function demoCreateOrder(input: NewOrderInput): Order {
   if (orderCapProblems(input.items, orderTotal(input.items)).length > 0) {
     throw new DemoRulesRefusal("order over the size limits");
   }
+  // Mirrors the status check: `pending` always, `preparing` only on an open
+  // table or with confirmation switched off (src/lib/table-open.ts).
+  const status = input.status ?? "pending";
+  if (status !== "pending" && status !== DEFAULT_STATUS) {
+    throw new DemoRulesRefusal("an order starts pending or preparing");
+  }
+  if (
+    status === "preparing" &&
+    state.ordering.confirmNewGuests &&
+    !isTableOpen(state.tableSessions, input.tableNumber, now)
+  ) {
+    throw new DemoRulesRefusal("that table is not open");
+  }
   const order = parseOrder({
     id: makeId("o"),
     tableNumber: input.tableNumber,
     items: input.items,
     total: orderTotal(input.items),
-    status: DEFAULT_STATUS,
+    status,
     createdAt: now,
     notes: input.notes,
     paymentMethod: input.paymentMethod ?? "counter",
@@ -321,9 +372,22 @@ export function demoCreateOrder(input: NewOrderInput): Order {
   return order;
 }
 
-export function demoSetStatus(id: string, status: Order["status"]): void {
+export function demoSetStatus(
+  id: string,
+  status: Order["status"],
+  keepTableOpen?: { table: number; openUntil: number },
+): void {
+  if (keepTableOpen) checkOpenUntil(keepTableOpen.openUntil, Date.now());
   mutate((state) => ({
     ...state,
+    ...(keepTableOpen
+      ? {
+          tableSessions: {
+            ...state.tableSessions,
+            [keepTableOpen.table]: keepTableOpen.openUntil,
+          },
+        }
+      : {}),
     orders: state.orders.map((order) =>
       order.id === id
         ? {
@@ -333,6 +397,55 @@ export function demoSetStatus(id: string, status: Order["status"]): void {
           }
         : order,
     ),
+  }));
+}
+
+const MAX_OPEN_MS = MAX_OPEN_HOURS * 60 * 60_000;
+
+/** Mirrors the tableSessions write rule: now .. now + MAX_OPEN_HOURS. */
+function checkOpenUntil(openUntil: number, now: number) {
+  if (
+    !Number.isFinite(openUntil) ||
+    openUntil < now ||
+    openUntil > now + MAX_OPEN_MS
+  ) {
+    throw new DemoRulesRefusal("a table can open for at most 4 hours");
+  }
+}
+
+/** Accept: pending -> preparing and the table opens, in one commit. */
+export function demoAcceptOrder(id: string, openUntil: number): void {
+  const now = Date.now();
+  const order = load().orders.find((o) => o.id === id);
+  if (!order || order.status !== "pending") {
+    throw new DemoRulesRefusal("that order is no longer waiting");
+  }
+  checkOpenUntil(openUntil, now);
+  mutate((state) => ({
+    ...state,
+    orders: state.orders.map((o) =>
+      o.id === id ? { ...o, status: "preparing" as const } : o,
+    ),
+    tableSessions: { ...state.tableSessions, [order.tableNumber]: openUntil },
+  }));
+}
+
+/** Staff keep an open table open (or close one: openUntil = now). */
+export function demoSetTableOpenUntil(table: number, openUntil: number): void {
+  if (!Number.isInteger(table) || table < 1 || table > 50) {
+    throw new DemoRulesRefusal("no such table");
+  }
+  checkOpenUntil(openUntil, Date.now());
+  mutate((state) => ({
+    ...state,
+    tableSessions: { ...state.tableSessions, [table]: openUntil },
+  }));
+}
+
+export function demoSaveOrdering(settings: OrderingSettings): void {
+  mutate((state) => ({
+    ...state,
+    ordering: { confirmNewGuests: settings.confirmNewGuests },
   }));
 }
 
@@ -379,7 +492,11 @@ export async function demoAssignDayNumber(
           async readOrder(orderId) {
             const o = seen.orders.find((x) => x.id === orderId);
             return o
-              ? { createdAt: o.createdAt, dayNumber: o.dayNumber }
+              ? {
+                  createdAt: o.createdAt,
+                  dayNumber: o.dayNumber,
+                  status: o.status,
+                }
               : null;
           },
           async readCounter(dayKey) {
@@ -398,6 +515,7 @@ export async function demoAssignDayNumber(
       const now = fresh.orders.find((o) => o.id === id);
       if (
         now?.dayNumber !== before?.dayNumber ||
+        now?.status !== before?.status ||
         fresh.dayCounters[w.dayKey] !== seen.dayCounters[w.dayKey]
       ) {
         continue; // somebody else wrote in between: re-read and retry

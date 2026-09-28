@@ -14,7 +14,11 @@ import StaffPage from "@/app/staff/page";
 import { DataProvider } from "@/components/providers/DataProvider";
 import { TableCodes } from "@/components/TableCodes";
 import { demoAuthRepo, demoConfigRepo, demoOrderRepo } from "@/lib/data/demo";
-import { loadDemoState, resetDemoStore } from "@/lib/data/demo-store";
+import {
+  demoSetTableOpenUntil,
+  loadDemoState,
+  resetDemoStore,
+} from "@/lib/data/demo-store";
 import { DEMO_CREDENTIALS } from "@/lib/data/seed";
 
 vi.mock("next/navigation", () => ({
@@ -29,12 +33,18 @@ beforeEach(async () => {
   await demoAuthRepo.signOut();
 });
 
-const placeOrder = () =>
-  demoOrderRepo.create({
+// An order already in the kitchen: table 2 is open (staff confirmed it), so
+// it arrives as `preparing`. New guests' `pending` orders have their own tests
+// in new-guests.test.tsx.
+const placeOrder = () => {
+  demoSetTableOpenUntil(2, Date.now() + 3600_000);
+  return demoOrderRepo.create({
     tableNumber: 2,
     items: [{ menuItemId: "m1", name: "Latte", qty: 1, price: 200 }],
     total: 200,
+    status: "preparing",
   });
+};
 
 describe("staff board: rejecting an order", () => {
   it("asks on the ticket itself, and Keep leaves the order alone", async () => {

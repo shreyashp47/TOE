@@ -13,6 +13,8 @@ import type {
 } from "../types";
 import type { TableKeys } from "../table-keys";
 import type { Assigned } from "../day-number";
+import type { NewOrderStatus } from "../order-status";
+import type { OrderingSettings, TableSessions } from "../table-open";
 
 export type Listener<T> = (value: T) => void;
 export type ErrorListener = (error: Error) => void;
@@ -29,6 +31,11 @@ export interface NewOrderInput {
    * before.
    */
   tableKey?: string;
+  /**
+   * `pending` unless the table is open (src/lib/table-open.ts). Defaults to
+   * `pending`, the status the rules always accept.
+   */
+  status?: NewOrderStatus;
 }
 
 export interface MenuWriteInput {
@@ -69,7 +76,21 @@ export interface OrderRepository {
     onError?: ErrorListener,
   ): Unsubscribe;
   create(input: NewOrderInput): Promise<Order>;
-  setStatus(id: string, status: Order["status"]): Promise<void>;
+  /**
+   * With `keepTableOpen`, the same commit pushes that table's open time
+   * forward (src/lib/table-open.ts): staff working on an open table's order
+   * keep it open.
+   */
+  setStatus(
+    id: string,
+    status: Order["status"],
+    keepTableOpen?: { table: number; openUntil: number },
+  ): Promise<void>;
+  /**
+   * Staff accept a new guest's order: pending -> preparing, and the table
+   * opens until `openUntil`, in one commit.
+   */
+  accept(id: string, table: number, openUntil: number): Promise<void>;
   /** Staff turn an order away. `reason` is optional and shown to the customer. */
   reject(id: string, reason?: string): Promise<void>;
   /**
@@ -133,11 +154,35 @@ export interface ConfigRepository {
   saveTableKeys(keys: TableKeys): Promise<void>;
 }
 
+/**
+ * Open tables (src/lib/table-open.ts). Anyone may read — whether a table is
+ * open is harmless, and the customer's phone needs it to pick the order's
+ * status. Only staff (and the owner) write.
+ */
+export interface SessionRepository {
+  /** Every table's openUntil, live. For the staff board's "Open tables". */
+  subscribe(
+    listener: Listener<TableSessions>,
+    onError?: ErrorListener,
+  ): Unsubscribe;
+  /** One read, when a customer places an order. */
+  isOpen(table: number): Promise<boolean>;
+  /** Staff: the table closes now. */
+  close(table: number): Promise<void>;
+  /** The owner's switch, live. Missing = confirmation ON. */
+  subscribeSettings(listener: Listener<OrderingSettings>): Unsubscribe;
+  /** One read, when a customer places an order. */
+  readSettings(): Promise<OrderingSettings>;
+  /** Owner only. */
+  saveSettings(settings: OrderingSettings): Promise<void>;
+}
+
 export interface DataBundle {
   menu: MenuRepository;
   orders: OrderRepository;
   auth: AuthRepository;
   config: ConfigRepository;
+  sessions: SessionRepository;
   /** True when backed by the localStorage demo store. */
   isDemo: boolean;
 }

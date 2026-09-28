@@ -12,7 +12,11 @@ import ConfirmationPage from "@/app/order/confirmation/page";
 import OrderPage from "@/app/order/page";
 import { getCafeName } from "@/lib/config";
 import { demoAuthRepo, demoConfigRepo, demoOrderRepo } from "@/lib/data/demo";
-import { loadDemoState, resetDemoStore } from "@/lib/data/demo-store";
+import {
+  demoSetTableOpenUntil,
+  loadDemoState,
+  resetDemoStore,
+} from "@/lib/data/demo-store";
 import { DEMO_CREDENTIALS } from "@/lib/data/seed";
 import { forgetLastOrder } from "@/lib/order-throttle";
 import {
@@ -232,12 +236,17 @@ async function signInOwner() {
   );
 }
 
-const placeDemoOrder = () =>
-  demoOrderRepo.create({
+// An order from an open table, so it goes straight to the kitchen and the
+// screen shows "Got it!" rather than waiting for the counter.
+const placeDemoOrder = () => {
+  demoSetTableOpenUntil(3, Date.now() + 3_600_000);
+  return demoOrderRepo.create({
     tableNumber: 3,
     items: [{ menuItemId: "m1", name: "Latte", qty: 1, price: 200 }],
     total: 200,
+    status: "preparing",
   });
+};
 
 async function addAndOpenSheet(user: ReturnType<typeof userEvent.setup>) {
   await menuShown();

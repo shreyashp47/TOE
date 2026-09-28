@@ -5,6 +5,14 @@ const LOOK: Record<
   OrderStatus,
   { label: string; emoji: string; className: string }
 > = {
+  // An order from a table staff have not confirmed yet (order-status.ts).
+  // Dashed, like a note still to be checked, and not alarming: it is usually
+  // a real guest who simply has not been seen yet.
+  pending: {
+    label: "Waiting for the counter",
+    emoji: "⏳",
+    className: "bg-paper text-secondary-deep border-secondary border-dashed",
+  },
   received: {
     label: "Received",
     emoji: "📝",

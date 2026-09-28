@@ -18,9 +18,18 @@
  * reject an order that is still `preparing` or `ready`, optionally with a short
  * reason the customer sees. It is terminal, like `completed`, and it is left out
  * of the reports' revenue. firestore.rules allows exactly the same hops.
+ *
+ * `pending` comes before all of it, and only for a table staff have not
+ * confirmed yet (src/lib/table-open.ts). Anyone who once had the QR link —
+ * a past visit, a photo of the card — could otherwise order from home. So an
+ * order from a closed table waits, off the kitchen's list, in its own "New
+ * guests — check the table" section of the board, until staff look at the
+ * table and tap Accept (pending -> preparing, and the table opens) or Reject.
+ * It is not a sale until then, and a rejected one never becomes one.
  */
 
 export const ORDER_STATUSES = [
+  "pending",
   "received",
   "preparing",
   "ready",
@@ -31,8 +40,14 @@ export const ORDER_STATUSES = [
 
 export type OrderStatus = (typeof ORDER_STATUSES)[number];
 
-/** Statuses that show up on the staff board. Everything else is history. */
+/**
+ * Statuses that show up on the staff board. Everything else is history.
+ * `pending` is here because the board has to see it to accept it, but it is
+ * not kitchen work: the board lists it in its own section (see
+ * isAwaitingCounter), and reports do not count it as a sale.
+ */
 export const ACTIVE_STATUSES = [
+  "pending",
   "received",
   "preparing",
   "ready",
@@ -43,6 +58,7 @@ export type ActiveStatus = (typeof ACTIVE_STATUSES)[number];
 
 /** Canonical forward path, index-aligned with ORDER_STATUSES. */
 const NEXT: Record<OrderStatus, OrderStatus | null> = {
+  pending: "preparing",
   received: "preparing",
   preparing: "ready",
   ready: "served",
@@ -53,10 +69,12 @@ const NEXT: Record<OrderStatus, OrderStatus | null> = {
 
 /**
  * Statuses an order can be rejected from. Not `served`: once it is on the table
- * the counter settles it in person. Must match the `rejected` branch of the
- * order update rule in firestore.rules.
+ * the counter settles it in person. `pending` is: turning away an order from
+ * a table with nobody at it is what the waiting step is for. Must match the
+ * `rejected` branch of the order update rule in firestore.rules.
  */
 export const REJECTABLE_STATUSES = [
+  "pending",
   "preparing",
   "ready",
 ] as const satisfies readonly OrderStatus[];
@@ -81,6 +99,21 @@ export function isClosedStatus(status: OrderStatus): boolean {
 }
 
 export const DEFAULT_STATUS: OrderStatus = "preparing";
+
+/**
+ * The two statuses a customer's phone may create an order in. firestore.rules
+ * allows `pending` always and `preparing` only on an open table (or with the
+ * owner's "confirm new guests" switch off).
+ */
+export type NewOrderStatus = "pending" | "preparing";
+
+/** Waiting for staff to confirm the table: not kitchen work yet. */
+export function isAwaitingCounter(status: OrderStatus): boolean {
+  return status === "pending";
+}
+
+/** The reason the board suggests first when turning a new guest away. */
+export const PENDING_REJECT_REASON = REJECT_REASONS[0];
 
 export function isOrderStatus(value: unknown): value is OrderStatus {
   return (
@@ -128,6 +161,11 @@ export interface StatusAction {
  */
 export function actionsFor(status: OrderStatus): StatusAction[] {
   switch (status) {
+    case "pending":
+      // Accept only. Reject is its own two-step action on the ticket.
+      return [
+        { to: "preparing", label: "Accept", variant: "primary", primary: true },
+      ];
     case "received":
       return [
         {
@@ -179,8 +217,9 @@ export const CUSTOMER_STEPS = [
 
 export function stepIndex(status: OrderStatus): number {
   const i = (CUSTOMER_STEPS as readonly OrderStatus[]).indexOf(status);
-  // `completed` means every customer-visible step happened. `rejected` never
-  // reaches the timeline: the confirmation screen shows its own notice.
+  // `completed` means every customer-visible step happened. `rejected` and
+  // `pending` never reach the timeline: the confirmation screen shows its own
+  // notice for each.
   return i === -1 ? CUSTOMER_STEPS.length - 1 : i;
 }
 

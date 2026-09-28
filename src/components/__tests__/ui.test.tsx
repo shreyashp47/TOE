@@ -350,7 +350,9 @@ describe("order placement end to end (demo backend)", () => {
       total: line.price * 2,
     });
 
-    expect(order.status).toBe("preparing");
+    // Table 5 has not been confirmed, so it waits for the counter — and the
+    // board still sees it, in its new-guests section.
+    expect(order.status).toBe("pending");
     expect(order.total).toBe(line.price * 2);
 
     const received: Order[][] = [];

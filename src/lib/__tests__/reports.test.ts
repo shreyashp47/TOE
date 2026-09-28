@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildReport,
+  countsAsSale,
   currentMonth,
   dayKey,
   monthRange,
@@ -182,6 +183,28 @@ describe("buildReport", () => {
     );
     expect(report.statusCounts.completed).toBe(2);
     expect(report.statusCounts.preparing).toBe(1);
+  });
+
+  it("leaves orders waiting for the counter out of the takings", () => {
+    const report = buildReport(
+      [
+        order({ status: "completed" }),
+        order({ status: "pending", total: 999 }),
+        order({ status: "pending", total: 999 }),
+        order({ status: "rejected", total: 500 }),
+      ],
+      range,
+    );
+    expect(report.orderCount).toBe(1);
+    expect(report.revenue).toBe(180);
+    expect(report.pendingCount).toBe(2);
+    // counted apart: a pending order is not a rejected one
+    expect(report.rejectedCount).toBe(1);
+    expect(report.byDay.reduce((n, d) => n + d.orders, 0)).toBe(1);
+    expect(report.topItems[0].qty).toBe(1);
+    expect(report.statusCounts.pending).toBe(2);
+    expect(countsAsSale({ status: "pending" })).toBe(false);
+    expect(countsAsSale({ status: "preparing" })).toBe(true);
   });
 
   it("gives each day bucket a dense day-of-month for the chart axis", () => {

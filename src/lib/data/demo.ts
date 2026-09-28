@@ -18,8 +18,10 @@ import type {
   MenuWriteInput,
   NewOrderInput,
   OrderRepository,
+  SessionRepository,
   StaffUser,
 } from "./types";
+import { isTableOpen } from "../table-open";
 
 const SESSION_KEY = "cafe-qr-order.session.v1";
 
@@ -132,8 +134,14 @@ export const demoOrderRepo: OrderRepository = {
     return store.demoCreateOrder(input);
   },
 
-  async setStatus(id, status) {
-    store.demoSetStatus(id, status);
+  async setStatus(id, status, keepTableOpen) {
+    if (keepTableOpen) requireStaff();
+    store.demoSetStatus(id, status, keepTableOpen);
+  },
+
+  async accept(id, _table, openUntil) {
+    requireStaff();
+    store.demoAcceptOrder(id, openUntil);
   },
 
   async reject(id, reason) {
@@ -197,6 +205,46 @@ export const demoAuthRepo: AuthRepository = {
 
   current() {
     return readSession();
+  },
+};
+
+/** The rules' isStaff(): the owner counts, a customer's phone does not. */
+function requireStaff() {
+  if (!readSession()) {
+    throw new store.DemoRulesRefusal("only staff open and close tables");
+  }
+}
+
+export const demoSessionRepo: SessionRepository = {
+  subscribe(listener) {
+    return store.subscribeState((state) =>
+      listener(store.selectTableSessions(state)),
+    );
+  },
+  async isOpen(table) {
+    return isTableOpen(
+      store.selectTableSessions(store.loadDemoState()),
+      table,
+      Date.now(),
+    );
+  },
+  async close(table) {
+    requireStaff();
+    store.demoSetTableOpenUntil(table, Date.now());
+  },
+  subscribeSettings(listener) {
+    return store.subscribeState((state) =>
+      listener(store.selectOrdering(state)),
+    );
+  },
+  async readSettings() {
+    return store.selectOrdering(store.loadDemoState());
+  },
+  async saveSettings(settings) {
+    if (readSession()?.role !== "owner") {
+      throw new store.DemoRulesRefusal("only the owner changes this");
+    }
+    store.demoSaveOrdering(settings);
   },
 };
 

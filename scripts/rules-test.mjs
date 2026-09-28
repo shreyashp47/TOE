@@ -51,6 +51,7 @@ import {
   serverTimestamp,
   writeBatch,
   runTransaction,
+  Timestamp,
 } from "firebase/firestore";
 
 const PROJECT = process.env.FIRESTORE_EMULATOR_PROJECT ?? "demo-cafe";
@@ -295,6 +296,30 @@ await adminDoc("tableKeys/42", { method: "DELETE" });
   });
   if (!r.ok) throw new Error(`could not seed a table code: ${r.status}`);
 }
+// Open tables (tableSessions/{n}). The ordinary order tests above and below
+// place `preparing` orders on tables 3, 41 and 42, which the rules only take on
+// an open table, so those are opened here (a month ahead, over REST, which the
+// rules do not govern). Confirmation is left at its default, ON, by deleting
+// any config/ordering a previous run left. The open-tables section at the end
+// uses tables 10-14 and resets them itself.
+const sessionField = (ms) => ({
+  fields: { openUntil: { timestampValue: new Date(ms).toISOString() } },
+});
+const seedSession = async (table, ms) => {
+  const r = await adminDoc(`tableSessions/${table}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(sessionField(ms)),
+  });
+  if (!r.ok) throw new Error(`could not seed a table session: ${r.status}`);
+};
+await adminDoc("config/ordering", { method: "DELETE" });
+for (const table of [3, 41, 42])
+  await seedSession(table, Date.now() + 30 * 24 * 3600_000);
+for (const table of [10, 11, 13, 14])
+  await adminDoc(`tableSessions/${table}`, { method: "DELETE" });
+await seedSession(12, Date.now() - 60_000);
+
 // An order for the coded table. `tableKey: undefined` means "leave it off",
 // which is what a phone that arrived without a code sends.
 const keyed = (o = {}) => {
@@ -1122,7 +1147,7 @@ const freshDay = () => {
   return Date.UTC(1999, 0, 1) - dayCursor * DAY_MS + 6 * 3_600_000;
 };
 let seededOrders = 0;
-const seedOrderAt = async (createdAtMs) => {
+const seedOrderAt = async (createdAtMs, status = "preparing") => {
   seededOrders += 1;
   const id = `daynum-${Date.now().toString(36)}-${seededOrders}`;
   const r = await adminDoc(`orders/${id}`, {
@@ -1147,7 +1172,7 @@ const seedOrderAt = async (createdAtMs) => {
           },
         },
         total: { integerValue: "120" },
-        status: { stringValue: "preparing" },
+        status: { stringValue: status },
         createdAt: { timestampValue: new Date(createdAtMs).toISOString() },
         notes: { stringValue: "" },
         paymentMethod: { stringValue: "counter" },
@@ -1560,6 +1585,287 @@ const assignTxOnce = (c, id) =>
     }),
   );
 }
+{
+  // A new guest's order (pending) is numbered only once staff accept it, so a
+  // stranger's order that is turned away never uses one of the day's numbers.
+  const day = freshDay();
+  const key = istKey(day);
+  const guest = await seedOrderAt(day, "pending");
+  await t(
+    "staff cannot number an order still waiting for the counter",
+    denied(() => numberOrder(staffC, guest, key, 1)),
+  );
+  await t(
+    "nor can the owner",
+    denied(() => numberOrder(ownerC, guest, key, 1)),
+  );
+  await t(
+    "nor number it in the same commit as accepting it",
+    denied(() =>
+      numberOrder(staffC, guest, key, 1, { extra: { status: "preparing" } }),
+    ),
+  );
+  await t(
+    "the board's own transaction is refused on a waiting order",
+    denied(() => assignTxOnce(staffC, guest)),
+  );
+  await t(
+    "once accepted (pending -> preparing), it takes the day's first number",
+    allowed(async () => {
+      await setDoc(
+        doc(staffC.db, "orders", guest),
+        { status: "preparing" },
+        { merge: true },
+      );
+      await numberOrder(staffC, guest, key, 1);
+    }),
+  );
+}
+
+// -- open tables: staff confirm new guests (src/lib/table-open.ts) ----------
+console.log("\n open tables (tableSessions) and pending orders");
+const HOUR = 3600_000;
+const sessionDoc = (c, n) => doc(c.db, "tableSessions", String(n));
+const openFor = (ms) => ({ openUntil: Timestamp.fromMillis(Date.now() + ms) });
+const pending = (o = {}) => ({ status: "pending", ...o });
+
+await t(
+  "a customer can place a pending order on a closed table",
+  allowed(() => placeAs(publicC, pending({ tableNumber: 10 }))),
+);
+await t(
+  "a pending order still needs the table's code",
+  denied(() => placeAs(publicC, pending(keyed({ tableKey: undefined })))),
+);
+await t(
+  "a pending order still has the size caps",
+  denied(() => placeAs(publicC, pending({ tableNumber: 10, total: 10001 }))),
+);
+await t(
+  "a pending order is still throttled",
+  denied(async () => {
+    const uid = (await freshCustomer(publicC)).uid;
+    await seedStamp(uid, 5);
+    await commitOrder(publicC, pending({ tableNumber: 10 }));
+  }),
+);
+await t(
+  "a preparing order is refused on a table with no session",
+  denied(() => placeAs(publicC, { tableNumber: 10 })),
+);
+await t(
+  "a preparing order is refused on a table whose time ran out",
+  denied(() => placeAs(publicC, { tableNumber: 12 })),
+);
+await t(
+  "a preparing order is taken on an open table",
+  allowed(() => placeAs(publicC, { tableNumber: 3 })),
+);
+await t(
+  "an order cannot start as received",
+  denied(() => placeAs(publicC, { tableNumber: 3, status: "received" })),
+);
+await t(
+  "anyone can read whether a table is open",
+  allowed(() => getDoc(sessionDoc(nobodyC, 3))),
+);
+await t(
+  "anyone can list the open tables",
+  allowed(() => getDocs(collection(nobodyC.db, "tableSessions"))),
+);
+await t(
+  "anyone can read the confirm-new-guests setting",
+  allowed(() => getDoc(doc(nobodyC.db, "config", "ordering"))),
+);
+await t(
+  "a customer cannot open a table",
+  denied(async () => {
+    await freshCustomer(publicC);
+    await setDoc(sessionDoc(publicC, 10), openFor(HOUR));
+  }),
+);
+await t(
+  "a signed-out caller cannot open a table",
+  denied(() => setDoc(sessionDoc(nobodyC, 10), openFor(HOUR))),
+);
+await t(
+  "a customer cannot close a table",
+  denied(() =>
+    setDoc(sessionDoc(publicC, 3), { openUntil: serverTimestamp() }),
+  ),
+);
+await t(
+  "a customer cannot switch confirmation off",
+  denied(() =>
+    setDoc(doc(publicC.db, "config", "ordering"), { confirmNewGuests: false }),
+  ),
+);
+await t(
+  "a barista cannot switch confirmation off",
+  denied(() =>
+    setDoc(doc(staffC.db, "config", "ordering"), { confirmNewGuests: false }),
+  ),
+);
+await t(
+  "a customer cannot accept their own pending order",
+  denied(async () => {
+    const ref = await placeAs(publicC, pending({ tableNumber: 10 }));
+    await setDoc(
+      doc(publicC.db, "orders", ref.id),
+      { status: "preparing" },
+      { merge: true },
+    );
+  }),
+);
+// Accept, as firestoreOrderRepo.accept() does it: the order and the table in
+// one commit.
+const accept = async (c, table, ms = 3 * HOUR) => {
+  const ref = await placeAs(publicC, pending({ tableNumber: table }));
+  const batch = writeBatch(c.db);
+  batch.update(doc(c.db, "orders", ref.id), { status: "preparing" });
+  batch.set(sessionDoc(c, table), openFor(ms));
+  await batch.commit();
+  return ref;
+};
+await t(
+  "staff accept a pending order and open its table in one commit",
+  allowed(() => accept(staffC, 13)),
+);
+await t(
+  "and the table's next order goes straight to preparing",
+  allowed(() => placeAs(publicC, { tableNumber: 13 })),
+);
+await t(
+  "staff can keep an open table open (3 more hours)",
+  allowed(() => setDoc(sessionDoc(staffC, 13), openFor(3 * HOUR))),
+);
+await t(
+  "staff can open a table up to 4 hours ahead",
+  allowed(() => setDoc(sessionDoc(staffC, 13), openFor(4 * HOUR - 60_000))),
+);
+await t(
+  "staff cannot open a table for more than 4 hours",
+  denied(() => setDoc(sessionDoc(staffC, 13), openFor(5 * HOUR))),
+);
+await t(
+  "staff cannot accept and open a table for too long in one commit",
+  denied(() => accept(staffC, 14, 5 * HOUR)),
+);
+await t(
+  "staff cannot set a closing time in the past",
+  denied(() => setDoc(sessionDoc(staffC, 13), openFor(-10 * 60_000))),
+);
+await t(
+  "staff cannot add other fields to a table",
+  denied(() =>
+    setDoc(sessionDoc(staffC, 13), { ...openFor(HOUR), by: "barista" }),
+  ),
+);
+await t(
+  "staff cannot store the time as a number",
+  denied(() =>
+    setDoc(sessionDoc(staffC, 13), { openUntil: Date.now() + HOUR }),
+  ),
+);
+await t(
+  "staff cannot open a table above 50",
+  denied(() => setDoc(sessionDoc(staffC, 51), openFor(HOUR))),
+);
+await t(
+  "staff cannot open something that is not a table",
+  denied(() => setDoc(doc(staffC.db, "tableSessions", "abc"), openFor(HOUR))),
+);
+await t(
+  "staff cannot delete a table's session",
+  denied(() => deleteDoc(sessionDoc(staffC, 13))),
+);
+await t(
+  "staff can close a table now",
+  allowed(() =>
+    setDoc(sessionDoc(staffC, 13), { openUntil: serverTimestamp() }),
+  ),
+);
+await t(
+  "after which a preparing order is refused again",
+  denied(() => placeAs(publicC, { tableNumber: 13 })),
+);
+await t(
+  "while a pending order is still taken",
+  allowed(() => placeAs(publicC, pending({ tableNumber: 13 }))),
+);
+await t(
+  "the owner can accept too",
+  allowed(() => accept(ownerC, 14)),
+);
+await t(
+  "staff can reject a pending order, with a reason",
+  allowed(async () => {
+    const ref = await placeAs(publicC, pending({ tableNumber: 10 }));
+    await setDoc(
+      doc(staffC.db, "orders", ref.id),
+      { status: "rejected", rejectReason: "No one at this table" },
+      { merge: true },
+    );
+  }),
+);
+await t(
+  "staff cannot move a pending order straight to ready",
+  denied(async () => {
+    const ref = await placeAs(publicC, pending({ tableNumber: 10 }));
+    await setDoc(
+      doc(staffC.db, "orders", ref.id),
+      { status: "ready" },
+      { merge: true },
+    );
+  }),
+);
+await t(
+  "staff cannot complete a pending order",
+  denied(async () => {
+    const ref = await placeAs(publicC, pending({ tableNumber: 10 }));
+    await setDoc(
+      doc(staffC.db, "orders", ref.id),
+      { status: "completed", completedAt: serverTimestamp() },
+      { merge: true },
+    );
+  }),
+);
+const orderingDoc = (c) => doc(c.db, "config", "ordering");
+await t(
+  "the owner can switch confirmation off",
+  allowed(() => setDoc(orderingDoc(ownerC), { confirmNewGuests: false })),
+);
+await t(
+  "with it off, a preparing order is taken on a closed table",
+  allowed(() => placeAs(publicC, { tableNumber: 10 })),
+);
+await t(
+  "the owner cannot save the switch as text",
+  denied(() => setDoc(orderingDoc(ownerC), { confirmNewGuests: "no" })),
+);
+await t(
+  "the owner cannot add other fields to the switch",
+  denied(() => setDoc(orderingDoc(ownerC), { confirmNewGuests: false, x: 1 })),
+);
+await t(
+  "the owner can switch confirmation back on",
+  allowed(() => setDoc(orderingDoc(ownerC), { confirmNewGuests: true })),
+);
+await t(
+  "with it on again, a preparing order on a closed table is refused",
+  denied(() => placeAs(publicC, { tableNumber: 10 })),
+);
+await t(
+  "the owner can delete the switch (back to the default, ON)",
+  allowed(async () => {
+    await deleteDoc(orderingDoc(ownerC));
+    await placeAs(publicC, pending({ tableNumber: 10 }));
+  }),
+);
+await t(
+  "and a preparing order on a closed table is still refused",
+  denied(() => placeAs(publicC, { tableNumber: 10 })),
+);
 
 console.log(`\n${pass} passed, ${failures.length} failed`);
 for (const f of failures) console.log(`  - ${f}`);

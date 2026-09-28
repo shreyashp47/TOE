@@ -111,7 +111,9 @@ describe("display", () => {
  * any of them changed. Each await yields, so concurrent transactions really do
  * interleave.
  */
-function fakeDb(orders: Record<string, { createdAt: number }>) {
+function fakeDb(
+  orders: Record<string, { createdAt: number; status?: string }>,
+) {
   const docs = new Map<
     string,
     { version: number; data: Record<string, unknown> }
@@ -136,7 +138,11 @@ function fakeDb(orders: Record<string, { createdAt: number }>) {
         async readOrder(id) {
           const d = await read(`orders/${id}`);
           return d
-            ? { createdAt: d.createdAt as number, dayNumber: d.dayNumber }
+            ? {
+                createdAt: d.createdAt as number,
+                dayNumber: d.dayNumber,
+                status: d.status as string | undefined,
+              }
             : null;
         },
         async readCounter(dayKey) {
@@ -167,6 +173,13 @@ function fakeDb(orders: Record<string, { createdAt: number }>) {
   return {
     assign: (id: string) => run((tx) => assignInTransaction(tx, id)),
     order: (id: string) => docs.get(`orders/${id}`)?.data,
+    setStatus: (id: string, status: string) => {
+      const d = docs.get(`orders/${id}`)!;
+      docs.set(`orders/${id}`, {
+        version: d.version + 1,
+        data: { ...d.data, status },
+      });
+    },
     counter: (key: string) => docs.get(`dayCounters/${key}`)?.data.next,
     commits: () => commits,
   };
@@ -194,6 +207,21 @@ describe("assignInTransaction", () => {
     expect(await db.assign("a")).toBeNull();
     expect(db.order("a")?.dayNumber).toBe(1);
     expect(db.counter("2026-09-28")).toBe(2);
+  });
+
+  it("leaves an order waiting for the counter until it is accepted", async () => {
+    const db = fakeDb({
+      guest: { createdAt: T, status: "pending" },
+      table: { createdAt: T + 1, status: "preparing" },
+    });
+    expect(await db.assign("guest")).toBeNull();
+    expect(db.order("guest")?.dayNumber).toBeUndefined();
+    expect(db.counter("2026-09-28")).toBeUndefined();
+    // The open table's order, placed after it, is numbered first.
+    expect(await db.assign("table")).toMatchObject({ dayNumber: 1 });
+    db.setStatus("guest", "preparing"); // Accept
+    expect(await db.assign("guest")).toMatchObject({ dayNumber: 2 });
+    expect(db.commits()).toBe(2);
   });
 
   it("does nothing for an order that is gone", async () => {
@@ -320,6 +348,28 @@ describe("createDayNumberAssigner", () => {
     for (let i = 0; i < 10; i += 1) await flush();
     expect(calls).toEqual(["a", "b", "c"]);
     expect(most).toBe(1);
+  });
+
+  it("skips a new guest's order until it is accepted, then numbers it", async () => {
+    const calls: string[] = [];
+    const assigner = createDayNumberAssigner({
+      assign: async (id) => {
+        calls.push(id);
+      },
+    });
+    assigner.update([
+      { id: "guest", createdAt: 10, status: "pending" },
+      { id: "table", createdAt: 20, status: "preparing" },
+    ]);
+    for (let i = 0; i < 5; i += 1) await flush();
+    expect(calls).toEqual(["table"]);
+    // Accepted: the next snapshot shows it preparing, still unnumbered.
+    assigner.update([
+      { id: "guest", createdAt: 10, status: "preparing" },
+      { id: "table", createdAt: 20, status: "preparing", dayNumber: 1 },
+    ]);
+    for (let i = 0; i < 5; i += 1) await flush();
+    expect(calls).toEqual(["table", "guest"]);
   });
 
   it("does not re-run an order while the live list catches up", async () => {

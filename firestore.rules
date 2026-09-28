@@ -59,6 +59,19 @@ service cloud.firestore {
         || request.resource.data.get("tableKey", "") == get(path).data.key;
     }
 
+    // The order may skip the "check the table" step: the table is open, or
+    // the owner has switched confirmation off. See /tableSessions below.
+    //
+    // Called only for a `preparing` order, and last, so a `pending` order and
+    // a malformed one cost no extra read. Two reads when it runs (the table's
+    // session, and config/ordering only if the table is closed).
+    function tableOpenOrUnconfirmed() {
+      let session = /databases/$(database)/documents/tableSessions/$(string(request.resource.data.tableNumber));
+      let ordering = /databases/$(database)/documents/config/ordering;
+      return (exists(session) && get(session).data.openUntil > request.time)
+        || (exists(ordering) && get(ordering).data.get("confirmNewGuests", true) == false);
+    }
+
     // -- menu: public read, owner write ------------------------------------
 
     match /menu/{itemId} {
@@ -101,7 +114,9 @@ service cloud.firestore {
       // What this rule pins down:
       //   - the exact set of fields, so nothing extra can be injected
       //   - status, which a customer could otherwise set to "completed" and
-      //     make an unpaid order look settled
+      //     make an unpaid order look settled. An order starts `pending`
+      //     (waiting for staff to confirm the table) or, only on a table staff
+      //     have opened, `preparing` (tableOpenOrUnconfirmed above)
       //   - createdAt == request.time, so a phone with a wrong clock cannot
       //     backdate an order out of today's takings
       //   - customerUid, which must equal the caller's own anonymous uid, so a
@@ -154,7 +169,7 @@ service cloud.firestore {
         && request.resource.data.tableNumber is int
         && request.resource.data.tableNumber >= 1
         && request.resource.data.tableNumber <= 50
-        && request.resource.data.status == "preparing"
+        && request.resource.data.status in ["pending", "preparing"]
         && request.resource.data.createdAt == request.time
         && request.resource.data.total is int
         && request.resource.data.total >= 0
@@ -191,7 +206,9 @@ service cloud.firestore {
         // before any document is fetched.
         && throttleAfter().lastOrderId == orderId
         && throttleAfter().lastOrderAt == request.time
-        && tableKeyOk();
+        && tableKeyOk()
+        && (request.resource.data.status == "pending"
+          || tableOpenOrUnconfirmed());
 
       // Staff advance the status and nothing else. Only the legal fields may
       // change, and only to a legal next state, so a staff account cannot
@@ -202,28 +219,39 @@ service cloud.firestore {
       // no `indexOf`, and it fails at *runtime* as a permission error, not at
       // compile time, so a status that should be allowed is silently refused.
       //
-      // Rejecting (src/lib/order-status.ts) is allowed from preparing or ready,
-      // with an optional short reason the customer sees. `rejected` has no way
+      // Accepting a new guest is pending -> preparing, the first hop below.
+      // Opening the table goes in the same commit but is its own write, to
+      // /tableSessions, checked there.
+      //
+      // Rejecting (src/lib/order-status.ts) is allowed from pending, preparing
+      // or ready, with an optional short reason the customer sees. `rejected` has no way
       // out, so it is terminal, like `completed`. Customers cannot update at
       // all, so they can neither reject nor un-reject.
       //
-      // The third branch is numbering: the staff board writes today's number
+      // The first branch is numbering: the staff board writes today's number
       // (dayNumber, dayKey) as an update of its own, never mixed with a status
       // change, so each branch keeps its own short hasOnly list. See
-      // dayNumberOk below. Numbering does not care about status, so a rejected
-      // or finished order that somehow missed its number can still get one;
-      // and a numbered order keeps it through every later status change.
+      // dayNumberOk below. A `pending` order is not numbered: it gets its
+      // number once staff accept it, so a new guest turned away (usually
+      // someone not in the cafe) never uses one up. Otherwise numbering does
+      // not care about status, so a rejected or finished order that somehow
+      // missed its number can still get one; and a numbered order keeps it
+      // through every later status change. The status check reads the order
+      // as it stood before the commit, which numbering never changes.
       allow update: if isStaff()
         && (
           (request.resource.data.diff(resource.data).affectedKeys()
               .hasOnly(["dayNumber", "dayKey"])
+            && resource.data.status != "pending"
             && !("dayNumber" in resource.data)
             && !("dayKey" in resource.data)
             && dayNumberOk(orderId))
           || (request.resource.data.diff(resource.data).affectedKeys()
               .hasOnly(["status", "completedAt"])
             && (
-              (resource.data.status == "preparing"
+              (resource.data.status == "pending"
+                && request.resource.data.status == "preparing")
+              || (resource.data.status == "preparing"
                 && request.resource.data.status == "ready")
               || (resource.data.status == "ready"
                 && request.resource.data.status == "served")
@@ -232,7 +260,7 @@ service cloud.firestore {
             ))
           || (request.resource.data.diff(resource.data).affectedKeys()
               .hasOnly(["status", "rejectReason"])
-            && resource.data.status in ["preparing", "ready"]
+            && resource.data.status in ["pending", "preparing", "ready"]
             && request.resource.data.status == "rejected"
             && (!("rejectReason" in request.resource.data)
               || (request.resource.data.rejectReason is string
@@ -391,6 +419,34 @@ service cloud.firestore {
       allow delete: if isOwner();
     }
 
+    // -- tableSessions: which tables staff have confirmed --------------------
+    // { openUntil: timestamp } at tableSessions/{tableNumber}. While openUntil
+    // is in the future the table is open and its orders go straight to the
+    // kitchen; otherwise they arrive `pending` for staff to check the table
+    // (src/lib/table-open.ts). This is what stops an order from someone who
+    // once had the QR link but is not in the cafe.
+    //
+    // Public read: whether a table is open says nothing worth hiding, and the
+    // customer's phone reads it to choose the order's status.
+    //
+    // Staff (the owner included) write, and only this one field, to a time
+    // from now to four hours ahead: Accept sets now + 3h, staff working on the
+    // table's orders push it forward, "Close table" sets it to now. The hour
+    // of slack covers a counter tablet whose clock runs a little fast. Four
+    // hours is the most a table can be opened for without a person at the
+    // counter doing something again, which bounds how long a stolen link
+    // could skip the check. Tables close on their own when the time passes,
+    // so nothing ever needs deleting.
+    match /tableSessions/{table} {
+      allow read: if true;
+      allow create, update: if isStaff()
+        && table.matches("^([1-9]|[1-4][0-9]|50)$")
+        && request.resource.data.keys().hasOnly(["openUntil"])
+        && request.resource.data.openUntil is timestamp
+        && request.resource.data.openUntil >= request.time
+        && request.resource.data.openUntil <= request.time + duration.value(4, 'h');
+    }
+
     // -- staff directory (role lookup) -------------------------------------
 
     match /staff/{userId} {
@@ -403,10 +459,23 @@ service cloud.firestore {
 
     match /config/{docId} {
       allow read: if true;
-      // config/tables is excluded here and handled below. Two matching blocks
-      // are OR-ed together, so without this carve-out the shape checks on the
-      // table list could be bypassed through this broader rule.
-      allow write: if isOwner() && docId != "tables";
+      // config/tables and config/ordering are excluded here and handled
+      // below. Two matching blocks are OR-ed together, so without this
+      // carve-out their shape checks could be bypassed through this broader
+      // rule.
+      allow write: if isOwner() && !(docId in ["tables", "ordering"]);
+    }
+
+    // The owner's "Confirm new guests before orders reach the kitchen" switch,
+    // { confirmNewGuests: bool }. A missing document means ON (see
+    // tableOpenOrUnconfirmed above), so the protection is the default. Public
+    // read, like the rest of config: the customer's phone reads it to choose
+    // the order's status.
+    match /config/ordering {
+      allow create, update: if isOwner()
+        && request.resource.data.keys().hasOnly(["confirmNewGuests"])
+        && request.resource.data.confirmNewGuests is bool;
+      allow delete: if isOwner();
     }
 
     // The table list /order checks a scanned number against, saved by the
