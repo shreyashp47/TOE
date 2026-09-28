@@ -109,7 +109,7 @@ Everything below is a real screenshot at phone width, from the demo build.
 | `/staff`                           | Staff    | Live order board, status actions, sound + vibration alert     |
 | `/admin`                           | Owner    | Menu management, availability toggles, today's special        |
 | `/admin/reports`                   | Owner    | Monthly / custom-range revenue, AOV, best sellers, CSV        |
-| `/admin/qr`                        | Owner    | Printable QR tent card per table                              |
+| `/admin/qr`                        | Owner    | Set the number of tables; printable QR tent card per table    |
 | `/offline`                         | Anyone   | Service-worker fallback when the wifi drops                   |
 
 The owner signs in on `/staff` like everyone else and lands on the order board.
@@ -162,13 +162,21 @@ NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=…
 NEXT_PUBLIC_FIREBASE_APP_ID=…
 ```
 
-Optionally brand it and pin the tables:
+Optionally brand it and set the default tables:
 
 ```ini
 NEXT_PUBLIC_CAFE_NAME="Mochi & Beans"
 NEXT_PUBLIC_TABLES=1,2,3,4,5,6,7,8
 NEXT_PUBLIC_BASE_URL=https://yourcafe.web.app
 ```
+
+`NEXT_PUBLIC_TABLES` is only the starting point. The owner sets the real table
+list on `/admin/qr` (_Your tables_: a number of tables, or typed-out numbers such
+as `1-8, 12`), which saves it to Firestore at `config/tables`. From then on the
+customer's table picker, the check on a scanned table number, and the printed QR
+cards all follow the saved list, live, with no rebuild. Until the owner saves one,
+the app uses `NEXT_PUBLIC_TABLES` (or tables 1–6 if it is unset). Table numbers
+run from 1 to 50, the range the order rules accept.
 
 Restart `npm run dev`. The demo banner disappears and the app talks to Firestore.
 

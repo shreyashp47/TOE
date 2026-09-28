@@ -13,6 +13,25 @@ Work that is built but not yet merged is tracked in
 
 - Automatic deploys: every push to `main` that passes CI deploys the rules and
   hosting to toi-cafe, then checks the live site serves the new build
+- The owner sets the cafe's tables on _/admin/qr_: a number of tables with −/+,
+  or typed-out numbers with ranges (`1-8, 12, 14`). The list is saved to
+  `config/tables` and the customer's table picker, the check on a scanned table
+  number, and the printed QR cards follow it live. `NEXT_PUBLIC_TABLES` is now
+  only the default until the owner saves a list
+
+### Changed
+
+- `/order` waits for the saved table list before judging a scanned table
+  number, so a valid QR code is never briefly shown "that table number looks
+  odd"
+- `NEXT_PUBLIC_TABLES` ignores numbers above 50, which the order rules have
+  always refused
+
+### Security
+
+- `config/tables` is owner-write only and shape-checked in the rules: only a
+  `tables` field, a list of 1–50 entries whose first and last are whole numbers
+  1–50. Other `config` documents are unchanged
 
 ### Changed
 
