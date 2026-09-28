@@ -9,6 +9,11 @@ Work that is built but not yet merged is tracked in
 
 ## [Unreleased]
 
+### Added
+
+- Automatic deploys: every push to `main` that passes CI deploys the rules and
+  hosting to toi-cafe, then checks the live site serves the new build
+
 ## [0.2.0] — 2026-09-28
 
 Closes the two open holes in the rules, and fixes the service-worker cache, the

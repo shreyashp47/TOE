@@ -245,6 +245,44 @@ firebase deploy            # hosting + firestore rules + indexes
 You land on `https://<project-id>.web.app`. `firebase.json` sets `cleanUrls`, so
 `/order` is served from `out/order.html` and the printed QR URLs work unchanged.
 
+#### Automatic deploys from `main`
+
+For `toi-cafe`, deploying by hand is the fallback. Every push to `main` that
+passes the whole CI workflow is deployed by `.github/workflows/deploy.yml`: it
+builds that exact commit, deploys rules and hosting in one command, and then
+checks that `https://toi-cafe.web.app/sw.js` carries the new build's cache
+version. A push that fails CI never deploys. If an older commit's CI finishes
+after a newer one's, the older commit is skipped rather than rolling the site
+back. _Run workflow_ on the Deploy workflow redeploys `main` by hand.
+
+It needs two things in the GitHub repository, set up once:
+
+1. **A service account key**, as the secret `FIREBASE_SERVICE_ACCOUNT`. In the
+   Google Cloud console for the project, go to _IAM & Admin → Service accounts_
+   and create `github-deploy` with the roles _Firebase Hosting Admin_,
+   _Firebase Rules Admin_, _Service Usage Consumer_ and _Cloud Datastore
+   Viewer_. Then go to _Keys → Add key → JSON_ and run:
+
+   ```bash
+   gh secret set FIREBASE_SERVICE_ACCOUNT < ~/Downloads/toi-cafe-*.json
+   rm ~/Downloads/toi-cafe-*.json      # GitHub has it now; don't keep a copy
+   ```
+
+   Treat the key as the keys to the order book: whoever holds it can rewrite the
+   rules. Rotate it by creating a new key, setting the secret again and deleting
+   the old key in the console.
+
+2. **The `NEXT_PUBLIC_*` values**, as repository variables, from the same
+   `.env.local` the local build uses. They are public, which is why they are
+   variables and not secrets:
+
+   ```bash
+   gh variable set -f .env.local
+   ```
+
+   If any are missing, the deploy stops before building. Otherwise the site
+   would quietly fall back to demo mode.
+
 #### Check the live site, not just the deploy output
 
 `firebase deploy` reporting success does not mean the app works — a rule that
