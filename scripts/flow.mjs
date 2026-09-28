@@ -142,6 +142,12 @@ await customer.getByRole("button", { name: "Remove", exact: true }).click();
 
 step(1, "Customer opens the table QR link");
 await customer.goto(`${BASE}${keyedPath}`, { waitUntil: "networkidle" });
+await customer.waitForURL((u) => !u.searchParams.has("k"), { timeout: 5_000 });
+check(
+  "the code leaves the address bar at once, the table stays",
+  new URL(customer.url()).search === "?table=3",
+  customer.url(),
+);
 check(
   "table number shown in header",
   await customer.getByText("3", { exact: true }).first().isVisible(),
@@ -207,6 +213,11 @@ await customer.waitForURL(/\/order\/confirmation/, { timeout: 20_000 });
 check(
   "landed on the confirmation screen",
   /\/order\/confirmation/.test(customer.url()),
+);
+check(
+  "the confirmation address carries no code",
+  !new URL(customer.url()).searchParams.has("k"),
+  customer.url(),
 );
 await customer.waitForTimeout(1200);
 // No board is open yet, so no number: the screen must say one is coming
@@ -355,6 +366,42 @@ await customer.screenshot({
   path: `${OUT}/08-customer-rejected.png`,
   fullPage: true,
 });
+
+step("10b", "A code scanned over 3 hours ago asks for a new scan");
+// Wind this phone's scan time back 3h01 rather than waiting.
+await customer.goto(`${BASE}/order?table=3`, { waitUntil: "networkidle" });
+await customer.evaluate(() => {
+  const key = "toe.tableKey.t3";
+  const saved = JSON.parse(localStorage.getItem(key) ?? "{}");
+  saved.at = Date.now() - (3 * 60 + 1) * 60_000;
+  localStorage.setItem(key, JSON.stringify(saved));
+});
+await customer.reload({ waitUntil: "networkidle" });
+await customer
+  .getByText(/scan the QR code on your table again/)
+  .first()
+  .waitFor({ timeout: 10_000 });
+check("the menu asks for a new scan", true);
+await addByName(customer, "Masala Chai");
+await customer.getByRole("button", { name: /View order/ }).click();
+await customer.getByRole("checkbox").check();
+check(
+  "place order stays off until they scan again",
+  await customer.getByRole("button", { name: /Place order/ }).isDisabled(),
+);
+await customer.screenshot({ path: `${OUT}/09-code-expired.png` });
+await customer.getByRole("button", { name: "Remove", exact: true }).click();
+// Scanning the card again restarts the 3 hours.
+await customer.goto(`${BASE}${keyedPath}`, { waitUntil: "networkidle" });
+await customer.waitForURL((u) => !u.searchParams.has("k"), { timeout: 5_000 });
+check(
+  "a new scan clears the notice",
+  !(await customer
+    .getByText(/scan the QR code on your table again/)
+    .first()
+    .isVisible()
+    .catch(() => false)),
+);
 
 step(11, "Cart survives a reload");
 await customer.goto(`${BASE}/order?table=3`, { waitUntil: "networkidle" });

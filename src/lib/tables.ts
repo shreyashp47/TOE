@@ -29,8 +29,9 @@ export function readTableFromSearch(search: string): number | null {
 
 /**
  * The order page for a table. With a table code (src/lib/table-keys.ts) it is
- * the link a QR card carries; without one it only works for a table that has
- * no code yet, or on a phone that already remembers the code from a scan.
+ * the link a QR card carries, and only the card: the app's own links never
+ * add one. Without one it only works for a table that has no code yet, or on a
+ * phone that scanned the card within the last 3 hours (TABLE_CODE_TTL_MS).
  */
 export function orderHref(tableNumber: number, key?: string | null): string {
   const base = `/order?table=${tableNumber}`;

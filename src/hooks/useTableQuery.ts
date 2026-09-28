@@ -25,7 +25,10 @@ export interface TableQuery {
   raw: string | null;
   orderId: string | null;
   hasOrderId: boolean;
-  /** The table's QR code from `?k=`, when it has a plausible shape. */
+  /**
+   * The table's QR code from `?k=`, when it has a plausible shape. Present
+   * only until /order saves it and clears it from the address (useTableCode).
+   */
   tableKey: string | null;
 }
 

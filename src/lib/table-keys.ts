@@ -11,9 +11,14 @@
  * table's QR code as `/order?table=2&k=CODE`. The order rule in firestore.rules
  * refuses an order for a table that has a code unless the order carries it.
  *
+ * The phone keeps a scanned code for TABLE_CODE_TTL_MS (3 hours) and the order
+ * page takes it out of the address bar straight away, so it is not left in
+ * history, bookmarks or a shared link. A visit last week no longer lets anyone
+ * order from home.
+ *
  * What it does not do: a photo of the QR code still works from anywhere, until
  * the owner presses "New code" for that table and reprints the card. It raises
- * the bar from "knows the address" to "has been at the table". See
+ * the bar from "knows the address" to "has been at the table recently". See
  * docs/decisions.md.
  *
  * Transition: a table with no code yet takes orders without one, exactly as
@@ -76,35 +81,122 @@ export function tablesWithoutKey(
 
 // --- the customer's phone ------------------------------------------------------
 
+/**
+ * How long a scanned code stays usable on the phone: 3 hours from the scan.
+ *
+ * Long enough for any real visit, including a slow lunch and a second round,
+ * short enough that the code is gone by the time the customer is home. Before
+ * this the phone kept it forever, so anyone who had once sat at table 2 could
+ * order for table 2 from the sofa. Scanning again restarts the clock.
+ */
+export const TABLE_CODE_TTL_MS = 3 * 60 * 60 * 1000;
+
 const PREFIX = "toe.tableKey.t";
+
+/** What the phone holds for one table. `k` is dropped once it has expired. */
+interface Saved {
+  k?: string;
+  /** When the card was scanned, ms since the epoch. */
+  at: number;
+}
+
 // Private browsing can refuse storage outright. The code then only lives for
 // this page load, which still covers scan -> order -> confirmation.
-const memory = new Map<number, string>();
+const memory = new Map<number, Saved>();
 
 /**
- * Remember the code a customer arrived with, per table, so a reload, the
- * confirmation page's "Back to the menu" and "Order again" keep working without
- * the code in the address. A newer scan always replaces it, which is how a
- * renewed code reaches a phone that had the old one.
+ * The phone's view of a table's code, judged at `now`:
+ * - `valid`: scanned within TABLE_CODE_TTL_MS; `key` goes with the order.
+ * - `expired`: scanned before, too long ago. The table therefore has a code
+ *   (codes are renewed, never removed), so an order without one is sure to be
+ *   refused: the customer is asked to scan before trying.
+ * - `none`: never scanned here. The phone cannot tell whether this table has a
+ *   code (codes are unreadable to customers), so the order is tried and the
+ *   rules decide.
  */
-export function rememberTableKey(tableNumber: number, key: string): void {
+export type TableCode =
+  | { state: "valid"; key: string; expiresAt: number }
+  | { state: "expired" }
+  | { state: "none" };
+
+/**
+ * Remember the code a customer scanned, with the time of the scan. A newer
+ * scan always replaces it, which both restarts the 3 hours and is how a renewed
+ * code reaches a phone that had the old one.
+ */
+export function rememberTableKey(
+  tableNumber: number,
+  key: string,
+  now: number = Date.now(),
+): void {
   if (!isTableKey(key)) return;
-  memory.set(tableNumber, key);
+  write(tableNumber, { k: key, at: now });
+}
+
+export function readTableCode(
+  tableNumber: number,
+  now: number = Date.now(),
+): TableCode {
+  const saved = read(tableNumber);
+  if (!saved) return { state: "none" };
+  const expiresAt = saved.at + TABLE_CODE_TTL_MS;
+  if (saved.k && now < expiresAt) {
+    return { state: "valid", key: saved.k, expiresAt };
+  }
+  // Scrub the stale code but keep the scan time: "this table has a code" is
+  // still worth knowing, the code itself no longer is.
+  if (saved.k) write(tableNumber, { at: saved.at });
+  return { state: "expired" };
+}
+
+/** The code to send with an order right now, or null. */
+export function readTableKey(
+  tableNumber: number,
+  now: number = Date.now(),
+): string | null {
+  const code = readTableCode(tableNumber, now);
+  return code.state === "valid" ? code.key : null;
+}
+
+function read(tableNumber: number): Saved | null {
   try {
-    globalThis.localStorage?.setItem(`${PREFIX}${tableNumber}`, key);
+    const raw = globalThis.localStorage?.getItem(`${PREFIX}${tableNumber}`);
+    if (raw != null) return parseSaved(raw);
+  } catch {
+    /* fall through to memory */
+  }
+  return memory.get(tableNumber) ?? null;
+}
+
+function write(tableNumber: number, saved: Saved): void {
+  memory.set(tableNumber, saved);
+  try {
+    globalThis.localStorage?.setItem(
+      `${PREFIX}${tableNumber}`,
+      JSON.stringify(saved),
+    );
   } catch {
     /* memory copy above still covers this visit */
   }
 }
 
-export function readTableKey(tableNumber: number): string | null {
+/**
+ * A code saved before scan times were kept is a bare string. It has no time,
+ * so it counts as expired: it proves the table has a code, nothing more.
+ */
+function parseSaved(raw: string): Saved {
   try {
-    const stored = globalThis.localStorage?.getItem(`${PREFIX}${tableNumber}`);
-    if (isTableKey(stored)) return stored;
+    const value: unknown = JSON.parse(raw);
+    if (value && typeof value === "object") {
+      const { k, at } = value as { k?: unknown; at?: unknown };
+      if (typeof at === "number" && Number.isFinite(at)) {
+        return isTableKey(k) ? { k, at } : { at };
+      }
+    }
   } catch {
-    /* fall through to memory */
+    /* a bare legacy code, or junk */
   }
-  return memory.get(tableNumber) ?? null;
+  return { at: 0 };
 }
 
 /** Used by tests. */

@@ -27,6 +27,7 @@ import { EmptyState, Loading } from "@/components/ui/Loading";
 import { SpeechBubble } from "@/components/ui/SpeechBubble";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { useCart } from "@/hooks/useCart";
+import { dropKeyFromAddress } from "@/hooks/useTableCode";
 import { useTableQuery } from "@/hooks/useTableQuery";
 import { formatINR, lineSubtotal } from "@/lib/money";
 import {
@@ -39,7 +40,6 @@ import { orderHref } from "@/lib/tables";
 import type { Order, OrderLine } from "@/lib/types";
 import { NUMBER_WAIT_MS, padDayNumber } from "@/lib/order-number";
 import { readSessionOrderId, rememberSessionOrder } from "@/lib/order-session";
-import { readTableKey, rememberTableKey } from "@/lib/table-keys";
 
 export default function ConfirmationPage() {
   return (
@@ -59,7 +59,6 @@ function ConfirmationScreen() {
     tableNumber,
     orderId: idFromUrl,
     hasOrderId,
-    tableKey: keyFromUrl,
   } = useTableQuery();
   const [orderId, setOrderId] = useState<string | null>(null);
 
@@ -69,8 +68,12 @@ function ConfirmationScreen() {
     if (!ready) return;
     const remembered = tableNumber ? readSessionOrderId(tableNumber) : null;
     setOrderId(idFromUrl || remembered);
-    if (tableNumber && keyFromUrl) rememberTableKey(tableNumber, keyFromUrl);
-  }, [ready, tableNumber, idFromUrl, keyFromUrl]);
+    // This page never takes a code from its address: a confirmation link is
+    // the kind that gets shared or bookmarked, so one with `k` (from before
+    // codes left the address) must not refresh the phone's 3 hours. It only
+    // clears it. Watching the order needs no code.
+    dropKeyFromAddress();
+  }, [ready, tableNumber, idFromUrl]);
 
   if (!ready) return <Loading label="Finding your table…" />;
 
@@ -89,12 +92,9 @@ function ConfirmationScreen() {
     );
   }
 
-  // Every way back to the menu carries the table's code, so a customer on a
-  // phone that would not store it can still order again.
-  const menuHref = orderHref(
-    tableNumber,
-    keyFromUrl ?? readTableKey(tableNumber),
-  );
+  // No code in any link back to the menu: the menu uses the phone's saved one,
+  // and asks for a fresh scan once that has run out.
+  const menuHref = orderHref(tableNumber);
 
   if (!orderId) {
     return <OrderNotFound menuHref={menuHref} hadId={hasOrderId} />;

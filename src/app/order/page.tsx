@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 
 import { Doodles } from "@/components/Doodles";
 import {
@@ -22,11 +22,12 @@ import { EmptyState, Loading } from "@/components/ui/Loading";
 import { Sheet } from "@/components/ui/Sheet";
 import { SpeechBubble, WashiNote } from "@/components/ui/SpeechBubble";
 import { useCart } from "@/hooks/useCart";
+import { useTableCode, useTakeKeyFromAddress } from "@/hooks/useTableCode";
 import { useTableQuery } from "@/hooks/useTableQuery";
 import { getCafeName, getCafeTagline } from "@/lib/config";
 import { formatINR, lineSubtotal, priceCart } from "@/lib/money";
 import { orderCapProblems } from "@/lib/order-caps";
-import { readTableKey, rememberTableKey } from "@/lib/table-keys";
+import { readTableCode, type TableCode } from "@/lib/table-keys";
 import type { MenuItem } from "@/lib/types";
 
 export default function OrderPage() {
@@ -52,6 +53,9 @@ function OrderScreen() {
   // QR code for table 9 is valid in a cafe that saved 1..12, and must not be
   // flashed "that table number looks odd" while the list is on its way.
   const { tables: known, loading } = useTables();
+  // Save the scanned code (restarting its 3 hours) and take it out of the
+  // address bar, so it is not left in history, a bookmark or a shared link.
+  useTakeKeyFromAddress(ready, tableNumber, tableKey);
 
   if (!ready || loading) return <Loading label="Finding your table…" />;
   if (tableNumber === null) return <ScanPrompt odd={raw !== null} />;
@@ -110,11 +114,7 @@ function MenuScreen({
   urlKey: string | null;
 }) {
   const { items, loading, error } = useMenu();
-  // A fresh scan wins over whatever this phone remembered, which is how a
-  // renewed card reaches a phone that still holds the old code.
-  useEffect(() => {
-    if (urlKey) rememberTableKey(tableNumber, urlKey);
-  }, [tableNumber, urlKey]);
+  const code = useTableCode(tableNumber, urlKey);
   const offer = useSpecialOffer();
   const isDemo = useIsDemo();
   const cart = useCart(tableNumber, items);
@@ -191,6 +191,8 @@ function MenuScreen({
       ) : null}
 
       {isDemo ? <DemoNotice /> : null}
+
+      <ScanNotice code={code} />
 
       {/* category rail — docs/anime-theme.md §4: icons, not plain text labels */}
       {items.length > 0 ? (
@@ -302,7 +304,7 @@ function MenuScreen({
         open={sheetOpen}
         onClose={() => setSheetOpen(false)}
         tableNumber={tableNumber}
-        urlKey={urlKey}
+        code={code}
         cart={cart}
         priceCheck={priceCheck}
         menu={items}
@@ -484,7 +486,7 @@ function CartSheet({
   open,
   onClose,
   tableNumber,
-  urlKey,
+  code,
   cart,
   priceCheck,
   menu,
@@ -492,7 +494,7 @@ function CartSheet({
   open: boolean;
   onClose: () => void;
   tableNumber: number;
-  urlKey: string | null;
+  code: TableCode;
   cart: ReturnType<typeof useCart>;
   priceCheck: ReturnType<typeof priceCart>;
   menu: MenuItem[];
@@ -506,13 +508,23 @@ function CartSheet({
   // Over the size limits the rules enforce: say so before the tap, not after.
   const caps = orderCapProblems(priceCheck.lines, priceCheck.total);
   const blocked = priceCheck.blocking.length > 0 || caps.length > 0;
+  // The table has a code and this phone's copy has run out: no order can get
+  // through, so say so before the tap rather than after it.
+  const needsScan = code.state === "expired";
 
   async function place() {
-    setPlacing(true);
     setError(null);
+    // Judged again now, not when the page loaded: a tab left open past the
+    // 3 hours must not send a code that has run out.
+    const fresh = readTableCode(tableNumber);
+    if (fresh.state === "expired") {
+      setError(SCAN_AGAIN);
+      return;
+    }
+    setPlacing(true);
     try {
       const { placeOrder } = await import("@/lib/place-order");
-      const tableKey = urlKey ?? readTableKey(tableNumber);
+      const tableKey = fresh.state === "valid" ? fresh.key : null;
       const order = await placeOrder({
         tableNumber,
         cartLines: cart.lines,
@@ -521,12 +533,10 @@ function CartSheet({
         tableKey,
       });
       cart.clear();
-      // The code rides along so "Back to the menu" works even on a phone that
-      // refuses to store it.
+      // No code in this address: "Back to the menu" relies on the phone's
+      // saved copy, and a shared or bookmarked confirmation link carries none.
       window.location.assign(
-        `/order/confirmation?table=${tableNumber}&id=${order.id}${
-          tableKey ? `&k=${encodeURIComponent(tableKey)}` : ""
-        }`,
+        `/order/confirmation?table=${tableNumber}&id=${order.id}`,
       );
     } catch (err) {
       setError(
@@ -562,6 +572,14 @@ function CartSheet({
                 Price updated &mdash; the total below is what you&apos;ll pay.
               </p>
             ) : null}
+            {needsScan && !error ? (
+              <p
+                role="alert"
+                className="border-berry/40 bg-berry/10 text-berry-deep rounded-sm border-2 px-3 py-2 text-sm"
+              >
+                {SCAN_AGAIN}
+              </p>
+            ) : null}
             {error ? (
               <p
                 role="alert"
@@ -582,7 +600,7 @@ function CartSheet({
             <Button
               size="lg"
               fullWidth
-              disabled={placing || blocked || !agreed}
+              disabled={placing || blocked || !agreed || needsScan}
               onClick={place}
             >
               {placing
@@ -655,6 +673,44 @@ function CartSheet({
         </SpeechBubble>
       ) : null}
     </Sheet>
+  );
+}
+
+const SCAN_AGAIN =
+  "It's been a while since you scanned. To order, please scan the QR code on your table again.";
+
+/**
+ * Said before the customer builds a basket, not only at checkout, whenever this
+ * phone has no fresh code for the table.
+ *
+ * Two strengths, because the phone cannot read which tables have codes:
+ * - expired: the phone once scanned a code here, so the table has one and
+ *   ordering is switched off until a new scan (see CartSheet).
+ * - none: the phone has never scanned here. The table may be one without a code
+ *   yet, which still takes orders, so this is a hint and the order is tried;
+ *   if the rules refuse it, checkout says to scan (TableCodeRefused).
+ */
+function ScanNotice({ code }: { code: TableCode }) {
+  if (code.state === "valid") return null;
+  return (
+    <div className="shell relative z-10 pt-3">
+      <div
+        role="status"
+        className={[
+          "flex items-center gap-2.5 rounded-md border-2 px-3 py-2",
+          code.state === "expired"
+            ? "border-berry/50 bg-berry/10"
+            : "border-line bg-paper",
+        ].join(" ")}
+      >
+        <Icon name="qr" size={22} className="text-primary shrink-0" />
+        <p className="text-ink text-sm leading-snug">
+          {code.state === "expired"
+            ? SCAN_AGAIN
+            : "To order, scan the QR code on your table."}
+        </p>
+      </div>
+    </div>
   );
 }
 

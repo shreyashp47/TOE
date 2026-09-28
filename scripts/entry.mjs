@@ -174,6 +174,12 @@ for (const query of ["?table=3", "?table=3&k=PrintedCode12"]) {
   const shown = await classify(page);
   console.log(`  ${query} shows: ${shown}`);
   check(`${query} shows the menu`, shown === "menu", `got "${shown}"`);
+  // The code is saved on the phone and never left in the address.
+  check(
+    `${query} leaves no code in the address`,
+    new URL(page.url()).search === "?table=3",
+    page.url(),
+  );
   check("no console errors", errors.length === 0, errors.join("; "));
   await page.close();
 }
