@@ -84,6 +84,10 @@ one machine.
 
 ## Waiting on the owner
 
+- **Turn on the table codes.** Deployed, but they protect nothing until the
+  owner signs in, opens _Table QR codes_, presses **Create codes for all
+  tables**, and replaces every card on the tables with a freshly printed one —
+  at once, because the old cards stop working the moment codes exist.
 - **UPI ID** for the cafe. Without it the payment screen ships switched off.
 - **Blaze plan: yes or no.** Needed for the full fixes to #27 and #32, automatic
   order retention (#31), push notifications with the screen off, emailed
@@ -113,6 +117,10 @@ relying on the September report.
 
 ## Done
 
+- 2026-09-28 — Table codes in the QR cards, order caps (20 lines, 20 of an item,
+  ₹10,000) and a staff **Reject** with a reason; security-tested with 109
+  bypass attempts against the rules, then deployed with the rules
+- 2026-09-28 — Order history for the owner at _History_ (`/admin/orders`)
 - 2026-09-28 — Owner menu screen redesigned: compact rows with a one-tap
   Available / Sold out switch, and an editor per item
 - 2026-09-28 — The − 1 + stepper fits inside the menu card on two-column phones;
