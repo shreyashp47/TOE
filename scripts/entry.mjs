@@ -100,8 +100,10 @@ async function settle(page, ms = 10_000) {
 /** What the customer is actually looking at, in one word. */
 async function classify(page) {
   const text = (await page.locator("body").innerText()).replace(/\s+/g, " ");
-  if (/scan the qr code on your table/i.test(text) && !/looks odd/i.test(text))
-    return "scan prompt";
+  // The prompt's heading, not any mention: the menu itself hints "To order,
+  // scan the QR code on your table" to a phone that has not scanned.
+  const heading = (await page.locator("h1").allInnerTexts()).join(" ");
+  if (/scan the qr code on your table/i.test(heading)) return "scan prompt";
   // The same component with a different heading, for a number that parses but is
   // not a table this cafe has. A clean landing either way.
   if (/that table number looks odd/i.test(text)) return "odd-table notice";
