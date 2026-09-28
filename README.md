@@ -112,6 +112,10 @@ Everything below is a real screenshot at phone width, from the demo build.
 | `/admin/qr`                        | Owner    | Printable QR tent card per table                              |
 | `/offline`                         | Anyone   | Service-worker fallback when the wifi drops                   |
 
+The owner signs in on `/staff` like everyone else and lands on the order board.
+An **Orders | Owner** switch under the header title moves between the board and
+the owner dashboard; baristas never see it.
+
 ---
 
 ## Going live with Firebase

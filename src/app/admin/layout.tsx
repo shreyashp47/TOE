@@ -16,6 +16,7 @@ import type { ReactNode } from "react";
 import { Icon, type IconName } from "@/components/icons";
 import { Mascot } from "@/components/Mascot";
 import { NotSetUp } from "@/components/NotSetUp";
+import { OwnerSwitch } from "@/components/OwnerSwitch";
 import {
   DataProvider,
   useStaffSession,
@@ -56,7 +57,7 @@ function Gate({ children }: { children: ReactNode }) {
 
 function Shell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const { signOut } = useStaffSession();
+  const { user, signOut } = useStaffSession();
 
   return (
     <div className="min-h-svh pb-10">
@@ -69,13 +70,6 @@ function Shell({ children }: { children: ReactNode }) {
               {getCafeName()}
             </p>
           </div>
-          <Link
-            href="/staff"
-            className="rounded-pill border-line bg-paper text-muted grid size-11 shrink-0 place-items-center border-2"
-            aria-label="Go to the order board"
-          >
-            <Icon name="cart" size={20} />
-          </Link>
           <button
             type="button"
             onClick={() => void signOut()}
@@ -85,6 +79,12 @@ function Shell({ children }: { children: ReactNode }) {
             <Icon name="logout" size={20} />
           </button>
         </div>
+
+        <OwnerSwitch
+          role={user?.role}
+          current="owner"
+          className="shell-wide pb-2"
+        />
 
         <nav aria-label="Dashboard sections" className="shell-wide pb-2">
           <ul className="flex gap-2 overflow-x-auto pb-1">

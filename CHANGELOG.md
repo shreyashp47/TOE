@@ -14,6 +14,12 @@ Work that is built but not yet merged is tracked in
 - Automatic deploys: every push to `main` that passes CI deploys the rules and
   hosting to toi-cafe, then checks the live site serves the new build
 
+### Changed
+
+- The owner moves between the order board and the owner dashboard with a
+  labelled **Orders | Owner** switch in the header, instead of an unlabelled
+  chart icon (and a cart icon back). Baristas see no change
+
 ## [0.2.0] — 2026-09-28
 
 Closes the two open holes in the rules, and fixes the service-worker cache, the

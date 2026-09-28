@@ -1,12 +1,12 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Icon } from "@/components/icons";
 import { InstallHint } from "@/components/Pwa";
 import { Mascot } from "@/components/Mascot";
 import { NotSetUp } from "@/components/NotSetUp";
+import { OwnerSwitch } from "@/components/OwnerSwitch";
 import {
   DataProvider,
   useActiveOrders,
@@ -182,16 +182,6 @@ function StaffScreen() {
             <Icon name={muted ? "mute" : "sound"} size={20} />
           </button>
 
-          {user.role === "owner" ? (
-            <Link
-              href="/admin"
-              aria-label="Owner dashboard"
-              className="rounded-pill border-primary bg-paper text-primary grid size-11 shrink-0 place-items-center border-2"
-            >
-              <Icon name="chart" size={20} />
-            </Link>
-          ) : null}
-
           <button
             type="button"
             onClick={() => void signOut()}
@@ -201,6 +191,12 @@ function StaffScreen() {
             <Icon name="logout" size={20} />
           </button>
         </div>
+
+        <OwnerSwitch
+          role={user.role}
+          current="orders"
+          className="shell-wide pb-2.5"
+        />
 
         {!armed && !muted ? (
           <p className="shell-wide text-2xs text-secondary pb-2 font-semibold">
