@@ -112,7 +112,8 @@ interface Saved {
 // (within the 3 hours); sessionStorage is the fallback when localStorage is
 // full or refused, and still survives the full page load to the confirmation
 // page and back. The in-memory copy covers a browser that refuses both, for
-// this page load only: such a phone is asked to scan again after ordering.
+// this page load only: such a phone is asked to scan again after ordering. It
+// holds only what could not be stored, so it never outvotes storage.
 const memory = new Map<number, Saved>();
 const stores = (): Storage[] => {
   const out: Storage[] = [];
@@ -208,17 +209,19 @@ function read(tableNumber: number): Saved | null {
 }
 
 function write(tableNumber: number, saved: Saved): void {
-  memory.set(tableNumber, saved);
   const name = `${PREFIX}${tableNumber}`;
   const value = JSON.stringify(saved);
   for (const store of stores()) {
     try {
       store.setItem(name, value);
+      // Stored: storage is the one copy, so it alone decides from now on.
+      memory.delete(tableNumber);
       return;
     } catch {
-      /* full or refused: try the next one; memory above still holds it */
+      /* full or refused: try the next one */
     }
   }
+  memory.set(tableNumber, saved);
 }
 
 /**
