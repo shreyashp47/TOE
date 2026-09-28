@@ -4,28 +4,39 @@
  * Printable per-table QR cards (docs/requirements.md §5.5).
  *
  * "One static QR code per table, encoding table number in the URL. Generated
- * once, printed, placed on table — no dynamic regeneration needed." So this
- * screen is a print sheet, not a live view: encode once, print, laminate.
+ * once, printed, placed on table — no dynamic regeneration needed." So the
+ * cards are a print sheet, not a live view: encode once, print, laminate.
+ *
+ * It is also where the owner sets how many tables the cafe has. That list is
+ * saved to config/tables and is what the customer's table picker offers and
+ * what /order checks a scanned table number against, so the cards printed here
+ * and the tables a customer can order from are always the same list.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { useConfigRepo, useTables } from "@/components/providers/DataProvider";
+import { TableListEditor } from "@/components/TableListEditor";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Field, Input } from "@/components/ui/Input";
-import {
-  getBaseUrl,
-  getCafeName,
-  getCafeTagline,
-  getTableNumbers,
-} from "@/lib/config";
+import { getBaseUrl, getCafeName, getCafeTagline } from "@/lib/config";
 import { qrToSvg } from "@/lib/qr";
 
 export default function QrPage() {
   const pinned = getBaseUrl();
   const [origin, setOrigin] = useState(pinned);
-  const [tableText, setTableText] = useState(() =>
-    getTableNumbers().join(", "),
+  const repo = useConfigRepo();
+  // Cards follow the *saved* list, not the editor's draft: a card printed for
+  // a table that was never saved would send customers to "that table number
+  // looks odd".
+  const { tables, saved, loading } = useTables();
+  const saveTables = useCallback(
+    async (next: number[]) => {
+      if (!repo) throw new Error("Storage is not ready yet.");
+      await repo.saveTables(next);
+    },
+    [repo],
   );
 
   useEffect(() => {
@@ -34,19 +45,25 @@ export default function QrPage() {
     if (!pinned) setOrigin(window.location.origin);
   }, [pinned]);
 
-  const tables = useMemo(() => {
-    const parsed = tableText
-      .split(",")
-      .map((t) => Number.parseInt(t.trim(), 10))
-      .filter((n) => Number.isInteger(n) && n > 0);
-    return [...new Set(parsed)].sort((a, b) => a - b);
-  }, [tableText]);
-
   const base = origin.replace(/\/+$/, "");
-  const valid = /^https?:\/\//i.test(base) && tables.length > 0;
+  const valid = /^https?:\/\//i.test(base) && !loading && tables.length > 0;
 
   return (
     <div className="flex flex-col gap-4 pb-8">
+      <Card className="p-4 print:hidden">
+        <h2 className="text-lg">Your tables</h2>
+        <p className="text-muted mt-0.5 mb-3 text-sm">
+          Customers pick from these tables, and a QR code for any other number
+          is turned away. Changes reach customers&apos; phones straight away.
+        </p>
+        <TableListEditor
+          tables={tables}
+          saved={saved}
+          loading={loading}
+          onSave={saveTables}
+        />
+      </Card>
+
       <Card className="p-4 print:hidden">
         <h2 className="text-lg">Table QR codes</h2>
         <p className="text-muted mt-0.5 text-sm">
@@ -55,7 +72,7 @@ export default function QrPage() {
           below.
         </p>
 
-        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        <div className="mt-3 grid gap-3">
           <Field
             label="Address to print"
             htmlFor="base-url"
@@ -69,24 +86,13 @@ export default function QrPage() {
               inputMode="url"
             />
           </Field>
-          <Field
-            label="Table numbers"
-            htmlFor="tables"
-            hint="Comma separated, e.g. 1, 2, 3, 4, 5, 6"
-          >
-            <Input
-              id="tables"
-              value={tableText}
-              onChange={(e) => setTableText(e.target.value)}
-            />
-          </Field>
         </div>
 
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          <Button onClick={() => window.print()}>
+          <Button onClick={() => window.print()} disabled={!valid}>
             Print {tables.length} card{tables.length === 1 ? "" : "s"}
           </Button>
-          {!valid ? (
+          {loading ? null : !valid ? (
             <p role="alert" className="text-berry-deep text-sm font-semibold">
               Enter a full address starting with http:// or https://
             </p>
