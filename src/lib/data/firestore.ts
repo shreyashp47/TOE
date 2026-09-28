@@ -9,8 +9,12 @@
  *   /config/tables    { tables: number[] }, the owner's table list
  *   /tableKeys/{n}    { key }, table n's QR code; owner-only (table-keys.ts)
  *
- * There is no /meta/counters any more: the order's display number is derived
- * from its document id on read (src/lib/order-number.ts, issue #30).
+ *   /dayCounters/{YYYY-MM-DD}  { next }, today's order numbers; staff-only
+ *
+ * There is no /meta/counters any more (issue #30). Orders get their daily
+ * number (#0001…) from the staff board, in a transaction on /dayCounters
+ * (src/lib/day-number.ts); older orders fall back to a stored or derived
+ * number (src/lib/order-number.ts).
  *
  * `onSnapshot` powers the live staff board and the customer's status screen
  * (§5.3) with no separate realtime service. The module is only ever imported
@@ -20,6 +24,7 @@
 import { getDemoStaffPin } from "../config";
 import { orderTotal } from "../money";
 import { ACTIVE_STATUSES, MAX_REJECT_REASON } from "../order-status";
+import { assignInTransaction, counterNext } from "../day-number";
 import { isTableKey } from "../table-keys";
 import { OrderThrottled, throttleFromServerStamp } from "../order-throttle";
 import { checkTablesForSave, normalizeTables } from "../tables";
@@ -57,6 +62,7 @@ const TABLES_DOC = "tables";
 const STAFF = "staff";
 const THROTTLE = "orderThrottle";
 const TABLE_KEYS = "tableKeys";
+const DAY_COUNTERS = "dayCounters";
 
 let bundle: Promise<{
   app: import("firebase/app").FirebaseApp;
@@ -320,10 +326,10 @@ export const firestoreOrderRepo: OrderRepository = {
     const uid = await customerUid();
     const ref = fs.doc(fs.collection(db, ORDERS));
     const total = orderTotal(input.items);
-    // No display number is written. It used to be allocated from a shared
+    // No number is written here. It used to be allocated from a shared
     // /meta/counters document in a transaction, which meant that document had to
-    // be writable by the public (issue #30). The number is now derived from
-    // `ref.id` when the order is read — see src/lib/order-number.ts.
+    // be writable by the public (issue #30). Today's number (#0001…) is written
+    // later by the staff board — see assignDayNumber below.
     //
     // The order and this customer's throttle document go in one batch (issue
     // #32). The rules refuse an order unless the same commit stamps
@@ -382,6 +388,58 @@ export const firestoreOrderRepo: OrderRepository = {
       status: "rejected",
       ...(clean ? { rejectReason: clean } : {}),
     });
+  },
+
+  async assignDayNumber(id) {
+    const { db, fs } = await dbAndFs();
+    const orderRef = fs.doc(db, ORDERS, id);
+    // runTransaction retries on contention. When two boards race for the same
+    // order, the loser's retry re-reads it, finds the winner's number, and
+    // returns null without writing. The rules check the number against the
+    // counter in this same commit, so nothing else can slip through.
+    const attempt = () =>
+      fs.runTransaction(db, (tx) =>
+        assignInTransaction(
+          {
+            async readOrder() {
+              const snap = await tx.get(orderRef);
+              const order = snap.exists() ? readOrder(snap) : null;
+              if (!order) return null;
+              // The raw field, not the parsed one: a malformed number still
+              // counts as "has one", and the rules would refuse a second anyway.
+              const raw = snap.data()?.dayNumber;
+              return {
+                createdAt: order.createdAt,
+                dayNumber: raw ?? undefined,
+              };
+            },
+            async readCounter(dayKey) {
+              const snap = await tx.get(fs.doc(db, DAY_COUNTERS, dayKey));
+              return snap.exists() ? counterNext(snap.data()) : null;
+            },
+            write({ dayKey, dayNumber }) {
+              tx.update(orderRef, { dayNumber, dayKey });
+              // A whole-document set covers both "first order of the day" and
+              // every one after it; the rules allow `next` and nothing else.
+              tx.set(fs.doc(db, DAY_COUNTERS, dayKey), { next: dayNumber + 1 });
+            },
+          },
+          id,
+        ),
+      );
+    try {
+      return await attempt();
+    } catch (err) {
+      // The board that loses a race is not always retried: its commit can be
+      // judged by the rules against the winner's, which it no longer matches,
+      // and come back permission-denied. So on a refusal, look again: if the
+      // order has a number now, somebody else numbered it, which is fine.
+      if ((err as { code?: string })?.code === "permission-denied") {
+        const now = await fs.getDoc(orderRef).catch(() => null);
+        if (now?.data()?.dayNumber !== undefined) return null;
+      }
+      throw err;
+    }
   },
 
   async listRange(fromMs, toMs, limit) {

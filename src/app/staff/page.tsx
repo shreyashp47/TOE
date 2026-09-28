@@ -20,6 +20,7 @@ import { Card } from "@/components/ui/Card";
 import { EmptyState, Loading } from "@/components/ui/Loading";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { TicketTotal, TotalWarning } from "@/components/TotalWarning";
+import { useDayNumbers } from "@/hooks/useDayNumbers";
 import { useOrderChime } from "@/hooks/useOrderChime";
 import { getCafeName } from "@/lib/config";
 import {
@@ -28,6 +29,7 @@ import {
 } from "@/lib/friendly-errors";
 import { formatINR, formatWait, lineSubtotal } from "@/lib/money";
 import { checkOrderIntegrity } from "@/lib/order-integrity";
+import { orderLabel, padDayNumber } from "@/lib/order-number";
 import {
   REJECT_REASONS,
   actionsFor,
@@ -72,6 +74,12 @@ function StaffScreen() {
   // document — just guarantees a permission error.
   const canWork = Boolean(user) && user?.role !== "unassigned";
   const { orders, loading: ordersLoading, error } = useActiveOrders(canWork);
+  // Today's numbers (#0001…) are handed out here, by whichever board sees the
+  // order first. See src/lib/day-number.ts.
+  const { stalled: numbering } = useDayNumbers(
+    orders,
+    canWork && !ordersLoading,
+  );
   // The live menu, to re-price every ticket against (issue #27). Menu reads are
   // public and it is one small collection, so this is one cheap listener.
   const { items: menu } = useMenu();
@@ -265,6 +273,17 @@ function StaffScreen() {
           </p>
         ) : null}
 
+        {numbering ? (
+          <p
+            role="status"
+            className="border-secondary bg-paper text-body mb-3 rounded-md border-2 px-3 py-2 text-sm"
+          >
+            New orders aren&apos;t getting today&apos;s numbers right now, so
+            they show their older short number instead. Orders still come in as
+            normal. ({numbering.message})
+          </p>
+        ) : null}
+
         <div className="mb-3 flex items-center gap-2 overflow-x-auto pb-1">
           <FilterChip
             active={tableFilter === "all"}
@@ -305,6 +324,7 @@ function StaffScreen() {
                 order={order}
                 menu={menu}
                 isFresh={freshIds.has(order.id)}
+                numberingStalled={Boolean(numbering)}
                 busy={busyId === order.id}
                 error={
                   actionError?.orderId === order.id ? actionError.message : null
@@ -350,6 +370,7 @@ function OrderTicket({
   order,
   menu,
   isFresh,
+  numberingStalled,
   busy,
   error,
   onAdvance,
@@ -358,6 +379,8 @@ function OrderTicket({
   order: Order;
   menu: MenuItem[];
   isFresh: boolean;
+  /** Numbering has stopped on this board: show the fallback number. */
+  numberingStalled: boolean;
   busy: boolean;
   /** Why the last status change on this ticket failed, if it did. */
   error: string | null;
@@ -395,16 +418,14 @@ function OrderTicket({
     >
       <div className="border-line-soft flex items-center gap-3 border-b-2 px-3 py-2.5">
         <div className="min-w-0 flex-1">
-          <p className="flex items-baseline gap-1.5">
+          <p className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
             <span className="text-2xs text-muted font-semibold tracking-[0.12em] uppercase">
               Table
             </span>
             <span className="font-round text-primary text-3xl leading-none">
               {order.tableNumber}
             </span>
-            <span className="tnum text-muted text-sm">
-              #{order.orderNumber}
-            </span>
+            <TicketNumber order={order} stalled={numberingStalled} />
           </p>
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1">
@@ -502,7 +523,7 @@ function OrderTicket({
               variant="ghost"
               disabled={busy}
               onClick={() => setConfirming(true)}
-              aria-label={`Reject order #${order.orderNumber}`}
+              aria-label={`Reject order ${orderLabel(order)}`}
             >
               Reject
             </Button>
@@ -510,6 +531,36 @@ function OrderTicket({
         </div>
       </div>
     </Card>
+  );
+}
+
+/**
+ * Today's number, big enough to read across the counter. Until the board has
+ * numbered the order (a second or so) a quiet placeholder holds its place, so
+ * the number never appears as one thing and then changes to another. Only if
+ * numbering has stopped does the older short number stand in.
+ */
+function TicketNumber({ order, stalled }: { order: Order; stalled: boolean }) {
+  if (order.dayNumber !== undefined) {
+    return (
+      <span className="tnum font-round text-ink ml-1 text-2xl leading-none">
+        #{padDayNumber(order.dayNumber)}
+      </span>
+    );
+  }
+  if (stalled) {
+    return (
+      <span className="tnum text-muted ml-1 text-sm">{orderLabel(order)}</span>
+    );
+  }
+  return (
+    <span
+      className="tnum text-muted ml-1 animate-pulse text-2xl leading-none"
+      title="Numbering this order…"
+    >
+      <span aria-hidden="true">#····</span>
+      <span className="sr-only">Number coming</span>
+    </span>
   );
 }
 
@@ -536,7 +587,7 @@ function RejectConfirm({
       className="border-berry-deep bg-berry/5 mx-3 mb-2 rounded-md border-2 p-3"
     >
       <p id={headingId} className="text-berry-deep font-semibold">
-        Reject order #{order.orderNumber} from table {order.tableNumber}?
+        Reject order {orderLabel(order)} from table {order.tableNumber}?
       </p>
       <p className="text-muted mt-0.5 text-sm">
         It leaves the board and the customer&apos;s phone says the counter

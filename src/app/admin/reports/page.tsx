@@ -23,6 +23,7 @@ import { demoSeedOrders } from "@/lib/data/demo-store";
 import { buildSampleOrders } from "@/lib/data/sample-orders";
 import { formatINR } from "@/lib/money";
 import { summariseIntegrity } from "@/lib/order-integrity";
+import { orderLabel } from "@/lib/order-number";
 import {
   buildReport,
   countsAsSale,
@@ -455,7 +456,7 @@ function RevenueChart({
 }
 
 function orderNumbers(orders: Order[]): string {
-  const shown = orders.slice(0, 12).map((o) => `#${o.orderNumber}`);
+  const shown = orders.slice(0, 12).map(orderLabel);
   const more = orders.length - shown.length;
   return more > 0 ? `${shown.join(", ")} and ${more} more` : shown.join(", ");
 }

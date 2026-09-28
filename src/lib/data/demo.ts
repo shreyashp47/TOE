@@ -140,6 +140,15 @@ export const demoOrderRepo: OrderRepository = {
     store.demoRejectOrder(id, reason);
   },
 
+  // Staff and owner only, as in firestore.rules (/dayCounters).
+  async assignDayNumber(id) {
+    const role = readSession()?.role;
+    if (role !== "staff" && role !== "owner") {
+      throw new store.DemoRulesRefusal("only staff number orders");
+    }
+    return store.demoAssignDayNumber(id);
+  },
+
   async listRange(fromMs, toMs, limit) {
     const all = store.selectOrdersInRange(store.loadDemoState(), fromMs, toMs);
     // Same contract as Firestore: the newest `limit`, still oldest first

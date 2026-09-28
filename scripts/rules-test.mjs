@@ -50,6 +50,7 @@ import {
   deleteDoc,
   serverTimestamp,
   writeBatch,
+  runTransaction,
 } from "firebase/firestore";
 
 const PROJECT = process.env.FIRESTORE_EMULATOR_PROJECT ?? "demo-cafe";
@@ -1101,6 +1102,365 @@ await t(
     await placeAs(publicC, { tableNumber: 42 });
   }),
 );
+
+// Today's order numbers (#0001…): the staff board writes dayNumber/dayKey on an
+// order and bumps dayCounters/{YYYY-MM-DD} in the same commit. The emulators
+// keep data between runs, so every test here works on days of its own: orders
+// are seeded over REST with a createdAt on a date no earlier run used, which
+// is also the only way to place an order on a day other than today.
+console.log("\n daily order numbers (dayCounters)");
+const DAY_MS = 86_400_000;
+const IST_MS = 330 * 60_000;
+const istKey = (ms) => new Date(ms + IST_MS).toISOString().slice(0, 10);
+// A fresh IST day per call: counts back from 1999 by the run's clock, so two
+// runs (and two calls in one run) never share a day or its counter.
+let dayCursor = Math.floor(Date.now() / 1000) % 20_000;
+const freshDay = () => {
+  dayCursor += 1;
+  // 06:00 UTC = 11:30 IST, safely inside the day.
+  return Date.UTC(1999, 0, 1) - dayCursor * DAY_MS + 6 * 3_600_000;
+};
+let seededOrders = 0;
+const seedOrderAt = async (createdAtMs) => {
+  seededOrders += 1;
+  const id = `daynum-${Date.now().toString(36)}-${seededOrders}`;
+  const r = await adminDoc(`orders/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      fields: {
+        tableNumber: { integerValue: "3" },
+        items: {
+          arrayValue: {
+            values: [
+              {
+                mapValue: {
+                  fields: {
+                    name: { stringValue: "Espresso" },
+                    qty: { integerValue: "1" },
+                    price: { integerValue: "120" },
+                  },
+                },
+              },
+            ],
+          },
+        },
+        total: { integerValue: "120" },
+        status: { stringValue: "preparing" },
+        createdAt: { timestampValue: new Date(createdAtMs).toISOString() },
+        notes: { stringValue: "" },
+        paymentMethod: { stringValue: "counter" },
+        customerUid: { stringValue: "seeded" },
+      },
+    }),
+  });
+  if (!r.ok) throw new Error(`could not seed an order: ${r.status}`);
+  return id;
+};
+const seedCounter = async (key, next) => {
+  const r = await adminDoc(`dayCounters/${key}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ fields: { next: { integerValue: String(next) } } }),
+  });
+  if (!r.ok) throw new Error(`could not seed a counter: ${r.status}`);
+};
+const counterDoc = (c, key) => doc(c.db, "dayCounters", key);
+// What the board does, as a plain batch: the rules see a batch and a
+// transaction's commit the same way. `next` overrides the counter value,
+// `counter: false` leaves the counter alone.
+const numberOrder = (
+  c,
+  id,
+  key,
+  n,
+  { next = n + 1, counter = true, extra } = {},
+) => {
+  const batch = writeBatch(c.db);
+  batch.update(doc(c.db, "orders", id), {
+    dayNumber: n,
+    dayKey: key,
+    ...extra,
+  });
+  if (counter) batch.set(counterDoc(c, key), { next });
+  return batch.commit();
+};
+// The board's transaction (src/lib/day-number.ts + firestore.ts), in plain JS,
+// including its one subtlety: the board that loses a race can be told
+// permission-denied rather than being retried (the emulator evaluates the rules
+// against the winner's commit), so on a refusal it re-reads the order, and if
+// somebody else has numbered it, that is a lost race, not an error.
+const assignTx = async (c, id) => {
+  try {
+    return await assignTxOnce(c, id);
+  } catch (e) {
+    if (e?.code !== "permission-denied") throw e;
+    const now = await getDoc(doc(c.db, "orders", id));
+    if (now.data()?.dayNumber !== undefined) return null;
+    throw e;
+  }
+};
+const assignTxOnce = (c, id) =>
+  runTransaction(c.db, async (tx) => {
+    const orderRef = doc(c.db, "orders", id);
+    const o = await tx.get(orderRef);
+    if (!o.exists() || o.data().dayNumber !== undefined) return null;
+    const key = istKey(o.data().createdAt.toMillis());
+    const cRef = counterDoc(c, key);
+    const counter = await tx.get(cRef);
+    const n = counter.exists() ? counter.data().next : 1;
+    tx.update(orderRef, { dayNumber: n, dayKey: key });
+    tx.set(cRef, { next: n + 1 });
+    return n;
+  });
+
+{
+  const day = freshDay();
+  const key = istKey(day);
+  const a = await seedOrderAt(day);
+  const b = await seedOrderAt(day + 60_000);
+  const c = await seedOrderAt(day + 120_000);
+
+  await t(
+    "a customer cannot read a day's counter",
+    denied(() => getDoc(counterDoc(publicC, key))),
+  );
+  await t(
+    "a customer cannot list the counters",
+    denied(() => getDocs(collection(publicC.db, "dayCounters"))),
+  );
+  await t(
+    "a customer cannot create a counter",
+    denied(() => setDoc(counterDoc(publicC, istKey(freshDay())), { next: 2 })),
+  );
+  await t(
+    "a signed-out caller cannot read a counter",
+    denied(() => getDoc(counterDoc(nobodyC, key))),
+  );
+  await t(
+    "a signed-out caller cannot write a counter",
+    denied(() => setDoc(counterDoc(nobodyC, istKey(freshDay())), { next: 2 })),
+  );
+  await t(
+    "a customer cannot number their own order",
+    denied(async () => {
+      const ref = await placeAs(publicC);
+      const snap = await getDoc(doc(publicC.db, "orders", ref.id));
+      const k = istKey(snap.data().createdAt.toMillis());
+      await numberOrder(publicC, ref.id, k, 1);
+    }),
+  );
+  await t(
+    "a day with no counter must start at 1, not 2",
+    denied(() => numberOrder(staffC, a, key, 2)),
+  );
+  await t(
+    "a new day's counter cannot start anywhere but 2",
+    denied(() => numberOrder(staffC, a, key, 1, { next: 5 })),
+  );
+  await t(
+    "staff can number the first order of a day #1, creating its counter",
+    allowed(() => numberOrder(staffC, a, key, 1)),
+  );
+  await t(
+    "staff can read the counter back",
+    allowed(async () => {
+      const snap = await getDoc(counterDoc(staffC, key));
+      if (snap.data()?.next !== 2) throw new Error("counter is not at 2");
+    }),
+  );
+  await t(
+    "cannot give an order a second number",
+    denied(() => numberOrder(staffC, a, key, 2)),
+  );
+  await t(
+    "cannot reuse a number already handed out",
+    denied(() => numberOrder(staffC, b, key, 1, { next: 2 })),
+  );
+  await t(
+    "cannot skip ahead (counter at 2, number 4)",
+    denied(() => numberOrder(staffC, b, key, 4)),
+  );
+  await t(
+    "cannot number an order without bumping the counter",
+    denied(() => numberOrder(staffC, b, key, 2, { counter: false })),
+  );
+  await t(
+    "cannot bump the counter by more than one alongside",
+    denied(() => numberOrder(staffC, b, key, 2, { next: 4 })),
+  );
+  await t(
+    "cannot mix numbering with a status change",
+    denied(() =>
+      numberOrder(staffC, b, key, 2, { extra: { status: "ready" } }),
+    ),
+  );
+  await t(
+    "cannot send a fractional number",
+    denied(() => numberOrder(staffC, b, key, 2.5, { next: 3 })),
+  );
+  await t(
+    "cannot send the number as text",
+    denied(() => numberOrder(staffC, b, key, "2", { next: 3 })),
+  );
+  await t(
+    "cannot file the order under a badly written day",
+    denied(() => numberOrder(staffC, b, `${key}x`, 1)),
+  );
+  await t(
+    "cannot file the order under the next day",
+    denied(() => numberOrder(staffC, b, istKey(day + DAY_MS), 1)),
+  );
+  await t(
+    "the owner can number an order too (counter at 2, number 2)",
+    allowed(() => numberOrder(ownerC, b, key, 2)),
+  );
+  await t(
+    "staff can take the next one (#3)",
+    allowed(() => numberOrder(staffC, c, key, 3)),
+  );
+  await t(
+    "a numbered order still moves through its statuses",
+    allowed(async () => {
+      await setDoc(
+        doc(staffC.db, "orders", c),
+        { status: "ready" },
+        { merge: true },
+      );
+      await setDoc(
+        doc(staffC.db, "orders", c),
+        { status: "served" },
+        { merge: true },
+      );
+    }),
+  );
+  await t(
+    "a numbered order can be rejected, and keeps its number",
+    allowed(async () => {
+      await setDoc(
+        doc(staffC.db, "orders", b),
+        { status: "rejected", rejectReason: "Duplicate order" },
+        { merge: true },
+      );
+      const snap = await getDoc(doc(staffC.db, "orders", b));
+      if (snap.data()?.dayNumber !== 2) throw new Error("lost its number");
+    }),
+  );
+  await t(
+    "a status change cannot strip a number off",
+    denied(() =>
+      setDoc(doc(staffC.db, "orders", a), {
+        ...order({ customerUid: "seeded" }),
+        status: "ready",
+      }),
+    ),
+  );
+  await t(
+    "the counter can step up by one on its own (a gap, harmless)",
+    allowed(() => setDoc(counterDoc(staffC, key), { next: 5 })),
+  );
+  await t(
+    "but cannot jump ahead",
+    denied(() => setDoc(counterDoc(staffC, key), { next: 7 })),
+  );
+  await t(
+    "or go back, which would hand numbers out twice",
+    denied(() => setDoc(counterDoc(staffC, key), { next: 2 })),
+  );
+  await t(
+    "or carry another field",
+    denied(() => setDoc(counterDoc(staffC, key), { next: 6, note: "x" })),
+  );
+  await t(
+    "or be deleted, even by the owner",
+    denied(() => deleteDoc(counterDoc(ownerC, key))),
+  );
+  await t(
+    "a counter cannot be filed under something that is not a day",
+    denied(() => setDoc(doc(staffC.db, "dayCounters", "today"), { next: 2 })),
+  );
+}
+
+{
+  // The IST boundary: 18:29:59 UTC is still that day in India; 18:30 is the next.
+  const midnight =
+    Date.UTC(1999, 0, 1) - (dayCursor += 1) * DAY_MS + 18.5 * 3_600_000;
+  const late = await seedOrderAt(midnight - 1000);
+  const early = await seedOrderAt(midnight);
+  const before = istKey(midnight - 1000);
+  const after = istKey(midnight);
+  await t(
+    "23:59:59 IST is filed under that day, not the UTC-looking next one",
+    allowed(async () => {
+      if (before === after) throw new Error("test days did not differ");
+      await numberOrder(staffC, late, before, 1);
+    }),
+  );
+  await t(
+    "and cannot be filed under the day after",
+    denied(() => numberOrder(staffC, early, before, 2)),
+  );
+  await t(
+    "00:00:00 IST starts the next day at #1",
+    allowed(() => numberOrder(staffC, early, after, 1)),
+  );
+}
+
+{
+  const day = freshDay();
+  const key = istKey(day);
+  const full = await seedOrderAt(day);
+  await seedCounter(key, 10_000);
+  await t(
+    "cannot hand out #10000",
+    denied(() => numberOrder(staffC, full, key, 10_000)),
+  );
+  const zeroDay = freshDay();
+  const zeroKey = istKey(zeroDay);
+  const zero = await seedOrderAt(zeroDay);
+  await seedCounter(zeroKey, 0);
+  await t(
+    "cannot hand out #0, even from a counter that says 0",
+    denied(() => numberOrder(staffC, zero, zeroKey, 0, { next: 1 })),
+  );
+}
+
+{
+  // Two boards, one order: the transaction must give it exactly one number.
+  const day = freshDay();
+  const key = istKey(day);
+  const ids = [];
+  for (let i = 0; i < 4; i += 1) ids.push(await seedOrderAt(day + i * 1000));
+  await t(
+    "two boards racing for one order: one number, counter at 2",
+    allowed(async () => {
+      const results = await Promise.all([
+        assignTx(staffC, ids[0]),
+        assignTx(ownerC, ids[0]),
+      ]);
+      if (results.filter((r) => r !== null).length !== 1)
+        throw new Error(`expected one winner, got ${results}`);
+      const snap = await getDoc(counterDoc(staffC, key));
+      if (snap.data()?.next !== 2) throw new Error("counter moved twice");
+    }),
+  );
+  await t(
+    "two boards racing through the rest: unique numbers in order",
+    allowed(async () => {
+      const board = (c) => async () => {
+        for (const id of ids) await assignTx(c, id);
+      };
+      await Promise.all([board(staffC)(), board(ownerC)()]);
+      const numbers = [];
+      for (const id of ids)
+        numbers.push(
+          (await getDoc(doc(staffC.db, "orders", id))).data().dayNumber,
+        );
+      if (numbers.join() !== "1,2,3,4")
+        throw new Error(`numbers came out ${numbers.join()}`);
+    }),
+  );
+}
 
 console.log(`\n${pass} passed, ${failures.length} failed`);
 for (const f of failures) console.log(`  - ${f}`);

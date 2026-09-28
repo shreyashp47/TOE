@@ -119,11 +119,11 @@ service cloud.firestore {
       // could post a cheap total. See docs/decisions.md and the README; the fix
       // is a trusted backend, not a cleverer rule.
       //
-      // There is no orderNumber field. The short number staff read out is derived
-      // from the document id when the order is read (src/lib/order-number.ts),
-      // so the client has nothing to allocate and no shared counter to bump
-      // (issue #30). Orders placed before that change still carry one, which is
-      // fine: this rule only governs creates.
+      // There is no orderNumber, dayNumber or dayKey field. The customer's
+      // phone allocates nothing and bumps no shared counter (issue #30): the
+      // staff board numbers the order afterwards (dayCounters below). Orders
+      // placed before that change may carry an orderNumber, which is fine: this
+      // rule only governs creates.
       // Size caps (src/lib/order-caps.ts must match): at most 20 lines, 1..20
       // of each, and a total of at most ₹10,000. A prank order is only worth
       // placing if it is big; a real table rarely comes near these.
@@ -206,9 +206,21 @@ service cloud.firestore {
       // with an optional short reason the customer sees. `rejected` has no way
       // out, so it is terminal, like `completed`. Customers cannot update at
       // all, so they can neither reject nor un-reject.
+      //
+      // The third branch is numbering: the staff board writes today's number
+      // (dayNumber, dayKey) as an update of its own, never mixed with a status
+      // change, so each branch keeps its own short hasOnly list. See
+      // dayNumberOk below. Numbering does not care about status, so a rejected
+      // or finished order that somehow missed its number can still get one;
+      // and a numbered order keeps it through every later status change.
       allow update: if isStaff()
         && (
           (request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(["dayNumber", "dayKey"])
+            && !("dayNumber" in resource.data)
+            && !("dayKey" in resource.data)
+            && dayNumberOk())
+          || (request.resource.data.diff(resource.data).affectedKeys()
               .hasOnly(["status", "completedAt"])
             && (
               (resource.data.status == "preparing"
@@ -226,6 +238,71 @@ service cloud.firestore {
               || (request.resource.data.rejectReason is string
                 && request.resource.data.rejectReason.size() <= 80)))
         );
+    }
+
+    // -- daily order numbers -------------------------------------------------
+    // The owner wants orders numbered #0001, #0002, … starting again every day
+    // (src/lib/order-number.ts). The staff board assigns them, in a
+    // transaction that writes the number on the order and bumps
+    // dayCounters/{YYYY-MM-DD} = { next } in the same commit
+    // (src/lib/day-number.ts).
+    //
+    // This is safe where /meta/counters was not (issue #30) because no customer
+    // can touch it: the counter and the numbering update are staff-only.
+    //
+    // What makes the numbers unique rather than merely likely-unique: the
+    // number must equal the counter's `next` as it stood before this commit,
+    // and the counter must be `next + 1` after it. Two boards that both read
+    // next == 7 cannot both commit — Firestore's transaction sees the counter
+    // change and retries the loser, who then finds the order already numbered.
+    // A day with no counter yet starts at 1. An order can only be numbered
+    // once, and the counter can only ever step up by one, so no number is ever
+    // handed out twice. A number can be skipped (a rejected order keeps its
+    // number; a staff account could bump the counter by hand): gaps are fine.
+    //
+    // The day is checked too. dayKey must be the IST date of the order's own
+    // createdAt, so a board with a wrong clock cannot file today's order under
+    // tomorrow, and an order placed at 23:59:59 stays in that day's sequence
+    // even when it is numbered after midnight. IST is UTC+5:30 all year (no
+    // daylight saving), so adding 330 minutes and reading the UTC date is
+    // exact. istDayKey in src/lib/order-number.ts does the same sum.
+    function dayKeyOf(t) {
+      let d = t + duration.value(330, 'm');
+      return string(d.year())
+        + "-" + (d.month() < 10 ? "0" : "") + string(d.month())
+        + "-" + (d.day() < 10 ? "0" : "") + string(d.day());
+    }
+
+    function dayNumberOk() {
+      let n = request.resource.data.dayNumber;
+      let key = request.resource.data.dayKey;
+      let counter = /databases/$(database)/documents/dayCounters/$(key);
+      return n is int
+        && n >= 1
+        && n <= 9999
+        && key is string
+        && key.matches("^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
+        && key == dayKeyOf(resource.data.createdAt)
+        && (exists(counter) ? get(counter).data.next == n : n == 1)
+        && getAfter(counter).data.next == n + 1;
+    }
+
+    // { next: n } — the number the next order of that day will get. Staff and
+    // owner read and write it; customers and signed-out callers get nothing.
+    // It only ever starts at 2 (the day's first order took 1) and steps up by
+    // exactly one, and it cannot be deleted, because a reset would hand the
+    // day's numbers out a second time.
+    match /dayCounters/{day} {
+      allow read: if isStaff();
+      allow create: if isStaff()
+        && day.matches("^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
+        && request.resource.data.keys().hasOnly(["next"])
+        && request.resource.data.next == 2;
+      allow update: if isStaff()
+        && request.resource.data.keys().hasOnly(["next"])
+        && request.resource.data.next is int
+        && request.resource.data.next == resource.data.next + 1
+        && request.resource.data.next <= 10000;
     }
 
     // -- orderThrottle: one order per customer per 30 seconds ---------------
@@ -345,8 +422,8 @@ service cloud.firestore {
     // /meta/counters used to hold the order display number, and every customer
     // phone incremented it — which meant anyone on the internet could write it:
     // reset it so two orders shared a receipt number, push it to 999999, or loop
-    // on it to burn the free-tier write quota (issue #30). The number is now
-    // derived from the order's document id instead, so nothing needs /meta and
+    // on it to burn the free-tier write quota (issue #30). Numbers now come from
+    // the staff-only /dayCounters above, so nothing needs /meta and
     // it falls through to the default deny below for everyone, staff included.
     // A leftover /meta/counters document in an existing project is inert and can
     // be deleted from the console.

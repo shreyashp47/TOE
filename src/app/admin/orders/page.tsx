@@ -38,6 +38,7 @@ import {
   orderTotal,
 } from "@/lib/money";
 import { checkOrderIntegrity } from "@/lib/order-integrity";
+import { orderLabel } from "@/lib/order-number";
 import {
   HISTORY_LIMIT,
   NO_FILTERS,
@@ -446,7 +447,7 @@ function Filters({
         <Field
           label="Search"
           htmlFor="history-search"
-          hint="An order number like 417, or an item like chai."
+          hint="An order number like 0007, or an item like chai."
         >
           <Input
             id="history-search"
@@ -492,7 +493,7 @@ function HistoryRow({
         <span className="min-w-0 flex-1">
           <span className="flex items-baseline gap-2">
             <span className="tnum font-round text-ink text-lg">
-              #{order.orderNumber}
+              {orderLabel(order)}
             </span>
             <span className="text-body text-sm font-semibold">
               Table {order.tableNumber}
@@ -613,6 +614,13 @@ function OrderDetails({
       ) : null}
 
       <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5">
+        <dt className="text-muted">Number</dt>
+        <dd className="tnum text-ink">
+          {orderLabel(order)}
+          {order.dayNumber === undefined ? (
+            <span className="text-muted"> (no daily number)</span>
+          ) : null}
+        </dd>
         <dt className="text-muted">Placed</dt>
         <dd className="tnum text-ink">
           {fullDateTime.format(new Date(order.createdAt))}

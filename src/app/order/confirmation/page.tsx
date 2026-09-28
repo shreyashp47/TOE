@@ -36,7 +36,8 @@ import {
   type OrderStatus,
 } from "@/lib/order-status";
 import { orderHref } from "@/lib/tables";
-import type { OrderLine } from "@/lib/types";
+import type { Order, OrderLine } from "@/lib/types";
+import { NUMBER_WAIT_MS, padDayNumber } from "@/lib/order-number";
 import { readSessionOrderId, rememberSessionOrder } from "@/lib/order-session";
 import { readTableKey, rememberTableKey } from "@/lib/table-keys";
 
@@ -150,6 +151,7 @@ function StatusScreen({
 
   const lastStatus = useRef<OrderStatus | null>(null);
   const [celebrate, setCelebrate] = useState(false);
+  const waitedOut = useNumberWait(order);
 
   useEffect(() => {
     if (!order) return;
@@ -201,7 +203,7 @@ function StatusScreen({
     return (
       <RejectedNotice
         tableNumber={tableNumber}
-        orderNumber={order.orderNumber}
+        dayNumber={order.dayNumber}
         reason={order.rejectReason}
         menuHref={menuHref}
       />
@@ -219,9 +221,7 @@ function StatusScreen({
         <div className="shell text-muted flex items-center gap-2 text-sm font-semibold">
           <Icon name="pin" size={16} />
           Table {tableNumber}
-          <span className="tnum rounded-pill bg-paper text-primary ml-auto px-2.5 py-0.5">
-            Order #{order.orderNumber || "—"}
-          </span>
+          <HeaderNumber dayNumber={order.dayNumber} />
         </div>
       </header>
 
@@ -233,13 +233,11 @@ function StatusScreen({
             <h1 className="font-hand text-primary text-4xl leading-none">
               {done ? "All yours!" : "Got it!"}
             </h1>
-            <p className="text-muted mt-1">
-              Order{" "}
-              <span className="tnum font-round text-ink text-lg">
-                #{order.orderNumber}
-              </span>{" "}
-              is on its way to table {tableNumber}.
-            </p>
+            <NumberLine
+              order={order}
+              tableNumber={tableNumber}
+              waitedOut={waitedOut}
+            />
           </div>
         </section>
 
@@ -330,12 +328,12 @@ function StatusScreen({
  */
 function RejectedNotice({
   tableNumber,
-  orderNumber,
+  dayNumber,
   reason,
   menuHref,
 }: {
   tableNumber: number;
-  orderNumber: number;
+  dayNumber?: number;
   reason?: string;
   menuHref: string;
 }) {
@@ -345,9 +343,7 @@ function RejectedNotice({
         <div className="shell text-muted flex items-center gap-2 text-sm font-semibold">
           <Icon name="pin" size={16} />
           Table {tableNumber}
-          <span className="tnum rounded-pill bg-paper text-primary ml-auto px-2.5 py-0.5">
-            Order #{orderNumber || "—"}
-          </span>
+          <HeaderNumber dayNumber={dayNumber} />
         </div>
       </header>
 
@@ -358,8 +354,16 @@ function RejectedNotice({
             The counter couldn&apos;t accept this order
           </h1>
           <p className="text-muted mt-2">
-            Order{" "}
-            <span className="tnum font-round text-ink">#{orderNumber}</span>{" "}
+            {dayNumber !== undefined ? (
+              <>
+                Order{" "}
+                <span className="tnum font-round text-ink">
+                  #{padDayNumber(dayNumber)}
+                </span>{" "}
+              </>
+            ) : (
+              "Your order "
+            )}
             won&apos;t be made, and there&apos;s nothing to pay for it.
           </p>
         </div>
@@ -386,6 +390,76 @@ function RejectedNotice({
         </Button>
       </main>
     </div>
+  );
+}
+
+/**
+ * True once the customer has waited NUMBER_WAIT_MS on this screen for a number
+ * that has not come. That only happens when no staff board is open, or an older
+ * board that does not number orders is; the screen then stops promising one.
+ * Counted from when this screen saw the order, not from createdAt, so a phone
+ * with a wrong clock waits the same as any other. An order that is clearly old
+ * (a revisited page) gives up at once.
+ */
+function useNumberWait(order: Order | null): boolean {
+  const unnumbered = Boolean(order) && order?.dayNumber === undefined;
+  const stale =
+    unnumbered && Date.now() - (order?.createdAt ?? 0) > 10 * 60_000;
+  const [waitedOut, setWaitedOut] = useState(false);
+  useEffect(() => {
+    if (!unnumbered) return;
+    const timer = setTimeout(() => setWaitedOut(true), NUMBER_WAIT_MS);
+    return () => clearTimeout(timer);
+  }, [unnumbered]);
+  return unnumbered && (waitedOut || stale);
+}
+
+/** The pill in the header: the number once there is one, nothing fake before. */
+function HeaderNumber({ dayNumber }: { dayNumber?: number }) {
+  return (
+    <span className="tnum rounded-pill bg-paper text-primary ml-auto px-2.5 py-0.5">
+      {dayNumber !== undefined
+        ? `Order #${padDayNumber(dayNumber)}`
+        : "Order received"}
+    </span>
+  );
+}
+
+/**
+ * The line under "Got it!". The day number is the one the counter calls out,
+ * so it is only shown once the board has written it: before then the screen
+ * says a number is coming rather than showing a stand-in that would change.
+ */
+function NumberLine({
+  order,
+  tableNumber,
+  waitedOut,
+}: {
+  order: Order;
+  tableNumber: number;
+  waitedOut: boolean;
+}) {
+  if (order.dayNumber !== undefined) {
+    return (
+      <p className="text-muted mt-1" aria-live="polite">
+        Order{" "}
+        <span className="tnum font-round text-ink text-lg">
+          #{padDayNumber(order.dayNumber)}
+        </span>{" "}
+        is on its way to table {tableNumber}.
+      </p>
+    );
+  }
+  return (
+    <p className="text-muted mt-1" aria-live="polite">
+      <span className="text-ink font-semibold">Order received</span> for table{" "}
+      {tableNumber}.{" "}
+      {waitedOut ? (
+        <span className="text-sm">The counter has it.</span>
+      ) : (
+        <span className="animate-pulse text-sm">Your number is coming…</span>
+      )}
+    </p>
   );
 }
 

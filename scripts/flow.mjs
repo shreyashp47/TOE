@@ -209,9 +209,12 @@ check(
   /\/order\/confirmation/.test(customer.url()),
 );
 await customer.waitForTimeout(1200);
+// No board is open yet, so no number: the screen must say one is coming
+// rather than show a stand-in that would change (daily numbers).
 check(
-  "confirmation shows an order number",
-  /Order\s*#\d+/i.test(await customer.locator("main").innerText()),
+  "confirmation says the number is coming, and shows none yet",
+  /number is coming/i.test(await customer.locator("main").innerText()) &&
+    !/#\d/.test(await customer.locator("body").innerText()),
 );
 await customer.screenshot({
   path: `${OUT}/03-confirmation.png`,
@@ -242,7 +245,25 @@ check(
   "board lists the ordered item",
   (await staff.locator("main").innerText()).includes("Cappuccino"),
 );
+await staff.waitForFunction(
+  () => document.querySelector("main")?.innerText.includes("#0001"),
+  undefined,
+  { timeout: 10_000 },
+);
+check(
+  "the board gives it today's first number, #0001",
+  (await staff.locator("main").innerText()).includes("#0001"),
+);
 await staff.screenshot({ path: `${OUT}/04-staff-board.png`, fullPage: true });
+await customer.waitForFunction(
+  () => document.body.innerText.includes("#0001"),
+  undefined,
+  { timeout: 10_000 },
+);
+check(
+  "the customer's screen shows #0001 live",
+  (await customer.locator("body").innerText()).includes("Order #0001"),
+);
 
 step(6, "Staff marks it ready");
 await staff.getByRole("button", { name: "Mark ready" }).click();
@@ -299,10 +320,19 @@ check(
   "a remembered code lets a second order through",
   /\/order\/confirmation/.test(customer.url()),
 );
-await staff.getByRole("button", { name: /^Reject order #/ }).click();
+await customer.waitForFunction(
+  () => document.body.innerText.includes("#0002"),
+  undefined,
+  { timeout: 10_000 },
+);
+check(
+  "with the board open, the next order is #0002 straight away",
+  (await customer.locator("body").innerText()).includes("Order #0002"),
+);
+await staff.getByRole("button", { name: "Reject order #0002" }).click();
 check(
   "reject asks on the ticket first",
-  await staff.getByText(/^Reject order #\d+ from table 3\?$/).isVisible(),
+  await staff.getByText("Reject order #0002 from table 3?").isVisible(),
 );
 await staff.getByRole("button", { name: "No one at this table" }).click();
 await staff.screenshot({ path: `${OUT}/07-staff-reject-confirm.png` });

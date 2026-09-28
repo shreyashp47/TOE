@@ -232,8 +232,8 @@ describe("ordersToCsv", () => {
       order({ orderNumber: 1, createdAt: base }),
     ]);
     const rows = csv.split("\n").slice(1);
-    expect(rows[0].startsWith("1,")).toBe(true);
-    expect(rows[1].startsWith("2,")).toBe(true);
+    expect(rows[0].startsWith("#1,")).toBe(true);
+    expect(rows[1].startsWith("#2,")).toBe(true);
   });
 
   it("keeps two orders that share a display number apart by their id", () => {
@@ -244,9 +244,25 @@ describe("ordersToCsv", () => {
     const [header, ...rows] = csv.split("\n");
     expect(header.split(",").slice(0, 2)).toEqual(["Order #", "Order ID"]);
     expect(rows.map((r) => r.split(",").slice(0, 2))).toEqual([
-      ["417", "abc123"],
-      ["417", "xyz789"],
+      ["#417", "abc123"],
+      ["#417", "xyz789"],
     ]);
+  });
+
+  it("prints today's number, zero-padded, ahead of the older one", () => {
+    const csv = ordersToCsv([
+      order({ id: "a", orderNumber: 417, createdAt: base }),
+      order({
+        id: "b",
+        orderNumber: 417,
+        dayNumber: 7,
+        dayKey: "2026-09-28",
+        createdAt: base + hour,
+      }),
+    ]);
+    const rows = csv.split("\n").slice(1);
+    expect(rows[0].split(",")[0]).toBe("#417");
+    expect(rows[1].split(",").slice(0, 2)).toEqual(["#0007", "b"]);
   });
 
   it("produces just a header for no orders", () => {

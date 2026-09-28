@@ -7,7 +7,7 @@
  * rather than exploding three components deep.
  */
 
-import { resolveOrderNumber } from "./order-number";
+import { isDayKey, isDayNumber, resolveOrderNumber } from "./order-number";
 import {
   MAX_REJECT_REASON,
   isOrderStatus,
@@ -38,11 +38,19 @@ export interface OrderLine {
 export interface Order {
   id: string;
   /**
-   * Short human-facing number, e.g. 417 -> "#417". Not unique on its own: it is
-   * derived from the document id (see ./order-number.ts), and always shown next
-   * to the table. Orders from before that change keep their stored number.
+   * The FALLBACK number, for orders with no `dayNumber`: the stored number from
+   * the original counter, else three digits derived from the document id (see
+   * ./order-number.ts). Not unique. Show `orderLabel(order)` rather than this.
    */
   orderNumber: number;
+  /**
+   * Today's sequence number, 1–9999, shown as "#0007". Written by the staff
+   * board shortly after the order arrives; absent until then, and on older
+   * orders. See ./day-number.ts.
+   */
+  dayNumber?: number;
+  /** The IST day `dayNumber` counts within, "YYYY-MM-DD". Set with it. */
+  dayKey?: string;
   tableNumber: number;
   items: OrderLine[];
   total: number;
@@ -154,6 +162,10 @@ export function parseOrder(raw: unknown): Order | null {
     completedAt: num(raw.completedAt) ?? undefined,
     notes: str(raw.notes) ?? undefined,
     paymentMethod: raw.paymentMethod === "upi" ? "upi" : "counter",
+    // Both or neither: a number means nothing without the day it counts in.
+    ...(isDayNumber(raw.dayNumber) && isDayKey(raw.dayKey)
+      ? { dayNumber: raw.dayNumber, dayKey: raw.dayKey }
+      : {}),
     // Deliberately not `tableKey`: the table's QR code travels on the order only
     // so the rules can check it, and nothing on screen has any use for it.
     ...(raw.status === "rejected" && str(raw.rejectReason)?.trim()

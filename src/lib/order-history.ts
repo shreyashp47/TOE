@@ -153,14 +153,26 @@ function matchesStatus(order: Order, status: StatusFilter): boolean {
 
 /**
  * Digits (with or without "#") match the order number; anything else matches
- * an item name. Order numbers are only three digits and repeat, which is why
- * every row also shows the time and the table.
+ * an item name.
+ *
+ * An order with today's number is matched on it: "#0007", "0007" and "7" all
+ * find #0007, and, as before, a part of a number finds every number containing
+ * it ("7" also finds #0017). Leading zeros are ignored, so "07" works too. An
+ * order from before daily numbers is matched on its older short number.
+ * Daily numbers repeat every day — every day has a #0007 — which is why every
+ * row also shows the date, time and table, and the date range narrows it.
  */
 function matchesSearch(order: Order, search: string): boolean {
   const q = search.trim().toLowerCase();
   if (!q) return true;
   const digits = /^#?\s*(\d+)$/.exec(q);
-  if (digits) return String(order.orderNumber).includes(digits[1]);
+  if (digits) {
+    if (order.dayNumber === undefined) {
+      return String(order.orderNumber).includes(digits[1]);
+    }
+    const wanted = digits[1].replace(/^0+(?=\d)/, "");
+    return String(order.dayNumber).includes(wanted);
+  }
   return order.items.some((line) => line.name.toLowerCase().includes(q));
 }
 

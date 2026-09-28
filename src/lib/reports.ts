@@ -6,6 +6,7 @@
  */
 
 import { orderTotal } from "./money";
+import { orderLabel } from "./order-number";
 import type { Order } from "./types";
 
 export interface Range {
@@ -188,8 +189,11 @@ function csvCell(value: unknown): string {
  * Order-line level CSV — what an accountant actually wants.
  *
  * "Order ID" is the database id, and it is the column to group lines by. The
- * "Order #" is the short number printed for the customer, and it is not unique:
- * two orders in a month can share one, so grouping on it would merge them.
+ * "Order #" is the number the customer was given, "#0007", as on screen. It is
+ * not unique across a month: it starts again at #0001 every day, and orders
+ * from before daily numbers carry an older short number that repeats. So
+ * grouping on it would merge orders. The "#" keeps a spreadsheet from turning
+ * "0007" into 7.
  *
  * Rejected orders stay in the export, with "rejected" in the Status column and
  * the staff's reason, so the file is a complete record. Anyone summing it for
@@ -221,7 +225,7 @@ export function ordersToCsv(orders: Order[]): string {
     for (const line of order.items) {
       rows.push(
         [
-          order.orderNumber,
+          orderLabel(order),
           order.id,
           order.tableNumber,
           fmt(order.createdAt),

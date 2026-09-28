@@ -19,7 +19,8 @@ import {
 import { orderTotal } from "../money";
 import { orderCapProblems } from "../order-caps";
 import { isTableKey, type TableKeys } from "../table-keys";
-import { displayNumberFromId } from "../order-number";
+import { displayNumberFromId, istDayKey } from "../order-number";
+import { assignInTransaction, type Assigned } from "../day-number";
 import {
   parseMenuList,
   parseOrder,
@@ -45,6 +46,8 @@ interface DemoState {
   tables: number[] | null;
   /** The owner's per-table QR codes (tableKeys/{n} in Firestore). */
   tableKeys: Record<number, string>;
+  /** dayCounters/{YYYY-MM-DD}.next in Firestore: each day's next number. */
+  dayCounters: Record<string, number>;
 }
 
 function emptyState(): DemoState {
@@ -54,6 +57,7 @@ function emptyState(): DemoState {
     offer: { enabled: false, text: "" },
     tables: null,
     tableKeys: {},
+    dayCounters: {},
   };
 }
 
@@ -64,6 +68,7 @@ function seedState(): DemoState {
     offer: { ...SEED_OFFER },
     tables: null,
     tableKeys: {},
+    dayCounters: {},
   };
 }
 
@@ -122,8 +127,9 @@ function load(): DemoState {
       // States from before table codes have none: every table is open, which
       // is the same transition a live cafe goes through.
       tableKeys: parseTableKeys((parsed as DemoState)?.tableKeys),
-      // Older saved states also carry a `seq` counter. It is ignored: the display
-      // number is derived from the id now, exactly as it is in Firestore.
+      dayCounters: parseDayCounters((parsed as DemoState)?.dayCounters),
+      // Older saved states also carry a `seq` counter from the original public
+      // counter. It is ignored, as /meta/counters is in Firestore.
     };
   } catch {
     return seedState();
@@ -227,6 +233,16 @@ export function selectTableKeys(state: DemoState): TableKeys {
   return state.tableKeys;
 }
 
+function parseDayCounters(raw: unknown): Record<string, number> {
+  const out: Record<string, number> = {};
+  if (!raw || typeof raw !== "object") return out;
+  for (const [day, next] of Object.entries(raw)) {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(day) && Number.isInteger(next) && next >= 1)
+      out[day] = next as number;
+  }
+  return out;
+}
+
 function parseTableKeys(raw: unknown): Record<number, string> {
   const out: Record<number, string> = {};
   if (!raw || typeof raw !== "object") return out;
@@ -265,9 +281,9 @@ export function selectOrdersInRange(
 // --- commands ---------------------------------------------------------------
 
 /**
- * No counter here either. The display number comes from the id, the same way
- * the Firestore adapter does it (src/lib/order-number.ts), so the demo cannot
- * quietly promise sequential numbers that the real backend does not give.
+ * No number here, as in Firestore: the customer's phone never allocates one.
+ * The demo staff board numbers the order afterwards (demoAssignDayNumber), so
+ * the demo shows the same "number coming…" moment the real app does.
  */
 export function demoCreateOrder(input: NewOrderInput): Order {
   const now = Date.now();
@@ -335,6 +351,81 @@ export function demoRejectOrder(id: string, reason?: string): void {
   }));
 }
 
+let numberingQueue: Promise<unknown> = Promise.resolve();
+
+/**
+ * The demo's numbering transaction: the same body the Firestore adapter runs
+ * (src/lib/day-number.ts), against localStorage, with Firestore's optimistic
+ * check — if the order or the day's counter changed between the read and the
+ * write, try again. Across tabs the whole thing also runs under a Web Lock
+ * where the browser has them, because two tabs are two threads and
+ * localStorage alone is not a transaction.
+ */
+export async function demoAssignDayNumber(
+  id: string,
+): Promise<Assigned | null> {
+  const attempt = async (): Promise<Assigned | null> => {
+    for (let tries = 0; tries < 5; tries += 1) {
+      const seen = load();
+      let write: { dayKey: string; dayNumber: number } | null = null;
+      const result = await assignInTransaction(
+        {
+          async readOrder(orderId) {
+            const o = seen.orders.find((x) => x.id === orderId);
+            return o
+              ? { createdAt: o.createdAt, dayNumber: o.dayNumber }
+              : null;
+          },
+          async readCounter(dayKey) {
+            return seen.dayCounters[dayKey] ?? null;
+          },
+          write(w) {
+            write = w;
+          },
+        },
+        id,
+      );
+      const w = write as { dayKey: string; dayNumber: number } | null;
+      if (!w) return result;
+      const fresh = load();
+      const before = seen.orders.find((o) => o.id === id);
+      const now = fresh.orders.find((o) => o.id === id);
+      if (
+        now?.dayNumber !== before?.dayNumber ||
+        fresh.dayCounters[w.dayKey] !== seen.dayCounters[w.dayKey]
+      ) {
+        continue; // somebody else wrote in between: re-read and retry
+      }
+      commit({
+        ...fresh,
+        orders: fresh.orders.map((o) =>
+          o.id === id ? { ...o, dayNumber: w.dayNumber, dayKey: w.dayKey } : o,
+        ),
+        dayCounters: { ...fresh.dayCounters, [w.dayKey]: w.dayNumber + 1 },
+      });
+      return result;
+    }
+    throw Object.assign(new Error("Too much contention numbering orders."), {
+      code: "aborted",
+    });
+  };
+  const locks = (
+    globalThis.navigator as
+      | {
+          locks?: {
+            request: <T>(name: string, fn: () => Promise<T>) => Promise<T>;
+          };
+        }
+      | undefined
+  )?.locks;
+  const run = () =>
+    locks ? locks.request("cafe-qr-order:day-number", attempt) : attempt();
+  // One at a time within this tab too, whether or not Web Locks exist.
+  const turn = numberingQueue.then(run, run);
+  numberingQueue = turn.catch(() => undefined);
+  return turn;
+}
+
 export function demoSaveTableKeys(keys: TableKeys): void {
   for (const [table, key] of Object.entries(keys)) {
     const n = Number(table);
@@ -394,11 +485,26 @@ export function demoSeedOrders(
   orders: Array<Omit<Order, "id" | "orderNumber">>,
 ): number {
   mutate((state) => {
-    const withIds = orders.map((order) => {
-      const id = makeId("o");
-      return { ...order, id, orderNumber: displayNumberFromId(id) };
-    });
-    return { ...state, orders: withIds };
+    // Numbered the way the board would have numbered them: per IST day, in
+    // the order they arrived. The counters are replaced with the sample's,
+    // since the orders they counted are replaced too.
+    const dayCounters: Record<string, number> = {};
+    const withIds = [...orders]
+      .sort((a, b) => a.createdAt - b.createdAt)
+      .map((order) => {
+        const id = makeId("o");
+        const dayKey = istDayKey(order.createdAt);
+        const dayNumber = dayCounters[dayKey] ?? 1;
+        dayCounters[dayKey] = dayNumber + 1;
+        return {
+          ...order,
+          id,
+          orderNumber: displayNumberFromId(id),
+          dayNumber,
+          dayKey,
+        };
+      });
+    return { ...state, orders: withIds, dayCounters };
   });
   return orders.length;
 }

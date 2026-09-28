@@ -40,17 +40,17 @@ describe("staff board: rejecting an order", () => {
   it("asks on the ticket itself, and Keep leaves the order alone", async () => {
     const user = userEvent.setup();
     const confirm = vi.spyOn(window, "confirm");
-    const order = await placeOrder();
+    await placeOrder();
     await demoAuthRepo.signInWithPin("1122");
     render(<StaffPage />);
 
     await user.click(
       await screen.findByRole("button", {
-        name: `Reject order #${order.orderNumber}`,
+        name: "Reject order #0001",
       }),
     );
     const panel = screen.getByRole("group", {
-      name: `Reject order #${order.orderNumber} from table 2?`,
+      name: "Reject order #0001 from table 2?",
     });
     expect(within(panel).getByText(/can.t be undone/)).toBeVisible();
 
@@ -62,13 +62,13 @@ describe("staff board: rejecting an order", () => {
 
   it("rejects with a picked reason, and the ticket leaves the board", async () => {
     const user = userEvent.setup();
-    const order = await placeOrder();
+    await placeOrder();
     await demoAuthRepo.signInWithPin("1122");
     render(<StaffPage />);
 
     await user.click(
       await screen.findByRole("button", {
-        name: `Reject order #${order.orderNumber}`,
+        name: "Reject order #0001",
       }),
     );
     const reason = screen.getByRole("button", { name: "Duplicate order" });

@@ -12,6 +12,7 @@ import type {
   Unsubscribe,
 } from "../types";
 import type { TableKeys } from "../table-keys";
+import type { Assigned } from "../day-number";
 
 export type Listener<T> = (value: T) => void;
 export type ErrorListener = (error: Error) => void;
@@ -71,6 +72,13 @@ export interface OrderRepository {
   setStatus(id: string, status: Order["status"]): Promise<void>;
   /** Staff turn an order away. `reason` is optional and shown to the customer. */
   reject(id: string, reason?: string): Promise<void>;
+  /**
+   * Staff only: give the order today's next number (#0001, #0002, …) in one
+   * transaction with the day's counter. Resolves null when the order already
+   * had one, e.g. because another board numbered it first. See
+   * src/lib/day-number.ts.
+   */
+  assignDayNumber(id: string): Promise<Assigned | null>;
   /**
    * Bounded range query — keeps Firestore reads inside the free tier.
    * Always returned oldest first. With `limit`, only the newest `limit` orders

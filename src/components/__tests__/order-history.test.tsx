@@ -281,13 +281,22 @@ describe("order history: filters and search", () => {
     await screen.findByText(/3 orders ·/);
 
     const target = (await allStored()).find((o) => o.tableNumber === 2)!;
-    await user.type(screen.getByLabelText("Search"), `#${target.orderNumber}`);
-    expect(
-      rows().some((r) => r.textContent?.includes(`#${target.orderNumber}`)),
-    ).toBe(true);
-    expect(
-      rows().every((r) => r.textContent?.includes(`${target.orderNumber}`)),
-    ).toBe(true);
+    // Seeded orders are numbered per IST day, as the board would have.
+    expect(target.dayNumber).toBeGreaterThan(0);
+    const label = `#${String(target.dayNumber).padStart(4, "0")}`;
+    const bare = String(target.dayNumber);
+    for (const query of [label, label.slice(1), bare]) {
+      await user.clear(screen.getByLabelText("Search"));
+      await user.type(screen.getByLabelText("Search"), query);
+      expect(
+        rows().some(
+          (r) =>
+            r.textContent?.includes(label) &&
+            r.textContent?.includes("Table 2"),
+        ),
+      ).toBe(true);
+      expect(rows().every((r) => r.textContent?.includes(bare))).toBe(true);
+    }
 
     await user.clear(screen.getByLabelText("Search"));
     await user.type(screen.getByLabelText("Search"), "cold brew");
@@ -351,6 +360,42 @@ describe("order history: rows", () => {
     expect(
       screen.getByText(/Order says ₹20, but its items add up to ₹200/),
     ).toBeInTheDocument();
+  });
+
+  it("finds an older order by its older short number", async () => {
+    const user = userEvent.setup();
+    const legacy = {
+      ...seed({ createdAt: at(0, 8), tableNumber: 9 }),
+      id: "o-legacy",
+      orderNumber: 417,
+    } as Order;
+    const numbered = {
+      ...seed({ createdAt: at(0, 9), tableNumber: 8 }),
+      id: "o-new",
+      orderNumber: 999,
+      dayNumber: 41,
+      dayKey: "2026-09-28",
+    } as Order;
+    vi.spyOn(demoOrderRepo, "listRange").mockResolvedValue([legacy, numbered]);
+    renderPage();
+    await screen.findByText("#417");
+    expect(screen.getByText("#0041")).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText("Search"), "417");
+    expect(rows()).toHaveLength(1);
+    expect(rows()[0]).toHaveTextContent("#417");
+
+    // A day-numbered order is not found by the fallback number it never shows.
+    await user.clear(screen.getByLabelText("Search"));
+    await user.type(screen.getByLabelText("Search"), "999");
+    expect(
+      screen.getByText("No orders match these filters."),
+    ).toBeInTheDocument();
+
+    await user.clear(screen.getByLabelText("Search"));
+    await user.type(screen.getByLabelText("Search"), "#0041");
+    expect(rows()).toHaveLength(1);
+    expect(rows()[0]).toHaveTextContent("Table 8");
   });
 
   it("renders a status it does not know, and a reject reason when present", async () => {
