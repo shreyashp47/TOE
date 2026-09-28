@@ -374,8 +374,10 @@ function MenuCard({
       </div>
 
       {/* price lives on its own row so a long name can never squeeze it out */}
-      <div className="border-line-soft mt-auto flex items-center justify-between gap-2 border-t-2 px-2.5 py-1.5">
-        <span className="tnum font-round text-primary pl-1 text-base font-semibold">
+      {/* Wraps only as a last resort (a 4-digit price on a narrow card): the
+          stepper then drops under the price instead of spilling out of the card. */}
+      <div className="border-line-soft mt-auto flex flex-wrap items-center justify-between gap-x-1 gap-y-1 border-t-2 px-2 py-1.5">
+        <span className="tnum font-round text-primary pl-0.5 text-base font-semibold">
           {formatINR(item.price)}
         </span>
         {soldOut ? (
@@ -388,23 +390,57 @@ function MenuCard({
             Add
           </Button>
         ) : (
-          <div className="flex items-center gap-1">
-            <StepperButton label={`Remove one ${item.name}`} onClick={onDec}>
-              <Icon name="minus" size={18} />
-            </StepperButton>
-            <span
-              className="tnum font-round text-ink w-6 text-center text-lg"
-              aria-live="polite"
-            >
-              {qty}
-            </span>
-            <StepperButton label={`Add one more ${item.name}`} onClick={onInc}>
-              <Icon name="plus" size={18} />
-            </StepperButton>
-          </div>
+          <Stepper
+            name={item.name}
+            qty={qty}
+            onDec={onDec}
+            onInc={onInc}
+            className="ml-auto"
+          />
         )}
       </div>
     </li>
+  );
+}
+
+/**
+ * − qty + as one joined pill. The buttons keep their 44px tap targets but share
+ * one outline instead of each carrying its own border and gap, so the control
+ * is 108px wide and fits beside the price on a half-width card at 360–390px.
+ */
+function Stepper({
+  name,
+  qty,
+  onDec,
+  onInc,
+  className,
+}: {
+  name: string;
+  qty: number;
+  onDec: () => void;
+  onInc: () => void;
+  className?: string;
+}) {
+  return (
+    <div
+      className={[
+        "rounded-pill bg-paper ring-primary flex shrink-0 items-center ring-2 ring-inset",
+        className ?? "",
+      ].join(" ")}
+    >
+      <StepperButton label={`Remove one ${name}`} onClick={onDec}>
+        <Icon name="minus" size={18} />
+      </StepperButton>
+      <span
+        className="tnum font-round text-ink min-w-5 text-center text-lg"
+        aria-live="polite"
+      >
+        {qty}
+      </span>
+      <StepperButton label={`Add one more ${name}`} onClick={onInc}>
+        <Icon name="plus" size={18} />
+      </StepperButton>
+    </div>
   );
 }
 
@@ -422,7 +458,7 @@ function StepperButton({
       type="button"
       aria-label={label}
       onClick={onClick}
-      className="rounded-pill border-primary bg-paper text-primary grid size-11 place-items-center border-2 transition-transform active:scale-90"
+      className="rounded-pill text-primary hover:bg-highlight-soft/60 focus-visible:outline-ring grid size-11 place-items-center transition-transform focus-visible:outline-3 active:scale-90"
     >
       {children}
     </button>
@@ -555,23 +591,12 @@ function CartSheet({
                       {formatINR(line.price)} each
                     </p>
                   </div>
-                  <div className="flex items-center gap-1.5">
-                    <StepperButton
-                      label={`Remove one ${line.name}`}
-                      onClick={() => cart.decrement(line.menuItemId)}
-                    >
-                      <Icon name="minus" size={18} />
-                    </StepperButton>
-                    <span className="tnum font-round w-7 text-center text-lg">
-                      {line.qty}
-                    </span>
-                    <StepperButton
-                      label={`Add one more ${line.name}`}
-                      onClick={() => cart.increment(line.menuItemId)}
-                    >
-                      <Icon name="plus" size={18} />
-                    </StepperButton>
-                  </div>
+                  <Stepper
+                    name={line.name}
+                    qty={line.qty}
+                    onDec={() => cart.decrement(line.menuItemId)}
+                    onInc={() => cart.increment(line.menuItemId)}
+                  />
                 </div>
                 <div className="border-line-soft mt-2 flex items-center justify-between border-t pt-2">
                   <p className="tnum text-primary font-semibold">

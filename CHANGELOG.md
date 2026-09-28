@@ -63,6 +63,9 @@ Work that is built but not yet merged is tracked in
   switch) rendered square: `rounded-pill` had no matching theme token
 - The Available / Sold out switch's knob sat outside its track and covered the
   first letter of its label
+- On a two-column phone menu (380–419px wide) the − 1 + control spilled out of
+  the item card and cut off the + button. It is now one joined pill that fits
+  beside the price, with the same 44px buttons, in the cards and the cart
 
 ## [0.2.0] — 2026-09-28
 
