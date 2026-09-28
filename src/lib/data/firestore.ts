@@ -403,7 +403,17 @@ export const firestoreConfigRepo: ConfigRepository = {
   },
   subscribeTables(listener) {
     return deferred(async () => {
-      const { db, fs } = await dbAndFs();
+      let loaded: Awaited<ReturnType<typeof dbAndFs>>;
+      try {
+        loaded = await dbAndFs();
+      } catch {
+        // /order waits on this list before it trusts a scanned table, so a
+        // failed SDK download must still answer, or the customer never leaves
+        // the loader.
+        listener(null);
+        return () => {};
+      }
+      const { db, fs } = loaded;
       return fs.onSnapshot(
         fs.doc(db, CONFIG, TABLES_DOC),
         (snap) => listener(normalizeTables(snap.data()?.tables)),
