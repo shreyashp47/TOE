@@ -167,7 +167,7 @@ have charged wrongly — and, as a softer hint, orders whose items differ from
 today's menu, which for old orders is usually just a price change since. Until
 the Blaze fix, reconcile those against the till.
 
-`scripts/rules-test.mjs` pins the behaviour that _is_ enforceable: 61 assertions
+`scripts/rules-test.mjs` pins the behaviour that _is_ enforceable: 82 assertions
 covering the anonymous customer, a signed-out caller, a signed-in barista and a
 signed-in owner, including that a barista cannot touch the menu and cannot skip a
 status.
@@ -344,3 +344,98 @@ in the header only. Everything else is a card, a number, and a 44px button.
 
 The wait timer turns amber at 4 minutes and berry red at 8, which is the only
 "decoration" there is, and it is the thing a barista actually looks for.
+
+## 3. Decisions made while running it
+
+### The table list lives in Firestore, with the env var as the default
+
+The table count started as `NEXT_PUBLIC_TABLES`, read at build time. Adding a
+table meant a rebuild and a deploy, which is not something §2's "simple enough
+for a small cafe owner" allows, and the old _/admin/qr_ box only changed the
+printout, so a card could be printed for a table the order page did not know.
+
+**Decision: the owner saves the list on _/admin/qr_ to `config/tables`
+(`{ tables: [1, 2, …] }`); `NEXT_PUBLIC_TABLES` is only the default until then.**
+
+- The customer's table picker, the check on a scanned `?table=N`, and the QR
+  cards all read the same list, live (`useTables()` in
+  [`DataProvider.tsx`](../src/components/providers/DataProvider.tsx)), so every
+  printed card is a table a customer can order from. `/order` waits for the list
+  before judging a scanned number, so a valid card for a table outside the
+  default is never flashed as unknown; if the list cannot be read at all, the
+  default is used.
+- **The rules check its shape as far as the language allows.** Rules cannot
+  loop, so they cannot check every entry. They check that `tables` is the only
+  field, that it is a list of 1–50 entries, and that the first and last entries
+  are whole numbers 1–50. The app always saves the list sorted, so for its own
+  writes that bounds every entry. A hand-made write could still hide a bad
+  value in the middle; `normalizeTables()` in
+  [`src/lib/tables.ts`](../src/lib/tables.ts) drops it on read, and only the
+  owner can write the document at all. The broader `config/{docId}` rule
+  excludes `tables`, because matching rules are OR-ed and it would otherwise
+  bypass these checks. Deleting the document puts the cafe back on the default.
+- **50 is the ceiling everywhere** because the order rule has always refused a
+  `tableNumber` outside 1–50; a table above that could be printed but never
+  ordered from. The env default ignores numbers above 50 for the same reason.
+- **The order rule does not check the list.** An order for table 12 in a
+  10-table cafe is still accepted if it is in 1–50. Checking it would cost a
+  `get()` — a billed read — on every order, to stop something that only a
+  customer editing the URL can do and that the barista sees on the ticket.
+
+### A second Hosting site, not a new project
+
+The cafe is TOE Cafe, but Firebase gave the app `toi-cafe.web.app` from the
+project id, and a project id can never be changed. A new project would have
+meant moving the database, the accounts and the menu.
+
+**Decision: a second Hosting site, `toe-cafe`, in the same `toi-cafe` project,
+and the original site kept as a redirect.**
+
+[`firebase.json`](../firebase.json) has two hosting targets, mapped in
+`.firebaserc`: `app` (the app, on `toe-cafe`) and `legacy` (on `toi-cafe`), so
+`firebase deploy --only hosting` deploys both. The legacy site serves only
+redirects: every path, query string included, goes to the same path on
+toe-cafe.web.app, so a QR card printed for `toi-cafe.web.app/order?table=3`
+still lands on table 3. The redirect is a **302, not a 301**: browsers cache a
+301 forever, and this should stay changeable. Same project means the same Firestore, Auth and rules; nothing
+moved.
+
+### Pages and router data are revalidated on every load
+
+Firebase Hosting sends `max-age=3600` for anything without its own header,
+pages included. Next's router fetches a page's data from `/page.txt` when a link
+is tapped, and after a deploy a browser could hold `/admin` from one build and
+`/admin.txt` from another for up to an hour. When those disagree, Next falls
+back to a full navigation — to the `.txt` address — and the owner was left
+looking at raw text on `/admin.txt`.
+
+**Decision: `.html`, `.txt` and extensionless page paths are served
+`Cache-Control: no-cache`.** The browser still keeps them, but asks first, and an
+unchanged file costs a 304. Hashed files under `/_next/static/` stay cached for a
+year, since their names change with their contents, and `sw.js` stays no-store.
+
+### The service worker fetches router data network-first
+
+The service worker had served same-origin assets stale-while-revalidate, `.txt`
+included, which right after every deploy meant handing the new page the
+previous build's router data — the same mismatch as above, from a different
+cache.
+
+**Decision: router data (`*.txt`) is network-first, falling back to the cache
+only when offline**, like navigations. Icons and other assets stay
+stale-while-revalidate. And any navigation to a `.txt` address is redirected to
+its page by the service worker, so a tab already stranded on raw text recovers
+on its next load. See [`public/sw.js`](../public/sw.js).
+
+### The owner is sent to the dashboard only right after signing in
+
+The owner signs in on `/staff`, like the baristas, and landed on the order board
+without realising the owner screens existed. Two changes: a labelled
+**Orders | Owner** switch in the header, shown only to the owner, and a redirect
+to _/admin_ after sign-in.
+
+**Decision: redirect only when the owner has just signed in on that screen, not
+on every visit to `/staff`.** An owner who is already signed in and opens
+`/staff` stays on the board. Redirecting every owner visit would make the order
+board unreachable for the owner, including from the switch's _Orders_ side,
+which links to `/staff`.

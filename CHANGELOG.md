@@ -11,13 +11,20 @@ Work that is built but not yet merged is tracked in
 
 ### Added
 
-- Automatic deploys: every push to `main` that passes CI deploys the rules and
-  hosting to toi-cafe, then checks the live site serves the new build
 - The owner sets the cafe's tables on _/admin/qr_: a number of tables with −/+,
   or typed-out numbers with ranges (`1-8, 12, 14`). The list is saved to
-  `config/tables` and the customer's table picker, the check on a scanned table
-  number, and the printed QR cards follow it live. `NEXT_PUBLIC_TABLES` is now
-  only the default until the owner saves a list
+  `config/tables`, and the customer's table picker, the check on a scanned table
+  number and the printed QR cards all follow it live
+- A labelled **Orders | Owner** switch in the header, shown only to the owner,
+  to move between the order board and the owner dashboard. It replaces an
+  unlabelled chart icon (and a cart icon back). Baristas see no change
+- A one-tap **Available / Sold out** switch on every item of the owner's menu
+  screen, and a labelled **Show to customers** switch for today's special,
+  which says when a change is not live until saved
+- Automatic deploys (`.github/workflows/deploy.yml`): once its secret and
+  variables are set, every push to `main` that passes CI deploys the rules and
+  hosting together to `toi-cafe`, never over a newer commit, then checks the
+  live site serves the new build
 
 ### Changed
 
@@ -25,47 +32,50 @@ Work that is built but not yet merged is tracked in
   same `toi-cafe` project, since a project id cannot be renamed. The old
   address redirects every path there, query string included, so old links and
   QR codes keep working
-- The owner goes straight to the owner dashboard after signing in on `/staff`;
-  the Orders | Owner switch still opens the order board
+- The owner goes straight to the owner dashboard after signing in on `/staff`.
+  Opening `/staff` while already signed in, which is where the switch's
+  _Orders_ side goes, still shows the order board
+- The owner's menu screen (_/admin_) is a list of compact rows grouped by
+  category; tapping a row opens its edit form (Save, Cancel, Delete) for that
+  one item. A summary line and category shortcuts sit at the top, and _Add
+  item_ opens the add form on demand and confirms each item added. The
+  decorative feature tiles are gone. At 390px the page went from about 6,800px
+  tall to about 1,900px
+- The category box in the add-item form is a list of the menu's categories with
+  a _New category…_ choice, as the edit form already had
+- The − 1 + control on the menu cards and in the cart is one joined pill, with
+  the same 44px buttons
 - `/order` waits for the saved table list before judging a scanned table
   number, so a valid QR code is never briefly shown "that table number looks
-  odd"
-- `NEXT_PUBLIC_TABLES` ignores numbers above 50, which the order rules have
-  always refused
+  odd". If the list cannot be loaded it uses the default
+- `NEXT_PUBLIC_TABLES` is now only the default until the owner saves a list, and
+  ignores numbers above 50, which the order rules have always refused
+- Pages and their router data are served `no-cache` (revalidated on every load,
+  a 304 when unchanged) instead of cached for an hour, and the service worker
+  fetches router data network-first
+
+### Fixed
+
+- Tapping between owner screens after a deploy could land on raw text at
+  `/admin.txt`. A tab already stranded on a `.txt` address is sent back to its
+  page
+- Adding an item, the category box snapped back to the first category on every
+  keystroke, so an item could not be put in another category or a new one
+- A new item could be filed under a category that had just left the menu,
+  bringing the old section back
+- Every pill-shaped control (buttons, chips, badges, toggles) rendered square:
+  `rounded-pill` had no matching theme token
+- The owner's availability toggle had its knob outside its track, covering the
+  first letter of its label
+- On a two-column phone menu (380–419px wide) the − 1 + control spilled out of
+  the item card and cut off the + button
 
 ### Security
 
 - `config/tables` is owner-write only and shape-checked in the rules: only a
   `tables` field, a list of 1–50 entries whose first and last are whole numbers
-  1–50. Other `config` documents are unchanged
-
-### Changed
-
-- The owner moves between the order board and the owner dashboard with a
-  labelled **Orders | Owner** switch in the header, instead of an unlabelled
-  chart icon (and a cart icon back). Baristas see no change
-- The owner's menu screen (_/admin_) is a list of compact rows grouped by
-  category, each with a one-tap **Available / Sold out** switch; tapping a row
-  opens its edit form (Save, Cancel, Delete) for that one item. A summary line
-  and category shortcuts sit at the top, and _Add item_ opens the add form on
-  demand and confirms each item added. The decorative feature tiles are gone.
-  At 390px the page went from about 6,800px tall to about 1,900px
-- Today's special has a labelled **Show to customers** switch instead of a bare
-  checkbox, and says when a change is not live until saved
-
-### Fixed
-
-- Tapping between owner screens after a deploy could land on raw text at
-  `/admin.txt`: pages and their router data are now revalidated on every load
-  instead of cached for an hour, and the service worker fetches that data
-  fresh and sends a tab stranded on a `.txt` back to its page
-- Every pill-shaped control (buttons, chips, badges, the Orders | Owner
-  switch) rendered square: `rounded-pill` had no matching theme token
-- The Available / Sold out switch's knob sat outside its track and covered the
-  first letter of its label
-- On a two-column phone menu (380–419px wide) the − 1 + control spilled out of
-  the item card and cut off the + button. It is now one joined pill that fits
-  beside the price, with the same 44px buttons, in the cards and the cart
+  1–50. The app drops any other bad entry when it reads the list. Other
+  `config` documents are unchanged
 
 ## [0.2.0] — 2026-09-28
 
@@ -131,6 +141,8 @@ setup of staff accounts and the dead _Complete_ button. Deployed to
   `permission-denied`
 - Docs no longer claim the rules recompute the order total, or that an order
   costs no reads
+- `npm run preview` works (it called `serve`, which was not installed), and
+  `npm run flow` and `npm run audit`, which the README described, exist
 
 ### Security
 
