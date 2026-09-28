@@ -6,6 +6,7 @@
  *                      createdAt, completedAt?, paymentMethod
  *   /menu/{itemId}     name, description?, price, category, available
  *   /config/special   the "today's special" board
+ *   /config/tables    { tables: number[] }, the owner's table list
  *
  * There is no /meta/counters any more: the order's display number is derived
  * from its document id on read (src/lib/order-number.ts, issue #30).
@@ -19,6 +20,7 @@ import { getDemoStaffPin } from "../config";
 import { orderTotal } from "../money";
 import { ACTIVE_STATUSES } from "../order-status";
 import { OrderThrottled, throttleFromServerStamp } from "../order-throttle";
+import { checkTablesForSave, normalizeTables } from "../tables";
 import { roleFromStaffDoc, staffDisplayName } from "./roles";
 import {
   parseMenuItem,
@@ -49,6 +51,7 @@ const MENU = "menu";
 const ORDERS = "orders";
 const CONFIG = "config";
 const SPECIAL_DOC = "special";
+const TABLES_DOC = "tables";
 const STAFF = "staff";
 const THROTTLE = "orderThrottle";
 
@@ -397,6 +400,27 @@ export const firestoreConfigRepo: ConfigRepository = {
       { enabled: offer.enabled, text: offer.text.trim().slice(0, 140) },
       { merge: true },
     );
+  },
+  subscribeTables(listener) {
+    return deferred(async () => {
+      const { db, fs } = await dbAndFs();
+      return fs.onSnapshot(
+        fs.doc(db, CONFIG, TABLES_DOC),
+        (snap) => listener(normalizeTables(snap.data()?.tables)),
+        // The document is public-read, so a failure here is the network, not
+        // the rules. Falling back to the default keeps the picker usable
+        // rather than leaving the customer on a loader.
+        () => listener(null),
+      );
+    });
+  },
+  async saveTables(tables) {
+    const { db, fs } = await dbAndFs();
+    // A whole-document set, not a merge: the rules allow `tables` and nothing
+    // else on this document.
+    await fs.setDoc(fs.doc(db, CONFIG, TABLES_DOC), {
+      tables: checkTablesForSave(tables),
+    });
   },
 };
 

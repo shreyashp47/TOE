@@ -224,11 +224,48 @@ service cloud.firestore {
       allow write: if isOwner();
     }
 
-    // -- config: the "today's special" board -------------------------------
+    // -- config: the "today's special" board, and the table list ----------
 
     match /config/{docId} {
       allow read: if true;
-      allow write: if isOwner();
+      // config/tables is excluded here and handled below. Two matching blocks
+      // are OR-ed together, so without this carve-out the shape checks on the
+      // table list could be bypassed through this broader rule.
+      allow write: if isOwner() && docId != "tables";
+    }
+
+    // The table list the customer's picker offers and /order checks a scanned
+    // number against, saved by the owner on /admin/qr as { tables: [1, 2, …] }.
+    //
+    // The rules language cannot loop, so not every entry can be checked. What is
+    // checked: the only field is `tables`, it is a list of 1..50 entries (50 is
+    // the highest table an order may carry, above), and the first and last
+    // entries are whole numbers in 1..50. The app always saves the list sorted,
+    // so for the app's own writes that bounds every entry. A hand-crafted write
+    // can still slip a bad value into the middle; the client drops any entry
+    // that is not a whole number 1..50 when it reads the list
+    // (normalizeTables in src/lib/tables.ts), and the owner is the only one who
+    // can write here at all.
+    //
+    // Delete is allowed on its own: it has no shape to check, and it simply
+    // puts the cafe back on the NEXT_PUBLIC_TABLES default.
+    function validTables() {
+      let t = request.resource.data.tables;
+      return request.resource.data.keys().hasOnly(["tables"])
+        && t is list
+        && t.size() >= 1
+        && t.size() <= 50
+        && t[0] is int
+        && t[0] >= 1
+        && t[0] <= 50
+        && t[t.size() - 1] is int
+        && t[t.size() - 1] >= 1
+        && t[t.size() - 1] <= 50;
+    }
+
+    match /config/tables {
+      allow create, update: if isOwner() && validTables();
+      allow delete: if isOwner();
     }
 
     // -- meta: gone ----------------------------------------------------------

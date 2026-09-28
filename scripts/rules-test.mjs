@@ -680,6 +680,99 @@ await t(
   ),
 );
 
+// The owner's table list (/admin/qr). Runs last so the barista already holds
+// its staff role document: a staff account, not a stranger, is the refusal
+// that matters here.
+console.log("\n config/tables (the owner's table list)");
+const tablesDoc = (c) => doc(c.db, "config", "tables");
+await t(
+  "the owner can save a table list",
+  allowed(() =>
+    setDoc(tablesDoc(ownerC), { tables: [1, 2, 3, 4, 5, 6, 7, 8] }),
+  ),
+);
+await t(
+  "the owner can save a list with gaps",
+  allowed(() => setDoc(tablesDoc(ownerC), { tables: [1, 2, 3, 12, 14, 50] })),
+);
+await t(
+  "anyone, signed out, can read it",
+  allowed(() => getDoc(tablesDoc(nobodyC))),
+);
+await t(
+  "a customer can read it",
+  allowed(() => getDoc(tablesDoc(publicC))),
+);
+await t(
+  "a barista cannot change it",
+  denied(() => setDoc(tablesDoc(staffC), { tables: [1, 2] })),
+);
+await t(
+  "a customer cannot change it",
+  denied(() => setDoc(tablesDoc(publicC), { tables: [1, 2] })),
+);
+await t(
+  "a signed-out caller cannot change it",
+  denied(() => setDoc(tablesDoc(nobodyC), { tables: [1, 2] })),
+);
+await t(
+  "a barista cannot delete it",
+  denied(() => deleteDoc(tablesDoc(staffC))),
+);
+await t(
+  "the owner cannot save an empty list",
+  denied(() => setDoc(tablesDoc(ownerC), { tables: [] })),
+);
+await t(
+  "the owner cannot save something that is not a list",
+  denied(() => setDoc(tablesDoc(ownerC), { tables: "1,2,3" })),
+);
+await t(
+  "the owner cannot save more than 50 tables",
+  denied(() => setDoc(tablesDoc(ownerC), { tables: Array(51).fill(1) })),
+);
+await t(
+  "the owner cannot save table 0",
+  denied(() => setDoc(tablesDoc(ownerC), { tables: [0, 1, 2] })),
+);
+await t(
+  "the owner cannot save a table above 50",
+  denied(() => setDoc(tablesDoc(ownerC), { tables: [1, 2, 51] })),
+);
+await t(
+  "the owner cannot save a fractional table",
+  denied(() => setDoc(tablesDoc(ownerC), { tables: [1.5, 2] })),
+);
+await t(
+  "the owner cannot save text for a table",
+  denied(() => setDoc(tablesDoc(ownerC), { tables: ["1", 2] })),
+);
+await t(
+  "the owner cannot add other fields",
+  denied(() => setDoc(tablesDoc(ownerC), { tables: [1, 2], note: "x" })),
+);
+await t(
+  "the owner cannot slip a field in with a merge",
+  denied(() => setDoc(tablesDoc(ownerC), { note: "x" }, { merge: true })),
+);
+await t(
+  "the owner can delete it, back to the default",
+  allowed(() => deleteDoc(tablesDoc(ownerC))),
+);
+// The carve-out on /config/{docId} must not have cost the owner the special.
+await t(
+  "the owner can still save today's special",
+  allowed(() =>
+    setDoc(doc(ownerC.db, "config", "special"), { enabled: true, text: "Hi" }),
+  ),
+);
+await t(
+  "a barista still cannot save today's special",
+  denied(() =>
+    setDoc(doc(staffC.db, "config", "special"), { enabled: true, text: "x" }),
+  ),
+);
+
 console.log(`\n${pass} passed, ${failures.length} failed`);
 for (const f of failures) console.log(`  - ${f}`);
 await Promise.all(

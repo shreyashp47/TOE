@@ -57,12 +57,19 @@ export function getDemoStaffPin(): string {
   return /^\d{4,6}$/.test(pin) ? pin : "1122";
 }
 
-/** Comma-separated table numbers, e.g. "1,2,3,4,5,6" -> [1..6]. */
+/**
+ * Comma-separated table numbers, e.g. "1,2,3,4,5,6" -> [1..6].
+ *
+ * Only the *default* now: once the owner saves a list on /admin/qr it lives in
+ * Firestore at config/tables and this is used until that document exists (see
+ * useTables in src/components/providers/DataProvider.tsx). Numbers above 50 are
+ * dropped because firestore.rules refuses an order for them.
+ */
 export function getTableNumbers(): number[] {
   const parsed = read(process.env.NEXT_PUBLIC_TABLES)
     .split(",")
     .map((part) => Number.parseInt(part.trim(), 10))
-    .filter((n) => Number.isInteger(n) && n > 0);
+    .filter((n) => Number.isInteger(n) && n > 0 && n <= 50);
   return parsed.length > 0
     ? [...new Set(parsed)].sort((a, b) => a - b)
     : [1, 2, 3, 4, 5, 6];

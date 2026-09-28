@@ -23,6 +23,7 @@ import {
   type SpecialOffer,
   type Unsubscribe,
 } from "../types";
+import { normalizeTables } from "../tables";
 import { SEED_MENU, SEED_OFFER } from "./seed";
 import type { NewOrderInput } from "./types";
 
@@ -33,6 +34,8 @@ interface DemoState {
   menu: MenuItem[];
   orders: Order[];
   offer: SpecialOffer;
+  /** null until the owner saves a list: the env default applies meanwhile. */
+  tables: number[] | null;
 }
 
 function emptyState(): DemoState {
@@ -40,6 +43,7 @@ function emptyState(): DemoState {
     menu: [],
     orders: [],
     offer: { enabled: false, text: "" },
+    tables: null,
   };
 }
 
@@ -48,6 +52,7 @@ function seedState(): DemoState {
     menu: SEED_MENU.map((item) => ({ ...item })),
     orders: [],
     offer: { ...SEED_OFFER },
+    tables: null,
   };
 }
 
@@ -100,6 +105,9 @@ function load(): DemoState {
       menu: parseMenuList((parsed as DemoState)?.menu),
       orders: parseOrderList((parsed as DemoState)?.orders),
       offer: parseSpecialOffer((parsed as DemoState)?.offer),
+      // Saved states from before editable tables have no such field, which
+      // reads as "nothing saved", exactly like a fresh Firestore project.
+      tables: normalizeTables((parsed as DemoState)?.tables),
       // Older saved states also carry a `seq` counter. It is ignored: the display
       // number is derived from the id now, exactly as it is in Firestore.
     };
@@ -195,6 +203,10 @@ export function selectOrder(state: DemoState, id: string): Order | null {
 
 export function selectOffer(state: DemoState): SpecialOffer {
   return state.offer;
+}
+
+export function selectTables(state: DemoState): number[] | null {
+  return state.tables;
 }
 
 /** Inclusive of `from`, exclusive of `to` — matches the reports' month range. */
@@ -308,6 +320,10 @@ export function demoSeedOrders(
 
 export function demoSaveOffer(offer: SpecialOffer): void {
   mutate((state) => ({ ...state, offer }));
+}
+
+export function demoSaveTables(tables: number[]): void {
+  mutate((state) => ({ ...state, tables }));
 }
 
 export { subscribeState, load as loadDemoState, emptyState, seedState };

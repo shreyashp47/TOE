@@ -21,7 +21,7 @@ import {
   type ReactNode,
 } from "react";
 
-import { isDemoMode } from "@/lib/config";
+import { getTableNumbers, isDemoMode } from "@/lib/config";
 import { demoBundle, loadBundle, type DataBundle } from "@/lib/data";
 import type {
   AuthRepository,
@@ -234,6 +234,41 @@ export function useSpecialOffer(): SpecialOffer {
     text: "",
   });
   return value;
+}
+
+/**
+ * The cafe's tables: the owner's saved list, or the NEXT_PUBLIC_TABLES default
+ * until one is saved.
+ *
+ * Unlike the hooks above this reports `loading` until the first snapshot has
+ * actually arrived, not merely until the repository exists. The customer's
+ * table check depends on it: answering with the default while the saved list is
+ * still in flight would bounce someone who scanned a perfectly good QR code for
+ * table 9 to "that table number looks odd", just because 9 is not in 1..6.
+ */
+export function useTables(): {
+  tables: number[];
+  /** The saved list itself, `null` when the default is in use. */
+  saved: number[] | null;
+  loading: boolean;
+} {
+  const repo = useConfigRepo();
+  // Tagged with the repo it came from, so a snapshot from a previous backend
+  // (the demo bundle before Firebase loads) is never mistaken for this one's.
+  const [snapshot, setSnapshot] = useState<{
+    repo: ConfigRepository;
+    saved: number[] | null;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!repo) return;
+    return repo.subscribeTables((saved) => setSnapshot({ repo, saved }));
+  }, [repo]);
+
+  const loaded = snapshot !== null && snapshot.repo === repo;
+  const saved = loaded ? snapshot.saved : null;
+  const fallback = useMemo(() => getTableNumbers(), []);
+  return { tables: saved ?? fallback, saved, loading: !loaded };
 }
 
 export function useStaffSession(): {

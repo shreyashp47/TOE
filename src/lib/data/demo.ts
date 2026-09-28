@@ -7,6 +7,7 @@
  */
 
 import { getDemoStaffPin } from "../config";
+import { checkTablesForSave } from "../tables";
 import type { MenuItem, Order, SpecialOffer, Unsubscribe } from "../types";
 import * as store from "./demo-store";
 import { DEMO_CREDENTIALS, DEMO_OWNER_USER, DEMO_STAFF_USER } from "./seed";
@@ -191,5 +192,11 @@ export const demoConfigRepo: ConfigRepository = {
       enabled: offer.enabled,
       text: offer.text.trim().slice(0, 140),
     });
+  },
+  subscribeTables(listener) {
+    return store.subscribeState((state) => listener(store.selectTables(state)));
+  },
+  async saveTables(tables) {
+    store.demoSaveTables(checkTablesForSave(tables));
   },
 };

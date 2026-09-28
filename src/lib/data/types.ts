@@ -92,6 +92,14 @@ export interface AuthRepository {
 export interface ConfigRepository {
   subscribe(listener: Listener<SpecialOffer>): Unsubscribe;
   save(offer: SpecialOffer): Promise<void>;
+  /**
+   * The owner's saved table list, or `null` while nothing has been saved (the
+   * app then falls back to NEXT_PUBLIC_TABLES). Live, so a change on /admin/qr
+   * reaches the customer's table picker without a redeploy.
+   */
+  subscribeTables(listener: Listener<number[] | null>): Unsubscribe;
+  /** Rejects a list with no usable table rather than saving an empty cafe. */
+  saveTables(tables: number[]): Promise<void>;
 }
 
 export interface DataBundle {

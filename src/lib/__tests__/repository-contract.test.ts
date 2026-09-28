@@ -356,6 +356,37 @@ describe("repository contract: config", () => {
     const offer = loadDemoState().offer;
     expect(offer.text.length).toBe(140);
   });
+
+  it("reports no saved table list until the owner saves one", () => {
+    const { values, stop } = collect(demoConfigRepo.subscribeTables);
+    expect(values).toEqual([null]);
+    stop();
+  });
+
+  it("saves the table list sorted and de-duplicated, and emits it live", async () => {
+    const { values, stop } = collect(demoConfigRepo.subscribeTables);
+    await demoConfigRepo.saveTables([9, 2, 1, 2]);
+    expect(values.at(-1)).toEqual([1, 2, 9]);
+    // Persisted to the same storage key as the rest of the demo state, which
+    // is what the other tabs read when the broadcast arrives.
+    expect(loadDemoState().tables).toEqual([1, 2, 9]);
+    stop();
+  });
+
+  it("refuses a table list the Firestore rules would refuse", async () => {
+    await expect(demoConfigRepo.saveTables([])).rejects.toThrow();
+    await expect(demoConfigRepo.saveTables([1, 51])).rejects.toThrow();
+    await expect(demoConfigRepo.saveTables([0, 1])).rejects.toThrow();
+    await expect(demoConfigRepo.saveTables([1.5])).rejects.toThrow();
+    expect(loadDemoState().tables).toBeNull();
+  });
+
+  it("reads a saved state from before editable tables as nothing saved", () => {
+    const state: Record<string, unknown> = { ...loadDemoState() };
+    delete state.tables;
+    localStorage.setItem(DEMO_STORAGE_KEY, JSON.stringify(state));
+    expect(loadDemoState().tables).toBeNull();
+  });
 });
 
 describe("demo store resilience", () => {
