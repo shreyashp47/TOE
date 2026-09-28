@@ -6,6 +6,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  friendlyLoadError,
   friendlySignInError,
   friendlyStatusError,
 } from "@/lib/friendly-errors";
@@ -78,6 +79,21 @@ describe("friendlyStatusError", () => {
   it("falls back to something plain", () => {
     expect(friendlyStatusError(new Error("FirebaseError: weird"))).toBe(
       "Couldn't update that order. Try again.",
+    );
+  });
+});
+
+describe("friendlyLoadError", () => {
+  it("explains a refused read without Firebase jargon", () => {
+    expect(
+      friendlyLoadError(
+        Object.assign(new Error("Missing or insufficient permissions."), {
+          code: "permission-denied",
+        }),
+      ),
+    ).toMatch(/isn't allowed to read past orders/);
+    expect(friendlyLoadError(new Error("FirebaseError: boom"))).toBe(
+      "Couldn't load orders. Try again.",
     );
   });
 });

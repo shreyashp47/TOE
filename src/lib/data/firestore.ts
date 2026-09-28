@@ -384,16 +384,33 @@ export const firestoreOrderRepo: OrderRepository = {
     });
   },
 
-  async listRange(fromMs, toMs) {
+  async listRange(fromMs, toMs, limit) {
     const { db, fs } = await dbAndFs();
-    const query = fs.query(
-      fs.collection(db, ORDERS),
+    const bounds = [
       fs.where("createdAt", ">=", fs.Timestamp.fromDate(new Date(fromMs))),
       fs.where("createdAt", "<", fs.Timestamp.fromDate(new Date(toMs))),
-      fs.orderBy("createdAt", "asc"),
-    );
+    ];
+    // With a limit, read newest-first so the cap drops the oldest orders, not
+    // today's. Both directions are served by the automatic single-field index
+    // on createdAt, so no composite index is needed either way.
+    const query =
+      limit === undefined
+        ? fs.query(
+            fs.collection(db, ORDERS),
+            ...bounds,
+            fs.orderBy("createdAt", "asc"),
+          )
+        : fs.query(
+            fs.collection(db, ORDERS),
+            ...bounds,
+            fs.orderBy("createdAt", "desc"),
+            fs.limit(limit),
+          );
     const snap = await fs.getDocs(query);
-    return snap.docs.map(readOrder).filter((o): o is Order => o !== null);
+    const orders = snap.docs
+      .map(readOrder)
+      .filter((o): o is Order => o !== null);
+    return limit === undefined ? orders : orders.reverse();
   },
 };
 

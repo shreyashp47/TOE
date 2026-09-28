@@ -44,6 +44,7 @@ const ROUTES = [
   { path: "/staff", name: "staff" },
   { path: "/admin", name: "admin", auth: "owner" },
   { path: "/admin/reports", name: "reports", auth: "owner" },
+  { path: "/admin/orders", name: "history", auth: "owner" },
   { path: "/admin/qr", name: "qr", auth: "owner" },
   { path: "/offline", name: "offline" },
 ];

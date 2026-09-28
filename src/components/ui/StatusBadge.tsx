@@ -38,16 +38,38 @@ const LOOK: Record<
   },
 };
 
+/**
+ * A status this build does not know yet — say, one written by a newer version
+ * of the app — still renders, as a plain neutral badge with its own name,
+ * rather than crashing an owner's history screen.
+ */
+function lookOf(status: string): {
+  label: string;
+  emoji: string;
+  className: string;
+} {
+  const known = Object.prototype.hasOwnProperty.call(LOOK, status)
+    ? LOOK[status as OrderStatus]
+    : undefined;
+  if (known) return known;
+  const words = status.replace(/[-_]+/g, " ").trim() || "Unknown";
+  return {
+    label: words.charAt(0).toUpperCase() + words.slice(1),
+    emoji: "•",
+    className: "bg-paper text-ink border-line",
+  };
+}
+
 export function StatusBadge({
   status,
   size = "md",
   className,
 }: {
-  status: OrderStatus;
+  status: OrderStatus | (string & {});
   size?: "sm" | "md";
   className?: string;
 }) {
-  const look = LOOK[status];
+  const look = lookOf(status);
   return (
     <span
       data-status={status}
@@ -64,12 +86,12 @@ export function StatusBadge({
   );
 }
 
-export function statusLabel(status: OrderStatus): string {
-  return LOOK[status].label;
+export function statusLabel(status: OrderStatus | (string & {})): string {
+  return lookOf(status).label;
 }
 
-export function statusEmoji(status: OrderStatus): string {
-  return LOOK[status].emoji;
+export function statusEmoji(status: OrderStatus | (string & {})): string {
+  return lookOf(status).emoji;
 }
 
 export { ORDER_STATUSES };

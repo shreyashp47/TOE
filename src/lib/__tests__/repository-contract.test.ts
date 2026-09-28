@@ -272,6 +272,18 @@ describe("repository contract: orders", () => {
     expect(await demoOrderRepo.listRange(to, to + 1000)).toEqual([]);
   });
 
+  it("with a limit, keeps the newest orders, still oldest first", async () => {
+    for (let i = 0; i < 3; i++) {
+      await place();
+      await new Promise((r) => setTimeout(r, 2));
+    }
+    const every = await demoOrderRepo.listRange(0, Date.now() + 1000);
+    const capped = await demoOrderRepo.listRange(0, Date.now() + 1000, 2);
+    expect(every).toHaveLength(3);
+    expect(capped.map((o) => o.id)).toEqual(every.slice(1).map((o) => o.id));
+    expect(capped[0].createdAt).toBeLessThanOrEqual(capped[1].createdAt);
+  });
+
   it("lists every active status on the board", () => {
     for (const status of ACTIVE_STATUSES) {
       expect(

@@ -71,8 +71,12 @@ export interface OrderRepository {
   setStatus(id: string, status: Order["status"]): Promise<void>;
   /** Staff turn an order away. `reason` is optional and shown to the customer. */
   reject(id: string, reason?: string): Promise<void>;
-  /** Bounded range query — keeps Firestore reads inside the free tier. */
-  listRange(fromMs: number, toMs: number): Promise<Order[]>;
+  /**
+   * Bounded range query — keeps Firestore reads inside the free tier.
+   * Always returned oldest first. With `limit`, only the newest `limit` orders
+   * in the range are read, so one busy month can't cost a day's read quota.
+   */
+  listRange(fromMs: number, toMs: number, limit?: number): Promise<Order[]>;
 }
 
 /**

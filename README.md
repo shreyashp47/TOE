@@ -80,6 +80,9 @@ except adding a new barista's account.
   order, revenue by day and best sellers for a month or a custom range, with a
   CSV export. Group the CSV by _Order ID_, not _Order #_: order numbers are
   short and repeat (see [below](#order-numbers-are-short-and-not-unique-on-their-own)).
+- **Look up a past order** — _History_ (`/admin/orders`) lists every order for
+  a day, a week or up to 31 days, newest first. Filter by status or table, search
+  by order number or item, and tap a row for its items, times and order ID.
 - **"A new version is ready · Reload"** — the app was updated. Tap _Reload_ when
   there is a quiet moment; nothing is lost if you wait.
 
@@ -167,6 +170,7 @@ Everything below is a real screenshot of the demo build.
 | `/staff`                           | Staff    | Sign-in, then the live order board with sound + vibration alert   |
 | `/admin`                           | Owner    | Menu: sold-out switches, inline editor, add item, today's special |
 | `/admin/reports`                   | Owner    | Monthly / custom-range revenue, AOV, best sellers, CSV            |
+| `/admin/orders`                    | Owner    | History: past orders by date, filter, search, expand, CSV         |
 | `/admin/qr`                        | Owner    | Set the cafe's tables; printable QR tent card per table           |
 | `/offline`                         | Anyone   | Service-worker fallback when the wifi drops                       |
 
