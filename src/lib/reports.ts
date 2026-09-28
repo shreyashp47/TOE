@@ -6,7 +6,7 @@
  */
 
 import { orderTotal } from "./money";
-import { orderLabel } from "./order-number";
+import { IST_OFFSET_MS, orderLabel } from "./order-number";
 import type { Order } from "./types";
 
 export interface Range {
@@ -195,16 +195,29 @@ function csvCell(value: unknown): string {
  * grouping on it would merge orders. The "#" keeps a spreadsheet from turning
  * "0007" into 7.
  *
+ * "Placed at" is UTC (ISO 8601), as it always was, so existing sheets keep
+ * working. "Placed (IST)" is the same moment as the cafe's own date and time,
+ * "2026-09-28 23:59": the date there is the day an order's number counts in.
+ *
  * Rejected orders stay in the export, with "rejected" in the Status column and
  * the staff's reason, so the file is a complete record. Anyone summing it for
  * takings must filter on Status, the way the dashboard does.
  */
+/** "YYYY-MM-DD HH:MM" in India time, whatever the device's zone. */
+function istDateTime(ms: number): string {
+  return new Date(ms + IST_OFFSET_MS)
+    .toISOString()
+    .slice(0, 16)
+    .replace("T", " ");
+}
+
 export function ordersToCsv(orders: Order[]): string {
   const header = [
     "Order #",
     "Order ID",
     "Table",
     "Placed at",
+    "Placed (IST)",
     "Status",
     "Completed at",
     "Item",
@@ -229,6 +242,7 @@ export function ordersToCsv(orders: Order[]): string {
           order.id,
           order.tableNumber,
           fmt(order.createdAt),
+          istDateTime(order.createdAt),
           order.status,
           fmt(order.completedAt),
           line.name,

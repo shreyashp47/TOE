@@ -96,7 +96,17 @@ requests against it.
   every path not listed in the rules, is denied to everyone. Daily order numbers
   come from `dayCounters/{YYYY-MM-DD}`, which only staff and the owner can read
   or write; it only steps up by one, cannot be deleted, and an order can only
-  be given the counter's exact next number, once.
+  be given the counter's exact next number, once. Every counter write must name
+  the one order it numbers in the same commit (`last`), so one commit cannot
+  give two orders the same number, and the counter cannot be bumped on its own.
+- **What a staff account can still do to the numbers:** staff are trusted with
+  the board, and the rules do not rate-limit them. A hostile or compromised
+  staff account could use up a day's 9,999 numbers (for example by numbering
+  hand-crafted or rejected orders in a loop; on the emulator this runs at a few
+  hundred a minute). The cafe keeps working: later orders that day stay
+  unnumbered, the board says numbering has stopped, and tickets, History and
+  the CSV fall back to the older three-digit number. Fix: remove that account's
+  `/staff` document. Numbering starts again at #0001 the next day.
 - **The Firebase SDK** is only loaded when the Firebase config is set, and it
   never holds a secret.
 

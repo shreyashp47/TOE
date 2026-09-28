@@ -249,6 +249,17 @@ describe("ordersToCsv", () => {
     ]);
   });
 
+  it("adds the IST date and time next to the UTC one", () => {
+    const csv = ordersToCsv([
+      order({ id: "late", createdAt: Date.parse("2026-09-28T18:29:00Z") }),
+    ]);
+    const [header, row] = csv.split("\n");
+    const cols = header.split(",");
+    const cells = row.split(",");
+    expect(cells[cols.indexOf("Placed at")]).toBe("2026-09-28T18:29:00.000Z");
+    expect(cells[cols.indexOf("Placed (IST)")]).toBe("2026-09-28 23:59");
+  });
+
   it("prints today's number, zero-padded, ahead of the older one", () => {
     const csv = ordersToCsv([
       order({ id: "a", orderNumber: 417, createdAt: base }),

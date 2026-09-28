@@ -19,6 +19,8 @@ Work that is built but not yet merged is tracked in
   number is handed out twice even with two boards open; nothing a customer can
   write is involved (issue #30). The customer sees "number coming…" until then.
   Older orders keep their three-digit number
+- A _Placed (IST)_ column in the orders CSV, beside the UTC _Placed at_, so the
+  date an order's day number counts in is readable without converting
 
 - A secret code per table, carried in its QR card (`/order?table=N&k=CODE`)
   and checked by the order rules, so an order can no longer be placed from
