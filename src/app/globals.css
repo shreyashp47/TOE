@@ -100,6 +100,9 @@
   --radius-md: var(--r-md);
   --radius-lg: var(--r-lg);
   --radius-xl: var(--r-xl);
+  /* `rounded-pill` is used across the app; without this token Tailwind emits
+     nothing for it and every pill renders square. */
+  --radius-pill: var(--r-pill);
 
   --shadow-soft: var(--shadow-soft);
   --shadow-card: var(--shadow-card);
