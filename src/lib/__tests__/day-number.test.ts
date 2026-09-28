@@ -438,6 +438,34 @@ describe("createDayNumberAssigner", () => {
     expect(onStall).toHaveBeenCalledWith(expect.any(DayNumbersExhausted));
   });
 
+  it("after stop(), a failure in flight neither retries nor reports", async () => {
+    const onStall = vi.fn();
+    let fail: (e: unknown) => void = () => {};
+    const assign = vi.fn(
+      () =>
+        new Promise((_, reject) => {
+          fail = reject;
+        }),
+    );
+    const timers = manualTimers();
+    const assigner = createDayNumberAssigner({
+      assign,
+      onStall,
+      ...timers,
+      stallAfter: 1,
+      permissionTries: 1,
+    });
+    assigner.update([{ id: "a", createdAt: 1 }]);
+    await flush();
+    assigner.stop();
+    fail(Object.assign(new Error("aborted"), { code: "aborted" }));
+    await flush();
+    await flush();
+    expect(timers.queue).toHaveLength(0);
+    expect(onStall).not.toHaveBeenCalled();
+    expect(assign).toHaveBeenCalledTimes(1);
+  });
+
   it("stop() cancels a pending retry", async () => {
     const assign = vi
       .fn()

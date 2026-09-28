@@ -176,11 +176,15 @@ export function createDayNumberAssigner(
     void assign(target.id)
       .then(() => {
         settled.add(target.id);
+        if (stopped) return;
         failures = 0;
         permissionFailures = 0;
         stall(null);
       })
       .catch((err: unknown) => {
+        // stop() while this was in flight: the board has gone (or signed
+        // out). No retry, and nothing to tell it.
+        if (stopped) return;
         const error = err instanceof Error ? err : new Error(String(err));
         if (isPermissionError(err)) {
           permissionFailures += 1;

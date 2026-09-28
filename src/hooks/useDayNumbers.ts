@@ -30,6 +30,9 @@ export function useDayNumbers(
 
   useEffect(() => {
     if (!repo || !enabled) return;
+    // A fresh assigner starts healthy. Without this, a note from the previous
+    // session (sign out, sign in as someone else, no reload) stayed up.
+    setStalled(null);
     const a = createDayNumberAssigner({
       assign: (id) => repo.assignDayNumber(id),
       onStall: setStalled,
