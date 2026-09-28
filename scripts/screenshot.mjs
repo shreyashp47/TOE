@@ -6,7 +6,10 @@
  *   node scripts/screenshot.mjs                     # all routes, all widths
  *   node scripts/screenshot.mjs /order              # one route
  *   node scripts/screenshot.mjs --quick             # 3 widths (what CI runs)
- *   BASE_URL=https://x.web.app node scripts/...      # against a deployed build
+ *   BASE_URL=http://127.0.0.1:4320 node scripts/screenshot.mjs   # `npm run preview`
+ *
+ * Staff and owner screens are reached with a planted demo-mode session, so
+ * against a Firebase-configured build (the live site) they show sign-in only.
  */
 import { mkdir, rm } from "node:fs/promises";
 import { spawn } from "node:child_process";
