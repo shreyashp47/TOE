@@ -44,7 +44,10 @@ export type IconName =
   | "mute"
   | "logout"
   | "trash"
-  | "back";
+  | "back"
+  | "edit"
+  | "close"
+  | "chevron";
 
 const PATHS: Record<IconName, React.ReactNode> = {
   drink: (
@@ -243,6 +246,14 @@ const PATHS: Record<IconName, React.ReactNode> = {
     </>
   ),
   back: <path d="M14.5 5.5L8 12l6.5 6.5" />,
+  edit: (
+    <>
+      <path d="M4 20h4L19 9a2.1 2.1 0 00-3-3L5 17v3z" />
+      <path d="M14 8l2.5 2.5" />
+    </>
+  ),
+  close: <path d="M6 6l12 12M18 6L6 18" />,
+  chevron: <path d="M6 9.5l6 6 6-6" />,
 };
 
 export function Icon({
