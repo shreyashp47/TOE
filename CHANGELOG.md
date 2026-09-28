@@ -44,6 +44,14 @@ Work that is built but not yet merged is tracked in
 - The owner moves between the order board and the owner dashboard with a
   labelled **Orders | Owner** switch in the header, instead of an unlabelled
   chart icon (and a cart icon back). Baristas see no change
+- The owner's menu screen (_/admin_) is a list of compact rows grouped by
+  category, each with a one-tap **Available / Sold out** switch; tapping a row
+  opens its edit form (Save, Cancel, Delete) for that one item. A summary line
+  and category shortcuts sit at the top, and _Add item_ opens the add form on
+  demand and confirms each item added. The decorative feature tiles are gone.
+  At 390px the page went from about 6,800px tall to about 1,900px
+- Today's special has a labelled **Show to customers** switch instead of a bare
+  checkbox, and says when a change is not live until saved
 
 ### Fixed
 
@@ -51,6 +59,10 @@ Work that is built but not yet merged is tracked in
   `/admin.txt`: pages and their router data are now revalidated on every load
   instead of cached for an hour, and the service worker fetches that data
   fresh and sends a tab stranded on a `.txt` back to its page
+- Every pill-shaped control (buttons, chips, badges, the Orders | Owner
+  switch) rendered square: `rounded-pill` had no matching theme token
+- The Available / Sold out switch's knob sat outside its track and covered the
+  first letter of its label
 
 ## [0.2.0] — 2026-09-28
 
