@@ -3,8 +3,9 @@
  * board and the owner dashboard. Staff must never see it.
  */
 
-import { render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it } from "vitest";
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import StaffPage from "@/app/staff/page";
 import { OwnerSwitch } from "@/components/OwnerSwitch";
@@ -12,7 +13,14 @@ import { demoAuthRepo } from "@/lib/data/demo";
 import { resetDemoStore } from "@/lib/data/demo-store";
 import { DEMO_CREDENTIALS } from "@/lib/data/seed";
 
+const replace = vi.fn();
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ replace, push: vi.fn(), prefetch: vi.fn() }),
+  usePathname: () => "/staff",
+}));
+
 beforeEach(async () => {
+  replace.mockClear();
   resetDemoStore();
   await demoAuthRepo.signOut();
 });
@@ -76,6 +84,8 @@ describe("order board header (demo backend)", () => {
       "href",
       "/admin",
     );
+    // Already signed in, e.g. back from the dashboard via the switch: stay here.
+    expect(replace).not.toHaveBeenCalled();
   });
 
   it("shows a barista the same board with no switch", async () => {
@@ -90,5 +100,29 @@ describe("order board header (demo backend)", () => {
     expect(
       screen.queryByRole("link", { name: "Owner" }),
     ).not.toBeInTheDocument();
+  });
+});
+
+describe("signing in on the order board", () => {
+  async function signInThroughTheForm(which: "staff" | "owner") {
+    const user = userEvent.setup();
+    render(<StaffPage />);
+    await user.click(
+      await screen.findByRole("button", {
+        name: which === "owner" ? "Fill owner" : "Fill staff",
+      }),
+    );
+    await user.click(screen.getByRole("button", { name: /sign in/i }));
+  }
+
+  it("sends the owner to the dashboard", async () => {
+    await signInThroughTheForm("owner");
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/admin"));
+  });
+
+  it("keeps a barista on the order board", async () => {
+    await signInThroughTheForm("staff");
+    await screen.findByRole("heading", { name: "Order board" });
+    expect(replace).not.toHaveBeenCalled();
   });
 });

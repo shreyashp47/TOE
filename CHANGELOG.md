@@ -21,6 +21,8 @@ Work that is built but not yet merged is tracked in
 
 ### Changed
 
+- The owner goes straight to the owner dashboard after signing in on `/staff`;
+  the Orders | Owner switch still opens the order board
 - `/order` waits for the saved table list before judging a scanned table
   number, so a valid QR code is never briefly shown "that table number looks
   odd"

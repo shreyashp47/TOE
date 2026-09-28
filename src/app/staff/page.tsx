@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Icon } from "@/components/icons";
@@ -42,6 +43,23 @@ export default function StaffPage() {
 function StaffScreen() {
   const { user, loading, signIn, signInWithPin, signOut } = useStaffSession();
   const isDemo = useIsDemo();
+  const router = useRouter();
+  // The owner signing in here usually wants the dashboard, so send them there —
+  // but only straight after signing in on this screen. Redirecting every owner
+  // visit would make the order board unreachable for them, including from the
+  // Orders | Owner switch, which links back here.
+  const [signedInHere, setSignedInHere] = useState(false);
+  const ownerJustSignedIn = signedInHere && user?.role === "owner";
+  useEffect(() => {
+    if (ownerJustSignedIn) router.replace("/admin");
+  }, [ownerJustSignedIn, router]);
+  const signInHere = useCallback(
+    async (email: string, password: string) => {
+      await signIn(email, password);
+      setSignedInHere(true);
+    },
+    [signIn],
+  );
   const { muted, setMuted, armed, unlock, chime, buzz } = useOrderChime();
   // Only once there is a staff session: the rules refuse a list to anyone who
   // is not staff, so subscribing earlier — or as an account with no /staff
@@ -135,11 +153,13 @@ function StaffScreen() {
   }, []);
 
   if (loading) return <Loading label="Checking your badge…" />;
+  if (ownerJustSignedIn)
+    return <Loading label="Opening the owner dashboard…" />;
 
   if (!user) {
     return (
       <StaffLogin
-        signIn={signIn}
+        signIn={signInHere}
         signInWithPin={signInWithPin}
         isDemo={isDemo}
         onFirstGesture={unlock}
