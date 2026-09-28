@@ -160,9 +160,8 @@ export default function OrderHistoryPage() {
     filters.table !== null ||
     filters.search.trim() !== "";
   const capped = orders.length >= HISTORY_LIMIT;
-  // Orders the reports leave out of takings (rejected ones). Worked out from
-  // buildReport's own count, so the rule lives in one place: reports.ts.
-  const notCounted = report ? orders.length - report.orderCount : 0;
+  // Rejected orders: listed here, but left out of takings by buildReport.
+  const notCounted = report?.rejectedCount ?? 0;
 
   function downloadCsv() {
     if (!range) return;

@@ -219,6 +219,30 @@ describe("order history: summary", () => {
   });
 });
 
+describe("order history: rejected orders", () => {
+  it("lists them, filters to them, and leaves them out of takings", async () => {
+    const user = userEvent.setup();
+    const open = (await allStored()).find((o) => o.status === "preparing")!;
+    await demoOrderRepo.reject(open.id, "Duplicate order");
+    renderPage();
+
+    // 3 today, one rejected: 2 counted, ₹480 + ₹200 (from the items)
+    expect(await screen.findByText("2 orders · ₹680")).toBeInTheDocument();
+    expect(
+      screen.getByText(/Plus 1 rejected order, not counted/),
+    ).toBeInTheDocument();
+    expect(rows()).toHaveLength(3);
+
+    await user.selectOptions(screen.getByLabelText("Status"), "rejected");
+    expect(rows()).toHaveLength(1);
+    const row = rows()[0];
+    expect(within(row).getByText("Rejected")).toBeInTheDocument();
+    await user.click(row);
+    expect(screen.getByText(/Reason given:/)).toBeInTheDocument();
+    expect(screen.getByText("Duplicate order")).toBeInTheDocument();
+  });
+});
+
 describe("order history: filters and search", () => {
   it("lists newest first and filters by status and table", async () => {
     const user = userEvent.setup();
