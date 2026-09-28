@@ -28,9 +28,15 @@ import type {
   ConfigRepository,
   MenuRepository,
   OrderRepository,
+  SessionRepository,
   StaffUser,
 } from "@/lib/data/types";
 import type { TableKeys } from "@/lib/table-keys";
+import {
+  DEFAULT_ORDERING,
+  type OrderingSettings,
+  type TableSessions,
+} from "@/lib/table-open";
 import type { MenuItem, Order, SpecialOffer } from "@/lib/types";
 
 interface DataContextValue {
@@ -105,6 +111,11 @@ export function useAuthRepo(): AuthRepository | null {
 export function useConfigRepo(): ConfigRepository | null {
   const { bundle } = useData();
   return useMemo(() => bundle?.config ?? null, [bundle]);
+}
+
+export function useSessionRepo(): SessionRepository | null {
+  const { bundle } = useData();
+  return useMemo(() => bundle?.sessions ?? null, [bundle]);
 }
 
 /** Generic live subscription bridged onto useSyncExternalStore. */
@@ -364,4 +375,52 @@ export function useActions() {
     }),
     [menu, orders, config],
   );
+}
+
+/**
+ * Every table's open-until time, live (src/lib/table-open.ts). The staff board
+ * uses it for its "Open tables" strip and to keep a table open while staff
+ * work on its orders.
+ */
+export function useTableSessions(enabled = true): {
+  sessions: TableSessions;
+  error: Error | null;
+} {
+  const repo = useSessionRepo();
+  const [error, setError] = useState<Error | null>(null);
+  const subscribe = useMemo(() => {
+    if (!repo || !enabled) return null;
+    return (listener: (sessions: TableSessions) => void) =>
+      repo.subscribe((sessions) => {
+        setError(null);
+        listener(sessions);
+      }, setError);
+  }, [repo, enabled]);
+  const { value } = useLive<TableSessions>(subscribe, EMPTY_SESSIONS);
+  return { sessions: enabled ? value : EMPTY_SESSIONS, error };
+}
+
+const EMPTY_SESSIONS: TableSessions = {};
+
+/** The owner's "confirm new guests" switch, live. ON until known otherwise. */
+export function useOrderingSettings(): {
+  settings: OrderingSettings;
+  loading: boolean;
+} {
+  const repo = useSessionRepo();
+  const [snapshot, setSnapshot] = useState<{
+    repo: SessionRepository;
+    settings: OrderingSettings;
+  } | null>(null);
+  useEffect(() => {
+    if (!repo) return;
+    return repo.subscribeSettings((settings) =>
+      setSnapshot({ repo, settings }),
+    );
+  }, [repo]);
+  const loaded = snapshot !== null && snapshot.repo === repo;
+  return {
+    settings: loaded ? snapshot.settings : DEFAULT_ORDERING,
+    loading: !loaded,
+  };
 }

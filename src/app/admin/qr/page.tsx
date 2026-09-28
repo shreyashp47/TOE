@@ -17,6 +17,9 @@
  * takes orders from anyone who types its address; the owner turns that off by
  * creating codes and putting the new cards out. "Regenerated once, when a card
  * leaks" is the one exception to the spec's "no dynamic regeneration".
+ *
+ * And the switch for staff confirming new guests (src/lib/table-open.ts):
+ * the other half of keeping out orders from people not in the cafe.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -26,6 +29,7 @@ import {
   useTableKeys,
   useTables,
 } from "@/components/providers/DataProvider";
+import { NewGuestsSetting } from "@/components/NewGuestsSetting";
 import { TableCodes } from "@/components/TableCodes";
 import { TableListEditor } from "@/components/TableListEditor";
 import { Button } from "@/components/ui/Button";
@@ -96,6 +100,8 @@ export default function QrPage() {
           onSave={saveTables}
         />
       </Card>
+
+      <NewGuestsSetting />
 
       <TableCodes
         tables={tables}

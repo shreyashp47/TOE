@@ -1,9 +1,12 @@
 /**
  * Dev-only end-to-end walkthrough of the flows that matter:
  * owner creates table codes -> a typed-in address is turned away -> customer
- * places an order from the QR link -> staff board receives it live -> staff
- * advances the status -> the customer's screen reflects it without a refresh ->
- * staff reject a second order and the customer is told.
+ * places an order from the QR link -> it waits for the counter (a new guest)
+ * -> staff accept it on the board, which opens the table -> staff advance the
+ * status -> the customer's screen reflects it without a refresh -> a second
+ * order from the open table goes straight to the kitchen -> staff close the
+ * table -> the next order waits again and staff reject it -> with the owner's
+ * "confirm new guests" switch off, orders skip the wait.
  *
  * Runs against `next dev` (or BASE_URL) in demo mode, where "live" is
  * localStorage + BroadcastChannel. Also fails on any console error.
@@ -219,13 +222,17 @@ check(
   !new URL(customer.url()).searchParams.has("k"),
   customer.url(),
 );
-await customer.waitForTimeout(1200);
-// No board is open yet, so no number: the screen must say one is coming
-// rather than show a stand-in that would change (daily numbers).
+await customer
+  .getByRole("heading", {
+    name: "Waiting for the counter to confirm your table",
+  })
+  .waitFor({ timeout: 10_000 });
+check("a new guest's first order waits for the counter", true);
+// A waiting order has no number yet, and the screen must not show a stand-in
+// that would change: the number comes once staff accept it (daily numbers).
 check(
-  "confirmation says the number is coming, and shows none yet",
-  /number is coming/i.test(await customer.locator("main").innerText()) &&
-    !/#\d/.test(await customer.locator("body").innerText()),
+  "the waiting screen shows no order number",
+  !/#\d/.test(await customer.locator("body").innerText()),
 );
 await customer.screenshot({
   path: `${OUT}/03-confirmation.png`,
@@ -256,16 +263,40 @@ check(
   "board lists the ordered item",
   (await staff.locator("main").innerText()).includes("Cappuccino"),
 );
+check(
+  "it is in the New guests section",
+  await staff
+    .getByRole("region", { name: "New guests — check the table" })
+    .isVisible(),
+);
+// The board numbers every order it sees, but not one still waiting for the
+// counter: a stranger's order that gets turned away never uses up a number.
+await staff.waitForTimeout(1500);
+check(
+  "the board does not number a new guest before Accept",
+  !(await staff.locator("main").innerText()).includes("#0001"),
+);
+await staff.screenshot({ path: `${OUT}/04-staff-board.png`, fullPage: true });
+
+step("5b", "Staff accept the new guest; the table opens");
+await staff.getByRole("button", { name: "Accept" }).click();
+await staff.locator("[data-open-table='3']").waitFor({ timeout: 10_000 });
+check("table 3 is in Open tables", true);
+await customer.waitForFunction(
+  () => document.body.innerText.includes("Being made right now."),
+  undefined,
+  { timeout: 20_000 },
+);
+check("customer moved on to Preparing by itself", true);
 await staff.waitForFunction(
   () => document.querySelector("main")?.innerText.includes("#0001"),
   undefined,
   { timeout: 10_000 },
 );
 check(
-  "the board gives it today's first number, #0001",
+  "once accepted, the board gives it today's first number, #0001",
   (await staff.locator("main").innerText()).includes("#0001"),
 );
-await staff.screenshot({ path: `${OUT}/04-staff-board.png`, fullPage: true });
 await customer.waitForFunction(
   () => document.body.innerText.includes("#0001"),
   undefined,
@@ -275,6 +306,10 @@ check(
   "the customer's screen shows #0001 live",
   (await customer.locator("body").innerText()).includes("Order #0001"),
 );
+await staff.screenshot({
+  path: `${OUT}/04b-staff-accepted.png`,
+  fullPage: true,
+});
 
 step(6, "Staff marks it ready");
 await staff.getByRole("button", { name: "Mark ready" }).click();
@@ -317,19 +352,32 @@ check(
 );
 
 // --- 4. cart persistence -----------------------------------------------------
-step(10, "Staff reject a second order; the customer is told plainly");
+step(10, "A second order from the open table goes straight to the kitchen");
 // The phone's own 30-second throttle note, not the thing under test here.
-await customer.evaluate(() => localStorage.removeItem("toe.lastOrderAt"));
-// Keyless address this time: the phone remembers the code from the scan.
-await customer.goto(`${BASE}/order?table=3`, { waitUntil: "networkidle" });
-await addByName(customer, "Masala Chai");
-await customer.getByRole("button", { name: /View order/ }).click();
-await customer.getByRole("checkbox").check();
-await customer.getByRole("button", { name: /Place order/ }).click();
-await customer.waitForURL(/\/order\/confirmation/, { timeout: 20_000 });
+const forgetThrottle = () =>
+  customer.evaluate(() => localStorage.removeItem("toe.lastOrderAt"));
+const orderOne = async (name) => {
+  await forgetThrottle();
+  // Keyless address: the phone remembers the code from the scan.
+  await customer.goto(`${BASE}/order?table=3`, { waitUntil: "networkidle" });
+  await addByName(customer, name);
+  await customer.getByRole("button", { name: /View order/ }).click();
+  await customer.getByRole("checkbox").check();
+  await customer.getByRole("button", { name: /Place order/ }).click();
+  await customer.waitForURL(/\/order\/confirmation/, { timeout: 20_000 });
+};
+await orderOne("Masala Chai");
+await customer.getByText("Got it!").waitFor({ timeout: 10_000 });
+check("no waiting on an open table", true);
+await staff
+  .getByRole("button", { name: "Mark ready" })
+  .waitFor({ timeout: 10_000 });
 check(
-  "a remembered code lets a second order through",
-  /\/order\/confirmation/.test(customer.url()),
+  "and it is kitchen work on the board, not a new guest",
+  !(await staff
+    .getByRole("region", { name: "New guests — check the table" })
+    .isVisible()
+    .catch(() => false)),
 );
 await customer.waitForFunction(
   () => document.body.innerText.includes("#0002"),
@@ -340,12 +388,42 @@ check(
   "with the board open, the next order is #0002 straight away",
   (await customer.locator("body").innerText()).includes("Order #0002"),
 );
-await staff.getByRole("button", { name: "Reject order #0002" }).click();
+await staff.getByRole("button", { name: "Mark ready" }).click();
+await staff.waitForTimeout(400);
+await staff.getByRole("button", { name: "Mark served" }).click();
+await staff.waitForTimeout(400);
+await staff.getByRole("button", { name: "Complete" }).click();
+await staff.waitForTimeout(600);
+
+step("10b", "Staff close table 3; the next order waits again");
+await staff.getByRole("button", { name: "Close table 3" }).click();
+await staff
+  .locator("[data-open-table='3']")
+  .waitFor({ state: "detached", timeout: 10_000 });
+check("table 3 left Open tables", true);
+await orderOne("Masala Chai");
+await customer
+  .getByText("Waiting for the counter to confirm your table")
+  .waitFor({ timeout: 10_000 });
+check("the next order waits for the counter", true);
+await staff.waitForTimeout(1500);
+check(
+  "and the board leaves it unnumbered",
+  !(await staff.locator("main").innerText()).includes("#0003"),
+);
+
+step("10c", "Staff reject it: nobody at the table; the customer is told");
+await staff.getByRole("button", { name: /^Reject order #/ }).click();
 check(
   "reject asks on the ticket first",
-  await staff.getByText("Reject order #0002 from table 3?").isVisible(),
+  await staff.getByText(/^Reject order #\d+ from table 3\?$/).isVisible(),
 );
-await staff.getByRole("button", { name: "No one at this table" }).click();
+check(
+  "'No one at this table' is already picked for a new guest",
+  (await staff
+    .getByRole("button", { name: "No one at this table" })
+    .getAttribute("aria-pressed")) === "true",
+);
 await staff.screenshot({ path: `${OUT}/07-staff-reject-confirm.png` });
 await staff.getByRole("button", { name: "Reject order" }).click();
 await staff.waitForTimeout(900);
@@ -367,7 +445,40 @@ await customer.screenshot({
   fullPage: true,
 });
 
-step("10b", "A code scanned over 3 hours ago asks for a new scan");
+step("10d", "The owner switches confirmation off; orders skip the wait");
+// Demo sessions are shared by every tab, so the barista signs out first.
+await staff.getByRole("button", { name: "Sign out" }).click();
+const owner2 = watch(await context.newPage(), "owner");
+await owner2.goto(`${BASE}/staff`, { waitUntil: "networkidle" });
+await owner2.getByRole("button", { name: "Fill owner" }).click();
+await owner2.getByRole("button", { name: "Sign in" }).click();
+await owner2.waitForURL(/\/admin/, { timeout: 20_000 });
+await owner2.goto(`${BASE}/admin/qr`, { waitUntil: "networkidle" });
+const guestSwitch = owner2.getByRole("switch", {
+  name: /Confirm new guests before orders reach the kitchen/,
+});
+await guestSwitch.waitFor({ timeout: 10_000 });
+check(
+  "the switch is on by default",
+  (await guestSwitch.getAttribute("aria-checked")) === "true",
+);
+await guestSwitch.click();
+await owner2.waitForFunction(
+  () =>
+    document.querySelector("[role=switch]")?.getAttribute("aria-checked") ===
+    "false",
+  undefined,
+  { timeout: 10_000 },
+);
+await owner2.screenshot({ path: `${OUT}/09-owner-switch-off.png` });
+await orderOne("Butter Scone");
+await customer.getByText("Got it!").waitFor({ timeout: 10_000 });
+check("with the switch off, a closed table's order skips the wait", true);
+// Back on, and signed out, so the demo store is left as it was found.
+await guestSwitch.click();
+await owner2.close();
+
+step("10e", "A code scanned over 3 hours ago asks for a new scan");
 // Wind this phone's scan time back 3h01 rather than waiting.
 await customer.goto(`${BASE}/order?table=3`, { waitUntil: "networkidle" });
 await customer.evaluate(() => {
@@ -403,7 +514,7 @@ check(
     .catch(() => false)),
 );
 
-step("10c", "The tab the scan opened asks again after 3 hours, no reload");
+step("10f", "The tab the scan opened asks again after 3 hours, no reload");
 // The tab most customers keep: opened by the camera with ?k=, never reloaded.
 // Unit tests stand in for Next's router, so only a real browser shows whether
 // the router let go of the scanned code when it left the address bar.

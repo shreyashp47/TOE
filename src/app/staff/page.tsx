@@ -7,6 +7,7 @@ import { Icon } from "@/components/icons";
 import { InstallHint } from "@/components/Pwa";
 import { Mascot } from "@/components/Mascot";
 import { NotSetUp } from "@/components/NotSetUp";
+import { OpenTables } from "@/components/OpenTables";
 import { OwnerSwitch } from "@/components/OwnerSwitch";
 import {
   DataProvider,
@@ -14,6 +15,7 @@ import {
   useIsDemo,
   useMenu,
   useStaffSession,
+  useTableSessions,
 } from "@/components/providers/DataProvider";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -31,12 +33,19 @@ import { formatINR, formatWait, lineSubtotal } from "@/lib/money";
 import { checkOrderIntegrity } from "@/lib/order-integrity";
 import { orderLabel, padDayNumber } from "@/lib/order-number";
 import {
+  PENDING_REJECT_REASON,
   REJECT_REASONS,
   actionsFor,
   canReject,
+  isAwaitingCounter,
   transition,
   type OrderStatus,
 } from "@/lib/order-status";
+import {
+  extendedOpenUntil,
+  isTableOpen,
+  keepsTableOpen,
+} from "@/lib/table-open";
 import type { MenuItem, Order } from "@/lib/types";
 import { DEMO_CREDENTIALS } from "@/lib/data/seed";
 
@@ -83,6 +92,12 @@ function StaffScreen() {
   // The live menu, to re-price every ticket against (issue #27). Menu reads are
   // public and it is one small collection, so this is one cheap listener.
   const { items: menu } = useMenu();
+  // Which tables staff have confirmed (src/lib/table-open.ts). Read through a
+  // ref in the actions below so they stay stable callbacks.
+  const { sessions } = useTableSessions(canWork);
+  const sessionsRef = useRef(sessions);
+  sessionsRef.current = sessions;
+  const [closingTable, setClosingTable] = useState<number | null>(null);
   const [tableFilter, setTableFilter] = useState<number | "all">("all");
   const [busyId, setBusyId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<{
@@ -139,6 +154,16 @@ function StaffScreen() {
         : orders.filter((o) => o.tableNumber === tableFilter),
     [orders, tableFilter],
   );
+  // New guests (pending) get their own section above the kitchen's tickets:
+  // they are a question for whoever is at the counter, not food to make.
+  const newGuests = useMemo(
+    () => visible.filter((o) => isAwaitingCounter(o.status)),
+    [visible],
+  );
+  const kitchen = useMemo(
+    () => visible.filter((o) => !isAwaitingCounter(o.status)),
+    [visible],
+  );
 
   const advance = useCallback(async (order: Order, to: OrderStatus) => {
     setBusyId(order.id);
@@ -158,7 +183,27 @@ function StaffScreen() {
       }
       const { loadBundle } = await import("@/lib/data");
       const bundle = await loadBundle();
-      await bundle.orders.setStatus(order.id, to);
+      const now = Date.now();
+      const current = sessionsRef.current[order.tableNumber];
+      const openUntil = extendedOpenUntil(current, now);
+      if (isAwaitingCounter(order.status)) {
+        // Accept: the order goes to the kitchen and the table opens, so the
+        // group's next orders skip this step.
+        await bundle.orders.accept(order.id, order.tableNumber, openUntil);
+      } else if (
+        keepsTableOpen(to) &&
+        isTableOpen(sessionsRef.current, order.tableNumber, now) &&
+        openUntil > (current ?? 0)
+      ) {
+        // Working on an open table's order keeps it open for another few
+        // hours, in the same commit. A table already closed stays closed.
+        await bundle.orders.setStatus(order.id, to, {
+          table: order.tableNumber,
+          openUntil,
+        });
+      } else {
+        await bundle.orders.setStatus(order.id, to);
+      }
     } catch (err) {
       setActionError({ orderId: order.id, message: friendlyStatusError(err) });
     } finally {
@@ -185,6 +230,21 @@ function StaffScreen() {
       setActionError({ orderId: order.id, message: friendlyStatusError(err) });
     } finally {
       setBusyId(null);
+    }
+  }, []);
+
+  const [tableError, setTableError] = useState<string | null>(null);
+  const closeTable = useCallback(async (table: number) => {
+    setClosingTable(table);
+    setTableError(null);
+    try {
+      const { loadBundle } = await import("@/lib/data");
+      const bundle = await loadBundle();
+      await bundle.sessions.close(table);
+    } catch (err) {
+      setTableError(friendlyStatusError(err));
+    } finally {
+      setClosingTable(null);
     }
   }, []);
 
@@ -284,6 +344,20 @@ function StaffScreen() {
           </p>
         ) : null}
 
+        <OpenTables
+          sessions={sessions}
+          busyTable={closingTable}
+          onClose={(table) => void closeTable(table)}
+        />
+        {tableError ? (
+          <p
+            role="alert"
+            className="border-berry bg-paper text-berry-deep mb-3 rounded-md border-2 px-3 py-2 text-sm"
+          >
+            Couldn&apos;t close that table: {tableError}
+          </p>
+        ) : null}
+
         <div className="mb-3 flex items-center gap-2 overflow-x-auto pb-1">
           <FilterChip
             active={tableFilter === "all"}
@@ -302,9 +376,46 @@ function StaffScreen() {
           ))}
         </div>
 
+        {!ordersLoading && newGuests.length > 0 ? (
+          <section
+            aria-labelledby="new-guests"
+            className="border-secondary bg-highlight-soft/30 mb-4 rounded-lg border-2 border-dashed p-3"
+          >
+            <h2 id="new-guests" className="text-secondary-deep text-lg">
+              New guests — check the table
+            </h2>
+            <p className="text-body mb-2.5 text-sm">
+              First order from a table you haven&apos;t confirmed. If someone is
+              sitting there, Accept: it goes to the kitchen and the table stays
+              open for their next orders.
+            </p>
+            <ul className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {newGuests.map((order) => (
+                <OrderTicket
+                  key={order.id}
+                  order={order}
+                  menu={menu}
+                  isFresh={freshIds.has(order.id)}
+                  numberingStalled={Boolean(numbering)}
+                  busy={busyId === order.id}
+                  error={
+                    actionError?.orderId === order.id
+                      ? actionError.message
+                      : null
+                  }
+                  onAdvance={(to) => void advance(order, to)}
+                  onReject={(reason) => void reject(order, reason)}
+                />
+              ))}
+            </ul>
+          </section>
+        ) : null}
+
         {ordersLoading ? (
           <Loading label="Listening for orders…" />
-        ) : visible.length === 0 ? (
+        ) : kitchen.length === 0 && newGuests.length > 0 ? (
+          <p className="text-muted text-sm">Nothing in the kitchen yet.</p>
+        ) : kitchen.length === 0 ? (
           <EmptyState
             mood="sleepy"
             title={
@@ -318,7 +429,7 @@ function StaffScreen() {
           />
         ) : (
           <ul className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {visible.map((order) => (
+            {kitchen.map((order) => (
               <OrderTicket
                 key={order.id}
                 order={order}
@@ -400,6 +511,7 @@ function OrderTicket({
     return () => clearInterval(id);
   }, []);
 
+  const newGuest = isAwaitingCounter(order.status);
   const waited = now - order.createdAt;
   const urgent = waited > 8 * 60_000;
   const warn = waited > 4 * 60_000;
@@ -422,7 +534,12 @@ function OrderTicket({
             <span className="text-2xs text-muted font-semibold tracking-[0.12em] uppercase">
               Table
             </span>
-            <span className="font-round text-primary text-3xl leading-none">
+            <span
+              className={[
+                "font-round text-primary leading-none",
+                newGuest ? "text-5xl" : "text-3xl",
+              ].join(" ")}
+            >
               {order.tableNumber}
             </span>
             <TicketNumber order={order} stalled={numberingStalled} />
@@ -522,7 +639,12 @@ function OrderTicket({
               size="sm"
               variant="ghost"
               disabled={busy}
-              onClick={() => setConfirming(true)}
+              onClick={() => {
+                setConfirming(true);
+                // A new guest nobody can see is the usual reason; still one
+                // tap to change or clear.
+                if (newGuest) setReason(PENDING_REJECT_REASON);
+              }}
               aria-label={`Reject order ${orderLabel(order)}`}
             >
               Reject
@@ -539,12 +661,27 @@ function OrderTicket({
  * numbered the order (a second or so) a quiet placeholder holds its place, so
  * the number never appears as one thing and then changes to another. Only if
  * numbering has stopped does the older short number stand in.
+ *
+ * A new guest's order is not numbered until staff accept it (a stranger's
+ * order that is turned away should not use up one of the day's numbers), so
+ * it shows a still placeholder that says so rather than one that looks busy.
  */
 function TicketNumber({ order, stalled }: { order: Order; stalled: boolean }) {
   if (order.dayNumber !== undefined) {
     return (
       <span className="tnum font-round text-ink ml-1 text-2xl leading-none">
         #{padDayNumber(order.dayNumber)}
+      </span>
+    );
+  }
+  if (isAwaitingCounter(order.status)) {
+    return (
+      <span
+        className="tnum text-muted ml-1 text-2xl leading-none"
+        title="Gets its number when you accept it"
+      >
+        <span aria-hidden="true">#····</span>
+        <span className="sr-only">Number on Accept</span>
       </span>
     );
   }

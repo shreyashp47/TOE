@@ -26,6 +26,7 @@ import { Card } from "@/components/ui/Card";
 import { EmptyState, Loading } from "@/components/ui/Loading";
 import { SpeechBubble } from "@/components/ui/SpeechBubble";
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { WaitingForCounter } from "@/components/WaitingForCounter";
 import { useCart } from "@/hooks/useCart";
 import { dropKeyFromAddress } from "@/hooks/useTableCode";
 import { useTableQuery } from "@/hooks/useTableQuery";
@@ -209,6 +210,9 @@ function StatusScreen({
       />
     );
   }
+
+  // The first order from a table staff have not confirmed yet.
+  if (order.status === "pending") return <WaitingForCounter order={order} />;
 
   const done = isFinalForCustomer(order.status);
   const activeStep = stepIndex(order.status);
@@ -400,11 +404,23 @@ function RejectedNotice({
  * Counted from when this screen saw the order, not from createdAt, so a phone
  * with a wrong clock waits the same as any other. An order that is clearly old
  * (a revisited page) gives up at once.
+ *
+ * A `pending` order is not numbered until staff accept it, so the wait only
+ * starts then: a guest who waited five minutes for the counter still sees
+ * "Your number is coming…" for the second it takes after Accept. For the same
+ * reason "clearly old" is not judged while it waits.
  */
 function useNumberWait(order: Order | null): boolean {
-  const unnumbered = Boolean(order) && order?.dayNumber === undefined;
+  const unnumbered =
+    Boolean(order) &&
+    order?.dayNumber === undefined &&
+    order?.status !== "pending";
+  const sawPending = useRef(false);
+  if (order?.status === "pending") sawPending.current = true;
   const stale =
-    unnumbered && Date.now() - (order?.createdAt ?? 0) > 10 * 60_000;
+    unnumbered &&
+    !sawPending.current &&
+    Date.now() - (order?.createdAt ?? 0) > 10 * 60_000;
   const [waitedOut, setWaitedOut] = useState(false);
   useEffect(() => {
     if (!unnumbered) return;
