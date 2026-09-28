@@ -93,6 +93,14 @@ export const TABLE_CODE_TTL_MS = 3 * 60 * 60 * 1000;
 
 const PREFIX = "toe.tableKey.t";
 
+/**
+ * How far in the future a scan time may be and still count: a little clock
+ * skew between saving and reading is harmless, but a scan "from tomorrow"
+ * (the phone's clock was wrong, then corrected) would stretch the 3 hours
+ * indefinitely, so it counts as expired.
+ */
+const FUTURE_SKEW_MS = 5 * 60 * 1000;
+
 /** What the phone holds for one table. `k` is dropped once it has expired. */
 interface Saved {
   k?: string;
@@ -100,9 +108,24 @@ interface Saved {
   at: number;
 }
 
-// Private browsing can refuse storage outright. The code then only lives for
-// this page load, which still covers scan -> order -> confirmation.
+// Where a code is kept, most durable first. localStorage lasts across visits
+// (within the 3 hours); sessionStorage is the fallback when localStorage is
+// full or refused, and still survives the full page load to the confirmation
+// page and back. The in-memory copy covers a browser that refuses both, for
+// this page load only: such a phone is asked to scan again after ordering.
 const memory = new Map<number, Saved>();
+const stores = (): Storage[] => {
+  const out: Storage[] = [];
+  for (const name of ["localStorage", "sessionStorage"] as const) {
+    try {
+      const store = globalThis[name];
+      if (store) out.push(store);
+    } catch {
+      /* access itself can throw */
+    }
+  }
+  return out;
+};
 
 /**
  * The phone's view of a table's code, judged at `now`:
@@ -140,7 +163,7 @@ export function readTableCode(
   const saved = read(tableNumber);
   if (!saved) return { state: "none" };
   const expiresAt = saved.at + TABLE_CODE_TTL_MS;
-  if (saved.k && now < expiresAt) {
+  if (saved.k && now < expiresAt && saved.at <= now + FUTURE_SKEW_MS) {
     return { state: "valid", key: saved.k, expiresAt };
   }
   // Scrub the stale code but keep the scan time: "this table has a code" is
@@ -158,33 +181,54 @@ export function readTableKey(
   return code.state === "valid" ? code.key : null;
 }
 
+/**
+ * The newest record among the stores and memory. Newest, not first found: a
+ * scan saved only to sessionStorage or memory (localStorage full) must not be
+ * shadowed by an older expired entry that is still in localStorage, and a
+ * rescan in another tab must win over this tab's memory.
+ */
 function read(tableNumber: number): Saved | null {
-  try {
-    const raw = globalThis.localStorage?.getItem(`${PREFIX}${tableNumber}`);
-    if (raw != null) return parseSaved(raw);
-  } catch {
-    /* fall through to memory */
+  const name = `${PREFIX}${tableNumber}`;
+  let best: Saved | null = memory.get(tableNumber) ?? null;
+  for (const store of stores()) {
+    try {
+      const raw = store.getItem(name);
+      if (raw == null) continue;
+      const saved = parseSaved(raw);
+      if (!saved) {
+        store.removeItem(name); // junk: as if never scanned
+        continue;
+      }
+      if (!best || saved.at > best.at) best = saved;
+    } catch {
+      /* try the next one */
+    }
   }
-  return memory.get(tableNumber) ?? null;
+  return best;
 }
 
 function write(tableNumber: number, saved: Saved): void {
   memory.set(tableNumber, saved);
-  try {
-    globalThis.localStorage?.setItem(
-      `${PREFIX}${tableNumber}`,
-      JSON.stringify(saved),
-    );
-  } catch {
-    /* memory copy above still covers this visit */
+  const name = `${PREFIX}${tableNumber}`;
+  const value = JSON.stringify(saved);
+  for (const store of stores()) {
+    try {
+      store.setItem(name, value);
+      return;
+    } catch {
+      /* full or refused: try the next one; memory above still holds it */
+    }
   }
 }
 
 /**
  * A code saved before scan times were kept is a bare string. It has no time,
  * so it counts as expired: it proves the table has a code, nothing more.
+ * Anything else unreadable is `null`, read as "never scanned", so a stray
+ * value cannot switch ordering off at a table that has no code.
  */
-function parseSaved(raw: string): Saved {
+function parseSaved(raw: string): Saved | null {
+  if (isTableKey(raw)) return { at: 0 };
   try {
     const value: unknown = JSON.parse(raw);
     if (value && typeof value === "object") {
@@ -194,22 +238,22 @@ function parseSaved(raw: string): Saved {
       }
     }
   } catch {
-    /* a bare legacy code, or junk */
+    /* junk */
   }
-  return { at: 0 };
+  return null;
 }
 
 /** Used by tests. */
 export function forgetTableKeys(): void {
   memory.clear();
-  try {
-    const store = globalThis.localStorage;
-    if (!store) return;
-    for (let i = store.length - 1; i >= 0; i -= 1) {
-      const k = store.key(i);
-      if (k?.startsWith(PREFIX)) store.removeItem(k);
+  for (const store of stores()) {
+    try {
+      for (let i = store.length - 1; i >= 0; i -= 1) {
+        const k = store.key(i);
+        if (k?.startsWith(PREFIX)) store.removeItem(k);
+      }
+    } catch {
+      /* nothing to forget */
     }
-  } catch {
-    /* nothing to forget */
   }
 }

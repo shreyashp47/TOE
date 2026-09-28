@@ -91,6 +91,55 @@ describe("table code expiry", () => {
     expect(readTableKey(6, T0 + MIN)).toBe(CODE);
     expect(readTableKey(6, T0 + TABLE_CODE_TTL_MS + MIN)).toBeNull();
   });
+
+  it("falls back to sessionStorage, which outlives the page load", () => {
+    const setItem = Storage.prototype.setItem;
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(function (
+      this: Storage,
+      name: string,
+      value: string,
+    ) {
+      if (this === localStorage) throw new Error("QuotaExceededError");
+      setItem.call(this, name, value);
+    });
+    rememberTableKey(6, CODE, T0);
+    expect(sessionStorage.getItem("toe.tableKey.t6")).toContain(CODE);
+    sessionStorage.clear();
+  });
+
+  it("does not let an old expired entry hide a newer scan kept elsewhere", () => {
+    localStorage.setItem("toe.tableKey.t7", JSON.stringify({ at: T0 }));
+    sessionStorage.setItem(
+      "toe.tableKey.t7",
+      JSON.stringify({ k: CODE, at: T0 + 4 * 60 * MIN }),
+    );
+    expect(readTableKey(7, T0 + 5 * 60 * MIN)).toBe(CODE);
+    sessionStorage.clear();
+  });
+
+  it("prefers a rescan saved by another tab over this tab's memory", () => {
+    rememberTableKey(8, CODE, T0); // this tab
+    localStorage.setItem(
+      "toe.tableKey.t8",
+      JSON.stringify({ k: "RenewedCode1", at: T0 + 2 * 60 * MIN }),
+    );
+    expect(readTableKey(8, T0 + 4 * 60 * MIN)).toBe("RenewedCode1");
+  });
+
+  it("does not let a scan time in the future stretch the 3 hours", () => {
+    rememberTableKey(9, CODE, T0 + 2 * MIN);
+    expect(readTableKey(9, T0)).toBe(CODE); // small skew is fine
+    rememberTableKey(9, CODE, T0 + 24 * 60 * MIN); // clock was a day fast
+    expect(readTableCode(9, T0)).toEqual({ state: "expired" });
+  });
+
+  it("reads junk as never scanned, and clears it", () => {
+    localStorage.setItem("toe.tableKey.t10", "{not json");
+    expect(readTableCode(10)).toEqual({ state: "none" });
+    expect(localStorage.getItem("toe.tableKey.t10")).toBeNull();
+    localStorage.setItem("toe.tableKey.t10", JSON.stringify({ k: CODE }));
+    expect(readTableCode(10)).toEqual({ state: "none" });
+  });
 });
 
 describe("useTableCode", () => {
@@ -117,6 +166,15 @@ describe("useTableCode", () => {
     act(() => {
       document.dispatchEvent(new Event("visibilitychange"));
     });
+    expect(result.current.state).toBe("expired");
+  });
+
+  it("expires even if the router keeps handing back the scanned k", () => {
+    vi.useFakeTimers({ now: T0 });
+    rememberTableKey(3, CODE);
+    const { result } = renderHook(() => useTableCode(3, CODE));
+    expect(result.current.state).toBe("valid");
+    act(() => vi.advanceTimersByTime(181 * MIN));
     expect(result.current.state).toBe("expired");
   });
 
