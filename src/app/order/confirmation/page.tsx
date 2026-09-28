@@ -455,9 +455,11 @@ function NumberLine({
       <span className="text-ink font-semibold">Order received</span> for table{" "}
       {tableNumber}.{" "}
       {waitedOut ? (
-        <span className="text-sm">The counter has it.</span>
+        <span className="mt-0.5 block text-sm">The counter has it.</span>
       ) : (
-        <span className="animate-pulse text-sm">Your number is coming…</span>
+        <span className="mt-0.5 block animate-pulse text-sm">
+          Your number is coming…
+        </span>
       )}
     </p>
   );
