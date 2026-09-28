@@ -89,10 +89,11 @@ describe("table codes", () => {
     expect(isTableKey(null)).toBe(false);
   });
 
-  it("uses the same length bounds as firestore.rules", () => {
+  it("uses the same length and alphabet as firestore.rules", () => {
     const r = rules();
-    expect(r).toContain("request.resource.data.key.size() >= 10");
-    expect(r).toContain("request.resource.data.key.size() <= 64");
+    expect(r).toContain(
+      'request.resource.data.key.matches("^[A-Za-z0-9]{10,64}$")',
+    );
     expect(r).toContain("request.resource.data.tableKey.size() <= 64");
   });
 
