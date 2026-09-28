@@ -29,8 +29,8 @@ with the old address keep working.
 
 | Screen             | URL                                     | Who                  |
 | ------------------ | --------------------------------------- | -------------------- |
-| Table picker       | `/`                                     | Customer             |
-| Customer menu      | `/order?table=N`                        | Customer             |
+| Scan prompt        | `/`                                     | Customer             |
+| Customer menu      | `/order?table=N&k=CODE`                 | Customer             |
 | Order confirmation | `/order/confirmation?table=N&id=…`      | Customer             |
 | Staff board        | `/staff`                                | Staff and owner      |
 | Owner dashboard    | `/admin`, `/admin/reports`, `/admin/qr` | Owner                |
@@ -53,7 +53,11 @@ except adding a new barista's account.
   board says so until you do). New orders arrive already marked
   _Preparing_; move each one along with its button: _Mark ready → Mark served →
   Complete_. A ticket whose total does not
-  match the menu is flagged in red — check it before taking payment.
+  match the menu is flagged in red — check it before taking payment. A prank or
+  duplicate order can be turned away with **Reject** (while _Preparing_ or
+  _Ready_): the ticket asks to confirm, offers a quick reason, then leaves the
+  board, and the customer's phone says the counter couldn't accept it.
+  Rejected orders are not counted in the reports.
 - **The owner** signs in on the same `/staff` page and goes straight to the owner
   dashboard. An **Orders | Owner** switch at the top moves between the dashboard
   and the order board; baristas never see it.
@@ -65,10 +69,13 @@ except adding a new barista's account.
 - **Today's special** — the line pinned to the top of the customer menu. Edit
   it, flip **Show to customers**, and Save.
 - **Tables and QR cards** — on _Table QR codes_ (`/admin/qr`), set the number of
-  tables (or type them out, e.g. `1-8, 12`) and save. Customers can only pick, or
-  scan into, a table on that list. Then _Print_ one card per table. The cards
-  only depend on the address printed on them, so they never need reprinting
-  after a menu or price change.
+  tables (or type them out, e.g. `1-8, 12`) and save. Customers can only scan
+  into a table on that list. Press **Create codes for all tables** once, then
+  _Print_ one card per table and **replace the old cards** — each card now
+  carries its table's secret code, and orders without it are turned away (see
+  [Orders from outside the cafe](#orders-from-outside-the-cafe)). A card never
+  needs reprinting after a menu or price change; only after **New code** for
+  that table.
 - **Reports** — _Reports_ (`/admin/reports`) shows revenue, order count, average
   order, revenue by day and best sellers for a month or a custom range, with a
   CSV export. Group the CSV by _Order ID_, not _Order #_: order numbers are
@@ -154,7 +161,7 @@ Everything below is a real screenshot of the demo build.
 
 | Route                              | Who      | What it does                                                      |
 | ---------------------------------- | -------- | ----------------------------------------------------------------- |
-| `/`                                | Customer | Table picker, for anyone who arrives without a QR code            |
+| `/`                                | Customer | "Scan the QR code on your table", for anyone without a QR code    |
 | `/order?table=N`                   | Customer | Menu with category rail, cart bottom sheet, place order           |
 | `/order/confirmation?table=N&id=…` | Customer | Order number and live `Received → Preparing → Ready → Served`     |
 | `/staff`                           | Staff    | Sign-in, then the live order board with sound + vibration alert   |
@@ -219,8 +226,7 @@ NEXT_PUBLIC_BASE_URL=https://yourcafe.web.app
 `NEXT_PUBLIC_TABLES` is only the starting point. The owner sets the real table
 list on `/admin/qr` (_Your tables_: a number of tables, or typed-out numbers such
 as `1-8, 12`), which saves it to Firestore at `config/tables`. From then on the
-customer's table picker, the check on a scanned table number, and the printed QR
-cards all follow the saved list, live, with no rebuild. Until the owner saves one,
+check on a scanned table number and the printed QR cards all follow the saved list, live, with no rebuild. Until the owner saves one,
 the app uses `NEXT_PUBLIC_TABLES` (or tables 1–6 if it is unset). Table numbers
 run from 1 to 50, the range the order rules accept.
 
@@ -401,7 +407,7 @@ To confirm the database side:
 
 ```bash
 npm run emulators    # terminal 1
-npm run test:rules   # terminal 2 — 81 checks, 0 failures
+npm run test:rules   # terminal 2 — 130 checks, 0 failures
 ```
 
 To check the routing and header rules from `firebase.json` before a deploy, with
@@ -507,7 +513,7 @@ produced the font.
 Worth reading before you rely on the money figures.
 
 `firestore.rules` is a real boundary, not a formality: `scripts/rules-test.mjs`
-runs 81 checks against the emulators covering the anonymous customer, a
+runs 130 checks against the emulators covering the anonymous customer, a
 signed-out caller, a signed-in barista and a signed-in owner. A barista cannot
 edit the menu, cannot read another barista's role record, cannot skip a status
 and cannot change a price after the order is placed.
@@ -560,6 +566,34 @@ board ever fills with junk; nothing in the throttle needs to change to add it.
 The number lives in two places — `firestore.rules` and `ORDER_GAP_SECONDS` in
 [`src/lib/order-throttle.ts`](./src/lib/order-throttle.ts) — and a unit test
 fails if they disagree.
+
+### Orders from outside the cafe
+
+Ordering is pay-at-the-counter, and the order page used to need nothing but a
+table number, so anyone who had seen the address could order for table 2 from
+home. Three things now stand in the way, all in `firestore.rules`, so they work
+on the free plan:
+
+- **A secret code per table.** _Create codes for all tables_ on `/admin/qr`
+  gives each table a random code in `tableKeys/{table}`, which only the owner
+  can read or write. The printed QR card carries it
+  (`/order?table=2&k=CODE`) and the phone remembers it for that table, so
+  _Order again_ and reloads keep working. An order for a table that has a code
+  must carry that code; a typed-in address or an old card gets _"This link has
+  expired — please scan the QR code on your table."_ If a card is photographed
+  or goes missing, press **New code** on that table's card and reprint it; the
+  old card stops working at once.
+- **Size caps:** at most 20 different items, 20 of each, and ₹10,000 per order.
+- **Reject** on the staff board, for whatever still gets through.
+
+**Until the owner presses _Create codes_, nothing changes**: a table with no
+code takes orders without one, so old cards keep working. After creating codes,
+put the new cards out straight away — the old ones stop working. A table added
+later gets a code automatically once codes are in use.
+
+What it does not stop: someone who photographs a card can order for that table
+from anywhere until its code is renewed. The code is also stored on each order,
+where staff can see it. See [docs/decisions.md](./docs/decisions.md#table-codes-in-the-qr-card-not-location-or-wifi).
 
 ---
 

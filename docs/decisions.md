@@ -439,3 +439,35 @@ on every visit to `/staff`.** An owner who is already signed in and opens
 `/staff` stays on the board. Redirecting every owner visit would make the order
 board unreachable for the owner, including from the switch's _Orders_ side,
 which links to `/staff`.
+
+### Table codes in the QR card, not location or wifi
+
+Anyone who had seen `/order?table=2` could order from anywhere. Orders are
+pay-at-the-counter, so the harm is pranks and wasted food, not lost money — but
+the owner saw it happen.
+
+Rejected alternatives: **geolocation** needs a permission prompt, is easily
+faked and fails indoors; **"on the cafe wifi"** cannot be checked from a static
+site with no server; **App Check** needs the Blaze plan and stops scripts, not a
+person typing a URL.
+
+**Decision: a random code per table in `tableKeys/{n}`, owner-only, printed
+into the QR card, and required by the order create rule when the table has
+one.** Plus order size caps in the rules, and a staff **Reject** (a terminal
+`rejected` status, left out of revenue) for whatever gets through.
+
+- **Transition:** a table with no code document accepts orders without a code,
+  so the deploy changes nothing until the owner presses _Create codes_ and puts
+  out the new cards. Codes are then added automatically for new tables, but
+  never switched on by a table-list save alone, since that would silently break
+  the cards already on the tables.
+- **Limits:** a photographed card works from anywhere until its code is renewed
+  (_New code_). The code is sent on the order, because the rules can only check
+  what is in the request, and it stays on the order document, readable by
+  staff; that is accepted, since staff stand next to the cards anyway. The
+  phone cannot know which tables have codes, so a refused order is reported as
+  an expired link once the throttle and size caps are ruled out. One extra
+  document read per order.
+- **Caps** (20 lines, 20 of each, ₹10,000) check the first and last line only:
+  the rules cannot loop. The total cap, the board's re-derived totals and
+  Reject cover a doctored middle line.

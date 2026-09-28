@@ -11,6 +11,15 @@ Work that is built but not yet merged is tracked in
 
 ### Added
 
+- A secret code per table, carried in its QR card (`/order?table=N&k=CODE`)
+  and checked by the order rules, so an order can no longer be placed from
+  anywhere by typing the address. The owner turns it on with **Create codes for
+  all tables** on _/admin/qr_ and reprints the cards; **New code** renews one
+  table's card. Tables without a code keep taking orders as before
+- **Reject** on the staff board for a _Preparing_ or _Ready_ order, confirmed
+  on the ticket with an optional quick reason. The customer's phone says the
+  counter couldn't accept it, and rejected orders are left out of report
+  revenue (they stay in the CSV, with the reason)
 - The owner sets the cafe's tables on _/admin/qr_: a number of tables with −/+,
   or typed-out numbers with ranges (`1-8, 12, 14`). The list is saved to
   `config/tables`, and the customer's table picker, the check on a scanned table
@@ -28,6 +37,11 @@ Work that is built but not yet merged is tracked in
 
 ### Changed
 
+- `/order` without a usable table asks the customer to scan the QR code on
+  their table instead of offering a grid of table numbers, which could not
+  carry a table's code
+- Orders are capped at 20 different items, 20 of each and ₹10,000 (was
+  ₹1,00,000), in the rules and with a plain message at checkout
 - The app now lives at <https://toe-cafe.web.app>, a second Hosting site in the
   same `toi-cafe` project, since a project id cannot be renamed. The old
   address redirects every path there, query string included, so old links and
