@@ -1112,11 +1112,12 @@ console.log("\n daily order numbers (dayCounters)");
 const DAY_MS = 86_400_000;
 const IST_MS = 330 * 60_000;
 const istKey = (ms) => new Date(ms + IST_MS).toISOString().slice(0, 10);
-// A fresh IST day per call: counts back from 1999 by the run's clock, so two
+// A fresh IST day per call, three days apart (so a test that also uses "the
+// next day" never lands on another test's day): counts back from 1999 by the run's clock, so two
 // runs (and two calls in one run) never share a day or its counter.
 let dayCursor = Math.floor(Date.now() / 1000) % 20_000;
 const freshDay = () => {
-  dayCursor += 1;
+  dayCursor += 3;
   // 06:00 UTC = 11:30 IST, safely inside the day.
   return Date.UTC(1999, 0, 1) - dayCursor * DAY_MS + 6 * 3_600_000;
 };
@@ -1168,13 +1169,13 @@ const seedCounter = async (key, next) => {
 const counterDoc = (c, key) => doc(c.db, "dayCounters", key);
 // What the board does, as a plain batch: the rules see a batch and a
 // transaction's commit the same way. `next` overrides the counter value,
-// `counter: false` leaves the counter alone.
+// `last` the order the counter names, `counter: false` leaves it alone.
 const numberOrder = (
   c,
   id,
   key,
   n,
-  { next = n + 1, counter = true, extra } = {},
+  { next = n + 1, last = id, counter = true, extra } = {},
 ) => {
   const batch = writeBatch(c.db);
   batch.update(doc(c.db, "orders", id), {
@@ -1182,7 +1183,16 @@ const numberOrder = (
     dayKey: key,
     ...extra,
   });
-  if (counter) batch.set(counterDoc(c, key), { next });
+  if (counter) batch.set(counterDoc(c, key), { next, last });
+  return batch.commit();
+};
+// The attack the counter's `last` exists for: one commit numbering two orders
+// with the same number against a single bump.
+const numberTwo = (c, ids, key, n, last = ids[0]) => {
+  const batch = writeBatch(c.db);
+  for (const id of ids)
+    batch.update(doc(c.db, "orders", id), { dayNumber: n, dayKey: key });
+  batch.set(counterDoc(c, key), { next: n + 1, last });
   return batch.commit();
 };
 // The board's transaction (src/lib/day-number.ts + firestore.ts), in plain JS,
@@ -1210,7 +1220,7 @@ const assignTxOnce = (c, id) =>
     const counter = await tx.get(cRef);
     const n = counter.exists() ? counter.data().next : 1;
     tx.update(orderRef, { dayNumber: n, dayKey: key });
-    tx.set(cRef, { next: n + 1 });
+    tx.set(cRef, { next: n + 1, last: id });
     return n;
   });
 
@@ -1220,6 +1230,8 @@ const assignTxOnce = (c, id) =>
   const a = await seedOrderAt(day);
   const b = await seedOrderAt(day + 60_000);
   const c = await seedOrderAt(day + 120_000);
+  const d = await seedOrderAt(day + 180_000);
+  const e = await seedOrderAt(day + 240_000);
 
   await t(
     "a customer cannot read a day's counter",
@@ -1231,7 +1243,9 @@ const assignTxOnce = (c, id) =>
   );
   await t(
     "a customer cannot create a counter",
-    denied(() => setDoc(counterDoc(publicC, istKey(freshDay())), { next: 2 })),
+    denied(() =>
+      setDoc(counterDoc(publicC, istKey(freshDay())), { next: 2, last: a }),
+    ),
   );
   await t(
     "a signed-out caller cannot read a counter",
@@ -1239,7 +1253,9 @@ const assignTxOnce = (c, id) =>
   );
   await t(
     "a signed-out caller cannot write a counter",
-    denied(() => setDoc(counterDoc(nobodyC, istKey(freshDay())), { next: 2 })),
+    denied(() =>
+      setDoc(counterDoc(nobodyC, istKey(freshDay())), { next: 2, last: a }),
+    ),
   );
   await t(
     "a customer cannot number their own order",
@@ -1356,20 +1372,66 @@ const assignTxOnce = (c, id) =>
     ),
   );
   await t(
-    "the counter can step up by one on its own (a gap, harmless)",
-    allowed(() => setDoc(counterDoc(staffC, key), { next: 5 })),
+    "the counter cannot be bumped on its own, naming an order already numbered",
+    denied(() => setDoc(counterDoc(staffC, key), { next: 5, last: c })),
   );
   await t(
-    "but cannot jump ahead",
-    denied(() => setDoc(counterDoc(staffC, key), { next: 7 })),
+    "nor naming an order it does not number in the same commit",
+    denied(() => setDoc(counterDoc(staffC, key), { next: 5, last: d })),
   );
   await t(
-    "or go back, which would hand numbers out twice",
-    denied(() => setDoc(counterDoc(staffC, key), { next: 2 })),
+    "nor naming an order that does not exist",
+    denied(() => setDoc(counterDoc(staffC, key), { next: 5, last: "nope" })),
+  );
+  await t(
+    "nor without saying which order it is for",
+    denied(() => numberOrder(staffC, d, key, 4, { last: null })),
+  );
+  await t(
+    "the counter cannot name a different order than the one numbered",
+    denied(() => numberOrder(staffC, d, key, 4, { last: e })),
+  );
+  await t(
+    "cannot jump the counter ahead alongside a numbering",
+    denied(() => numberOrder(staffC, d, key, 4, { next: 7 })),
   );
   await t(
     "or carry another field",
-    denied(() => setDoc(counterDoc(staffC, key), { next: 6, note: "x" })),
+    denied(async () => {
+      const batch = writeBatch(staffC.db);
+      batch.update(doc(staffC.db, "orders", d), { dayNumber: 4, dayKey: key });
+      batch.set(counterDoc(staffC, key), { next: 5, last: d, note: "x" });
+      await batch.commit();
+    }),
+  );
+  await t(
+    "one commit cannot give two orders the same number (#4 twice)",
+    denied(() => numberTwo(staffC, [d, e], key, 4)),
+  );
+  await t(
+    "whichever of the two the counter names",
+    denied(() => numberTwo(staffC, [d, e], key, 4, e)),
+  );
+  await t(
+    "and neither order was numbered by the refused commit",
+    allowed(async () => {
+      for (const id of [d, e]) {
+        const snap = await getDoc(doc(staffC.db, "orders", id));
+        if (snap.data()?.dayNumber !== undefined)
+          throw new Error(`${id} got a number`);
+      }
+    }),
+  );
+  await t(
+    "while numbering them one commit at a time works (#4, then #5)",
+    allowed(async () => {
+      await numberOrder(staffC, d, key, 4);
+      await numberOrder(staffC, e, key, 5);
+    }),
+  );
+  await t(
+    "the counter cannot go back, which would hand numbers out twice",
+    denied(() => setDoc(counterDoc(staffC, key), { next: 2, last: a })),
   );
   await t(
     "or be deleted, even by the owner",
@@ -1377,14 +1439,51 @@ const assignTxOnce = (c, id) =>
   );
   await t(
     "a counter cannot be filed under something that is not a day",
-    denied(() => setDoc(doc(staffC.db, "dayCounters", "today"), { next: 2 })),
+    denied(() =>
+      setDoc(doc(staffC.db, "dayCounters", "today"), { next: 2, last: a }),
+    ),
+  );
+}
+
+{
+  // The same attack on a day with no counter yet: two #1s, creating it.
+  const day = freshDay();
+  const key = istKey(day);
+  const x = await seedOrderAt(day);
+  const y = await seedOrderAt(day + 1000);
+  await t(
+    "one commit cannot give two orders #1 while creating the day's counter",
+    denied(() => numberTwo(staffC, [x, y], key, 1)),
+  );
+  await t(
+    "nor inside a transaction",
+    denied(() =>
+      runTransaction(staffC.db, async (tx) => {
+        await tx.get(counterDoc(staffC, key));
+        for (const id of [x, y])
+          tx.update(doc(staffC.db, "orders", id), {
+            dayNumber: 1,
+            dayKey: key,
+          });
+        tx.set(counterDoc(staffC, key), { next: 2, last: x });
+      }),
+    ),
+  );
+  await t(
+    "the legitimate #1 and #2 still go through",
+    allowed(async () => {
+      await numberOrder(staffC, x, key, 1);
+      await numberOrder(ownerC, y, key, 2);
+    }),
   );
 }
 
 {
   // The IST boundary: 18:29:59 UTC is still that day in India; 18:30 is the next.
+  // Skips ahead by 3 days, and then freshDay() moves on past both: the "next
+  // day" here must not be a day another test already numbered in.
   const midnight =
-    Date.UTC(1999, 0, 1) - (dayCursor += 1) * DAY_MS + 18.5 * 3_600_000;
+    Date.UTC(1999, 0, 1) - (dayCursor += 3) * DAY_MS + 18.5 * 3_600_000;
   const late = await seedOrderAt(midnight - 1000);
   const early = await seedOrderAt(midnight);
   const before = istKey(midnight - 1000);

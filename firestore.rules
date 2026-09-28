@@ -219,7 +219,7 @@ service cloud.firestore {
               .hasOnly(["dayNumber", "dayKey"])
             && !("dayNumber" in resource.data)
             && !("dayKey" in resource.data)
-            && dayNumberOk())
+            && dayNumberOk(orderId))
           || (request.resource.data.diff(resource.data).affectedKeys()
               .hasOnly(["status", "completedAt"])
             && (
@@ -252,13 +252,17 @@ service cloud.firestore {
     //
     // What makes the numbers unique rather than merely likely-unique: the
     // number must equal the counter's `next` as it stood before this commit,
-    // and the counter must be `next + 1` after it. Two boards that both read
+    // the counter must be `next + 1` after it, and the counter must name this
+    // order as the one it was bumped for (`last`). Two boards that both read
     // next == 7 cannot both commit — Firestore's transaction sees the counter
-    // change and retries the loser, who then finds the order already numbered.
-    // A day with no counter yet starts at 1. An order can only be numbered
-    // once, and the counter can only ever step up by one, so no number is ever
-    // handed out twice. A number can be skipped (a rejected order keeps its
-    // number; a staff account could bump the counter by hand): gaps are fine.
+    // change and retries (or refuses) the loser, who then finds the order
+    // already numbered. And one commit cannot number two orders against a
+    // single bump: the counter can name only one of them, so the other is
+    // refused. A day with no counter yet starts at 1. An order can only be
+    // numbered once, and every counter write must be the numbering of exactly
+    // the order it names (dayCounters below), so no number is ever handed out
+    // twice and the counter never moves on its own. A rejected order keeps its
+    // number, so a day's list can still have gaps; those are fine.
     //
     // The day is checked too. dayKey must be the IST date of the order's own
     // createdAt, so a board with a wrong clock cannot file today's order under
@@ -273,7 +277,7 @@ service cloud.firestore {
         + "-" + (d.day() < 10 ? "0" : "") + string(d.day());
     }
 
-    function dayNumberOk() {
+    function dayNumberOk(orderId) {
       let n = request.resource.data.dayNumber;
       let key = request.resource.data.dayKey;
       let counter = /databases/$(database)/documents/dayCounters/$(key);
@@ -284,25 +288,46 @@ service cloud.firestore {
         && key.matches("^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
         && key == dayKeyOf(resource.data.createdAt)
         && (exists(counter) ? get(counter).data.next == n : n == 1)
-        && getAfter(counter).data.next == n + 1;
+        && getAfter(counter).data.next == n + 1
+        && getAfter(counter).data.last == orderId;
     }
 
-    // { next: n } — the number the next order of that day will get. Staff and
-    // owner read and write it; customers and signed-out callers get nothing.
-    // It only ever starts at 2 (the day's first order took 1) and steps up by
-    // exactly one, and it cannot be deleted, because a reset would hand the
-    // day's numbers out a second time.
+    // { next: n, last: orderId } — the number the next order of that day will
+    // get, and the order the last bump was for. Staff and owner read and write
+    // it; customers and signed-out callers get nothing. It only ever starts at
+    // 2 (the day's first order took 1) and steps up by exactly one, and it
+    // cannot be deleted, because a reset would hand the day's numbers out a
+    // second time.
+    //
+    // Every write must BE a numbering: the order it names must have had no
+    // number before this commit and have `next - 1` for this day after it. So
+    // the counter cannot be bumped on its own (no by-hand gaps), and the order
+    // rule's `last == orderId` check pins each bump to exactly one order.
+    //
+    // What staff can still do: number every open order in a loop and so use
+    // the day's numbers up faster than orders arrive. Staff are trusted with
+    // the board anyway; see SECURITY.md.
+    function counterWriteOk(day) {
+      let d = request.resource.data;
+      let order = /databases/$(database)/documents/orders/$(d.last);
+      return d.keys().hasOnly(["next", "last"])
+        && d.next is int
+        && d.last is string
+        && !("dayNumber" in get(order).data)
+        && getAfter(order).data.get("dayNumber", 0) == d.next - 1
+        && getAfter(order).data.get("dayKey", "") == day;
+    }
+
     match /dayCounters/{day} {
       allow read: if isStaff();
       allow create: if isStaff()
         && day.matches("^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
-        && request.resource.data.keys().hasOnly(["next"])
-        && request.resource.data.next == 2;
+        && request.resource.data.next == 2
+        && counterWriteOk(day);
       allow update: if isStaff()
-        && request.resource.data.keys().hasOnly(["next"])
-        && request.resource.data.next is int
         && request.resource.data.next == resource.data.next + 1
-        && request.resource.data.next <= 10000;
+        && request.resource.data.next <= 10000
+        && counterWriteOk(day);
     }
 
     // -- orderThrottle: one order per customer per 30 seconds ---------------

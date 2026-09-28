@@ -9,7 +9,7 @@
  *   /config/tables    { tables: number[] }, the owner's table list
  *   /tableKeys/{n}    { key }, table n's QR code; owner-only (table-keys.ts)
  *
- *   /dayCounters/{YYYY-MM-DD}  { next }, today's order numbers; staff-only
+ *   /dayCounters/{YYYY-MM-DD}  { next, last }: today's order numbers; staff-only
  *
  * There is no /meta/counters any more (issue #30). Orders get their daily
  * number (#0001…) from the staff board, in a transaction on /dayCounters
@@ -420,8 +420,12 @@ export const firestoreOrderRepo: OrderRepository = {
             write({ dayKey, dayNumber }) {
               tx.update(orderRef, { dayNumber, dayKey });
               // A whole-document set covers both "first order of the day" and
-              // every one after it; the rules allow `next` and nothing else.
-              tx.set(fs.doc(db, DAY_COUNTERS, dayKey), { next: dayNumber + 1 });
+              // every one after it. `last` names the order this bump is for:
+              // the rules refuse a bump that numbers no order, or two.
+              tx.set(fs.doc(db, DAY_COUNTERS, dayKey), {
+                next: dayNumber + 1,
+                last: id,
+              });
             },
           },
           id,

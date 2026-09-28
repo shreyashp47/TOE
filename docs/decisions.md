@@ -267,10 +267,19 @@ back, with the writer changed.
 **Decision: the staff board numbers each order, #0001 upwards per IST day, in a
 transaction on a staff-only counter.**
 
-- `dayCounters/{YYYY-MM-DD}` holds `{ next }`. Only a staff or owner account
-  can read or write it; customers and signed-out callers are refused. It can
-  only be created at 2 (the day's first order took 1), only step up by one, and
-  never be deleted, so the day's numbers can never be handed out twice.
+- `dayCounters/{YYYY-MM-DD}` holds `{ next, last }`. Only a staff or owner
+  account can read or write it; customers and signed-out callers are refused.
+  It can only be created at 2 (the day's first order took 1), only step up by
+  one, and never be deleted, so the day's numbers can never be handed out
+  twice.
+- `last` is the id of the order the bump is for. The first version checked
+  each numbered order against the counter on its own, so one commit could
+  number **two** orders #5 against a single bump (an independent tester found
+  it). Now the order rule requires the counter to name that order, and the
+  counter rule requires the named order to be unnumbered before the commit and
+  numbered `next - 1` for this day after it. One bump, one order. That also
+  means the counter can no longer be bumped by hand to leave a gap: every
+  counter write is a numbering.
 - The board (`src/lib/day-number.ts`) sees an order with no `dayNumber` and, in
   one transaction, re-reads the order, reads the counter, writes `dayNumber` and
   `dayKey` on the order and `next + 1` on the counter. The rules accept the
@@ -289,9 +298,10 @@ transaction on a staff-only counter.**
   board) after repeated permission refusals rather than looping on them.
 
 **Why this is safe where `/meta/counters` was not:** nobody on the internet can
-touch this counter. The worst a staff account can do is waste numbers (bump the
-counter by one, leaving a gap), which it could achieve anyway by rejecting
-orders.
+touch this counter. The worst a staff account can do is use numbers up
+faster than orders arrive (numbering hand-made or rejected orders in a loop),
+which can exhaust a day's 9,999 — the cafe keeps working on the older number
+until the next day. Staff are trusted with the board; see SECURITY.md.
 
 **What it costs:**
 

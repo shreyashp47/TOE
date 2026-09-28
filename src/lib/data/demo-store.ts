@@ -46,7 +46,13 @@ interface DemoState {
   tables: number[] | null;
   /** The owner's per-table QR codes (tableKeys/{n} in Firestore). */
   tableKeys: Record<number, string>;
-  /** dayCounters/{YYYY-MM-DD}.next in Firestore: each day's next number. */
+  /**
+   * dayCounters/{YYYY-MM-DD}.next in Firestore: each day's next number. The
+   * Firestore counter also records `last`, the order each bump was for, so the
+   * rules can refuse one commit numbering two orders. The demo cannot be sent
+   * such a commit — demoAssignDayNumber numbers exactly one order per write —
+   * so it keeps just the number.
+   */
   dayCounters: Record<string, number>;
 }
 
