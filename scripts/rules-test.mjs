@@ -273,6 +273,35 @@ const seedStamp = async (uid, secondsAgo) => {
   if (!r.ok) throw new Error(`could not seed a stamp: ${r.status}`);
 };
 
+// Table codes (tableKeys/{n}) are seeded and cleared over REST with the admin
+// token, like the owner role above, so each run starts from the same place: the
+// emulators keep data between runs, and a code left on table 3 by a previous
+// run would make every ordinary order test below fail for the wrong reason.
+const KEYED_TABLE = 41;
+const TABLE_CODE = "Zq7RtW2mPx9L";
+const adminDoc = (path, init = {}) =>
+  fetch(
+    `http://${HOST}:${FS_PORT}/v1/projects/${PROJECT}/databases/(default)/documents/${path}`,
+    { ...init, headers: { Authorization: "Bearer owner", ...init.headers } },
+  );
+await adminDoc("tableKeys/3", { method: "DELETE" });
+await adminDoc("tableKeys/42", { method: "DELETE" });
+{
+  const r = await adminDoc(`tableKeys/${KEYED_TABLE}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ fields: { key: { stringValue: TABLE_CODE } } }),
+  });
+  if (!r.ok) throw new Error(`could not seed a table code: ${r.status}`);
+}
+// An order for the coded table. `tableKey: undefined` means "leave it off",
+// which is what a phone that arrived without a code sends.
+const keyed = (o = {}) => {
+  const out = { tableNumber: KEYED_TABLE, tableKey: TABLE_CODE, ...o };
+  if (out.tableKey === undefined) delete out.tableKey;
+  return out;
+};
+
 console.log(`\nfirestore.rules vs the emulators (${PROJECT})\n`);
 console.log(" anonymous customer (an anonymous uid, not an account)");
 await t(
@@ -402,6 +431,116 @@ await t(
 await t(
   "cannot write any other /meta document",
   denied(() => setDoc(doc(publicC.db, "meta", "anything"), { a: 1 })),
+);
+
+// The per-table secret code in the QR card (src/lib/table-keys.ts).
+console.log("\n table codes, from the customer's side");
+await t(
+  "a table with a code takes an order carrying that code",
+  allowed(() => placeAs(publicC, keyed())),
+);
+await t(
+  "a table with a code refuses an order with no code (a typed-in address)",
+  denied(() => placeAs(publicC, keyed({ tableKey: undefined }))),
+);
+await t(
+  "a table with a code refuses the wrong code (an old card)",
+  denied(() => placeAs(publicC, keyed({ tableKey: "OldCardCode1" }))),
+);
+await t(
+  "a table with a code refuses an empty code",
+  denied(() => placeAs(publicC, keyed({ tableKey: "" }))),
+);
+await t(
+  "a table with no code yet still takes a keyless order (the transition)",
+  allowed(() => placeAs(publicC, { tableNumber: 3 })),
+);
+await t(
+  "a table with no code ignores a leftover code from an old scan",
+  allowed(() => placeAs(publicC, { tableNumber: 3, tableKey: "Leftover1234" })),
+);
+await t(
+  "the code must be a string",
+  denied(() => placeAs(publicC, { tableNumber: 3, tableKey: 12345678901 })),
+);
+await t(
+  "the code cannot be longer than 64 characters",
+  denied(() => placeAs(publicC, { tableNumber: 3, tableKey: "a".repeat(65) })),
+);
+await t(
+  "a customer cannot read a table's code",
+  denied(() => getDoc(doc(publicC.db, "tableKeys", String(KEYED_TABLE)))),
+);
+await t(
+  "a customer cannot list the codes",
+  denied(() => getDocs(collection(publicC.db, "tableKeys"))),
+);
+await t(
+  "a customer cannot overwrite a table's code",
+  denied(() =>
+    setDoc(doc(publicC.db, "tableKeys", String(KEYED_TABLE)), {
+      key: "MyOwnCode123",
+    }),
+  ),
+);
+await t(
+  "a customer cannot give a table with no code a code of their choosing",
+  denied(() =>
+    setDoc(doc(publicC.db, "tableKeys", "3"), { key: "Chosen12345" }),
+  ),
+);
+await t(
+  "a customer cannot delete a table's code to reopen it",
+  denied(() => deleteDoc(doc(publicC.db, "tableKeys", String(KEYED_TABLE)))),
+);
+
+console.log("\n order size caps");
+const lines = (n, o = {}) => Array.from({ length: n }, () => line(o));
+await t(
+  "20 lines is allowed",
+  allowed(() =>
+    placeAs(publicC, { items: lines(20, { qty: 1 }), total: 2400 }),
+  ),
+);
+await t(
+  "21 lines is refused",
+  denied(() => placeAs(publicC, { items: lines(21, { qty: 1 }), total: 2520 })),
+);
+await t(
+  "20 of one item is allowed",
+  allowed(() => placeAs(publicC, { items: [line({ qty: 20 })], total: 2400 })),
+);
+await t(
+  "21 of one item is refused",
+  denied(() => placeAs(publicC, { items: [line({ qty: 21 })], total: 2520 })),
+);
+await t(
+  "21 of the last item is refused too",
+  denied(() =>
+    placeAs(publicC, {
+      items: [line({ qty: 1 }), line({ qty: 21 })],
+      total: 2640,
+    }),
+  ),
+);
+await t(
+  "0 of the last item is refused",
+  denied(() =>
+    placeAs(publicC, {
+      items: [line({ qty: 1 }), line({ qty: 0 })],
+      total: 120,
+    }),
+  ),
+);
+await t(
+  "a ₹10,000 order is allowed",
+  allowed(() =>
+    placeAs(publicC, { items: [line({ qty: 10, price: 1000 })], total: 10000 }),
+  ),
+);
+await t(
+  "a ₹10,001 order is refused",
+  denied(() => placeAs(publicC, { total: 10001 })),
 );
 
 console.log("\n signed-out caller (no auth at all)");
@@ -628,6 +767,118 @@ await t(
     await step("served");
   }),
 );
+// Rejecting (issue: prank orders). preparing/ready -> rejected, with an
+// optional short reason; nothing leaves rejected.
+const reject =
+  (c, from, patch = {}) =>
+  async () => {
+    const ref = await placeAs(publicC);
+    const path = doc(staffC.db, "orders", ref.id);
+    for (const s of from) await setDoc(path, { status: s }, { merge: true });
+    await setDoc(
+      doc(c.db, "orders", ref.id),
+      { status: "rejected", ...patch },
+      { merge: true },
+    );
+    return ref;
+  };
+await t("can reject a preparing order", allowed(reject(staffC, [])));
+await t(
+  "can reject a ready order, with a reason",
+  allowed(reject(staffC, ["ready"], { rejectReason: "No one at this table" })),
+);
+await t(
+  "can reject with an 80-character reason",
+  allowed(reject(staffC, [], { rejectReason: "x".repeat(80) })),
+);
+await t(
+  "cannot reject with an 81-character reason",
+  denied(reject(staffC, [], { rejectReason: "x".repeat(81) })),
+);
+await t(
+  "cannot reject with a reason that is not text",
+  denied(reject(staffC, [], { rejectReason: 42 })),
+);
+await t(
+  "cannot reject an order that has been served",
+  denied(reject(staffC, ["ready", "served"])),
+);
+await t(
+  "cannot reject a completed order",
+  denied(reject(staffC, ["ready", "served", "completed"])),
+);
+await t(
+  "cannot slip another field in with a reject",
+  denied(reject(staffC, [], { total: 1 })),
+);
+await t(
+  "cannot stamp completedAt on a reject",
+  denied(reject(staffC, [], { completedAt: serverTimestamp() })),
+);
+await t(
+  "cannot add a reject reason to an ordinary status change",
+  denied(() => drive(staffC)({ status: "ready", rejectReason: "x" })),
+);
+await t(
+  "rejected is terminal: cannot move it back to preparing",
+  denied(async () => {
+    const ref = await reject(staffC, [])();
+    await setDoc(
+      doc(staffC.db, "orders", ref.id),
+      { status: "preparing" },
+      { merge: true },
+    );
+  }),
+);
+await t(
+  "rejected is terminal: cannot complete it",
+  denied(async () => {
+    const ref = await reject(staffC, [])();
+    await setDoc(
+      doc(staffC.db, "orders", ref.id),
+      { status: "completed", completedAt: serverTimestamp() },
+      { merge: true },
+    );
+  }),
+);
+await t(
+  "a customer cannot reject their own order",
+  denied(async () => {
+    const ref = await placeAs(publicC);
+    await setDoc(
+      doc(publicC.db, "orders", ref.id),
+      { status: "rejected" },
+      { merge: true },
+    );
+  }),
+);
+await t(
+  "a customer cannot un-reject their own order",
+  denied(async () => {
+    const ref = await reject(staffC, [])();
+    await setDoc(
+      doc(publicC.db, "orders", ref.id),
+      { status: "preparing" },
+      { merge: true },
+    );
+  }),
+);
+await t(
+  "a barista cannot read a table's code",
+  denied(() => getDoc(doc(staffC.db, "tableKeys", String(KEYED_TABLE)))),
+);
+await t(
+  "a barista cannot list the codes",
+  denied(() => getDocs(collection(staffC.db, "tableKeys"))),
+);
+await t(
+  "a barista cannot change a table's code",
+  denied(() =>
+    setDoc(doc(staffC.db, "tableKeys", String(KEYED_TABLE)), {
+      key: "BaristaCode12",
+    }),
+  ),
+);
 await t(
   "cannot write meta/counters either",
   denied(() => setDoc(doc(staffC.db, "meta", "counters"), { orderNumber: 1 })),
@@ -779,6 +1030,66 @@ await t(
   denied(() =>
     setDoc(doc(staffC.db, "config", "special"), { enabled: true, text: "x" }),
   ),
+);
+
+console.log("\n tableKeys (the owner's QR codes)");
+const keyDoc = (c, n) => doc(c.db, "tableKeys", String(n));
+await t(
+  "the owner can read a table's code",
+  allowed(async () => {
+    const snap = await getDoc(keyDoc(ownerC, KEYED_TABLE));
+    if (snap.data()?.key !== TABLE_CODE)
+      throw new Error("wrong code read back");
+  }),
+);
+await t(
+  "the owner can list every code",
+  allowed(() => getDocs(collection(ownerC.db, "tableKeys"))),
+);
+await t(
+  "the owner can create a code",
+  allowed(() => setDoc(keyDoc(ownerC, 42), { key: "FreshCode4242" })),
+);
+await t(
+  "the owner can renew a code",
+  allowed(() => setDoc(keyDoc(ownerC, 42), { key: "RenewedCode42" })),
+);
+await t(
+  "and the renewed code is the one orders need",
+  allowed(async () => {
+    await placeAs(publicC, { tableNumber: 42, tableKey: "RenewedCode42" });
+  }),
+);
+await t(
+  "while the old code is refused",
+  denied(() =>
+    placeAs(publicC, { tableNumber: 42, tableKey: "FreshCode4242" }),
+  ),
+);
+await t(
+  "the owner cannot save a code shorter than 10 characters",
+  denied(() => setDoc(keyDoc(ownerC, 42), { key: "short" })),
+);
+await t(
+  "the owner cannot save a code that is not text",
+  denied(() => setDoc(keyDoc(ownerC, 42), { key: 1234567890123 })),
+);
+await t(
+  "the owner cannot add other fields",
+  denied(() => setDoc(keyDoc(ownerC, 42), { key: "FreshCode4242", n: 1 })),
+);
+await t(
+  "the owner cannot file a code under something that is not a table",
+  denied(() =>
+    setDoc(doc(ownerC.db, "tableKeys", "abc"), { key: "Code123456" }),
+  ),
+);
+await t(
+  "the owner can delete a code, reopening the table",
+  allowed(async () => {
+    await deleteDoc(keyDoc(ownerC, 42));
+    await placeAs(publicC, { tableNumber: 42 });
+  }),
 );
 
 console.log(`\n${pass} passed, ${failures.length} failed`);

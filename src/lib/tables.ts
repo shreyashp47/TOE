@@ -27,8 +27,14 @@ export function readTableFromSearch(search: string): number | null {
   return parseTableNumber(params.get("table"));
 }
 
-export function orderHref(tableNumber: number): string {
-  return `/order?table=${tableNumber}`;
+/**
+ * The order page for a table. With a table code (src/lib/table-keys.ts) it is
+ * the link a QR card carries; without one it only works for a table that has
+ * no code yet, or on a phone that already remembers the code from a scan.
+ */
+export function orderHref(tableNumber: number, key?: string | null): string {
+  const base = `/order?table=${tableNumber}`;
+  return key ? `${base}&k=${encodeURIComponent(key)}` : base;
 }
 
 const isTable = (n: unknown): n is number =>

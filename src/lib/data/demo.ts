@@ -136,6 +136,10 @@ export const demoOrderRepo: OrderRepository = {
     store.demoSetStatus(id, status);
   },
 
+  async reject(id, reason) {
+    store.demoRejectOrder(id, reason);
+  },
+
   async listRange(fromMs, toMs) {
     return store.selectOrdersInRange(store.loadDemoState(), fromMs, toMs);
   },
@@ -198,5 +202,22 @@ export const demoConfigRepo: ConfigRepository = {
   },
   async saveTables(tables) {
     store.demoSaveTables(checkTablesForSave(tables));
+  },
+  // Owner-only, as the rules make it: a barista's board has no business
+  // holding the codes that let an order in.
+  subscribeTableKeys(listener, onError) {
+    if (readSession()?.role !== "owner") {
+      onError?.(new store.DemoRulesRefusal("table codes are owner-only"));
+      return () => {};
+    }
+    return store.subscribeState((state) =>
+      listener(store.selectTableKeys(state)),
+    );
+  },
+  async saveTableKeys(keys) {
+    if (readSession()?.role !== "owner") {
+      throw new store.DemoRulesRefusal("table codes are owner-only");
+    }
+    store.demoSaveTableKeys(keys);
   },
 };

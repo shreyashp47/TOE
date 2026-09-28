@@ -15,6 +15,7 @@
  */
 
 import { useQueryParams } from "./useQueryParams";
+import { isTableKey } from "@/lib/table-keys";
 import { parseTableNumber } from "@/lib/tables";
 
 export interface TableQuery {
@@ -24,6 +25,8 @@ export interface TableQuery {
   raw: string | null;
   orderId: string | null;
   hasOrderId: boolean;
+  /** The table's QR code from `?k=`, when it has a plausible shape. */
+  tableKey: string | null;
 }
 
 export function useTableQuery(): TableQuery {
@@ -36,6 +39,7 @@ export function useTableQuery(): TableQuery {
       raw: null,
       orderId: null,
       hasOrderId: false,
+      tableKey: null,
     };
   }
 
@@ -46,5 +50,6 @@ export function useTableQuery(): TableQuery {
     raw,
     orderId: params.id?.trim() || null,
     hasOrderId: "id" in params,
+    tableKey: isTableKey(params.k) ? params.k : null,
   };
 }

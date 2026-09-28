@@ -10,8 +10,15 @@
  * two-tab sync can't interleave a half-written state.
  */
 
-import { DEFAULT_STATUS } from "../order-status";
+import {
+  DEFAULT_STATUS,
+  MAX_REJECT_REASON,
+  canReject,
+  isActiveStatus,
+} from "../order-status";
 import { orderTotal } from "../money";
+import { orderCapProblems } from "../order-caps";
+import { isTableKey, type TableKeys } from "../table-keys";
 import { displayNumberFromId } from "../order-number";
 import {
   parseMenuList,
@@ -36,6 +43,8 @@ interface DemoState {
   offer: SpecialOffer;
   /** null until the owner saves a list: the env default applies meanwhile. */
   tables: number[] | null;
+  /** The owner's per-table QR codes (tableKeys/{n} in Firestore). */
+  tableKeys: Record<number, string>;
 }
 
 function emptyState(): DemoState {
@@ -44,6 +53,7 @@ function emptyState(): DemoState {
     orders: [],
     offer: { enabled: false, text: "" },
     tables: null,
+    tableKeys: {},
   };
 }
 
@@ -53,6 +63,7 @@ function seedState(): DemoState {
     orders: [],
     offer: { ...SEED_OFFER },
     tables: null,
+    tableKeys: {},
   };
 }
 
@@ -108,6 +119,9 @@ function load(): DemoState {
       // Saved states from before editable tables have no such field, which
       // reads as "nothing saved", exactly like a fresh Firestore project.
       tables: normalizeTables((parsed as DemoState)?.tables),
+      // States from before table codes have none: every table is open, which
+      // is the same transition a live cafe goes through.
+      tableKeys: parseTableKeys((parsed as DemoState)?.tableKeys),
       // Older saved states also carry a `seq` counter. It is ignored: the display
       // number is derived from the id now, exactly as it is in Firestore.
     };
@@ -193,7 +207,7 @@ export function selectMenu(state: DemoState): MenuItem[] {
 /** Active board ordering: oldest first, so the most urgent order is on top. */
 export function selectActiveOrders(state: DemoState): Order[] {
   return state.orders
-    .filter((o) => o.status !== "completed")
+    .filter((o) => isActiveStatus(o.status))
     .sort((a, b) => a.createdAt - b.createdAt || a.orderNumber - b.orderNumber);
 }
 
@@ -207,6 +221,34 @@ export function selectOffer(state: DemoState): SpecialOffer {
 
 export function selectTables(state: DemoState): number[] | null {
   return state.tables;
+}
+
+export function selectTableKeys(state: DemoState): TableKeys {
+  return state.tableKeys;
+}
+
+function parseTableKeys(raw: unknown): Record<number, string> {
+  const out: Record<number, string> = {};
+  if (!raw || typeof raw !== "object") return out;
+  for (const [table, key] of Object.entries(raw)) {
+    const n = Number(table);
+    if (Number.isInteger(n) && n >= 1 && n <= 50 && isTableKey(key))
+      out[n] = key;
+  }
+  return out;
+}
+
+/**
+ * What firestore.rules says to an order, so the demo refuses the same orders the
+ * live app does and the phone goes down the same error path. Firestore reports
+ * every refusal as a bare "permission-denied", and so does this.
+ */
+export class DemoRulesRefusal extends Error {
+  readonly code = "permission-denied";
+  constructor(why: string) {
+    super(`Missing or insufficient permissions. (demo: ${why})`);
+    this.name = "DemoRulesRefusal";
+  }
 }
 
 /** Inclusive of `from`, exclusive of `to` — matches the reports' month range. */
@@ -229,6 +271,15 @@ export function selectOrdersInRange(
  */
 export function demoCreateOrder(input: NewOrderInput): Order {
   const now = Date.now();
+  const state = load();
+  // Mirrors the order create rule: a table with a code needs that code.
+  const expected = state.tableKeys[input.tableNumber];
+  if (expected && input.tableKey !== expected) {
+    throw new DemoRulesRefusal("wrong or missing table code");
+  }
+  if (orderCapProblems(input.items, orderTotal(input.items)).length > 0) {
+    throw new DemoRulesRefusal("order over the size limits");
+  }
   const order = parseOrder({
     id: makeId("o"),
     tableNumber: input.tableNumber,
@@ -260,6 +311,40 @@ export function demoSetStatus(id: string, status: Order["status"]): void {
           }
         : order,
     ),
+  }));
+}
+
+/** Mirrors the `rejected` branch of the order update rule. */
+export function demoRejectOrder(id: string, reason?: string): void {
+  const order = load().orders.find((o) => o.id === id);
+  if (!order || !canReject(order.status)) {
+    throw new DemoRulesRefusal("that order can no longer be rejected");
+  }
+  const clean = reason?.trim().slice(0, MAX_REJECT_REASON);
+  mutate((state) => ({
+    ...state,
+    orders: state.orders.map((o) =>
+      o.id === id
+        ? {
+            ...o,
+            status: "rejected" as const,
+            ...(clean ? { rejectReason: clean } : {}),
+          }
+        : o,
+    ),
+  }));
+}
+
+export function demoSaveTableKeys(keys: TableKeys): void {
+  for (const [table, key] of Object.entries(keys)) {
+    const n = Number(table);
+    if (!Number.isInteger(n) || n < 1 || n > 50 || !isTableKey(key)) {
+      throw new DemoRulesRefusal("bad table code");
+    }
+  }
+  mutate((state) => ({
+    ...state,
+    tableKeys: { ...state.tableKeys, ...keys },
   }));
 }
 

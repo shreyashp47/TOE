@@ -8,7 +8,11 @@
  */
 
 import { resolveOrderNumber } from "./order-number";
-import { isOrderStatus, type OrderStatus } from "./order-status";
+import {
+  MAX_REJECT_REASON,
+  isOrderStatus,
+  type OrderStatus,
+} from "./order-status";
 
 export interface MenuItem {
   id: string;
@@ -47,6 +51,8 @@ export interface Order {
   completedAt?: number;
   notes?: string;
   paymentMethod: "counter" | "upi";
+  /** Set by staff when they reject the order; shown to the customer. */
+  rejectReason?: string;
 }
 
 export type SpecialOffer = { enabled: boolean; text: string };
@@ -148,6 +154,15 @@ export function parseOrder(raw: unknown): Order | null {
     completedAt: num(raw.completedAt) ?? undefined,
     notes: str(raw.notes) ?? undefined,
     paymentMethod: raw.paymentMethod === "upi" ? "upi" : "counter",
+    // Deliberately not `tableKey`: the table's QR code travels on the order only
+    // so the rules can check it, and nothing on screen has any use for it.
+    ...(raw.status === "rejected" && str(raw.rejectReason)?.trim()
+      ? {
+          rejectReason: str(raw.rejectReason)!
+            .trim()
+            .slice(0, MAX_REJECT_REASON),
+        }
+      : {}),
   };
 }
 

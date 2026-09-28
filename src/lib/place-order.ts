@@ -9,6 +9,7 @@
 
 import { loadBundle } from "./data";
 import { priceCart } from "./money";
+import { orderCapProblems } from "./order-caps";
 import {
   OrderThrottled,
   readLastOrderAt,
@@ -23,6 +24,25 @@ export interface PlaceOrderArgs {
   menu: MenuItem[];
   notes?: string;
   paymentMethod?: Order["paymentMethod"];
+  /** The table's QR code, from the scanned link or remembered from it. */
+  tableKey?: string | null;
+}
+
+/**
+ * The order was refused and the most likely reason is the table code: missing
+ * (someone typed the address) or out of date (the owner printed a new card).
+ */
+export class TableCodeRefused extends Error {
+  readonly hadCode: boolean;
+  constructor(hadCode: boolean) {
+    super(
+      hadCode
+        ? "This link has expired — please scan the QR code on your table."
+        : "To order, please scan the QR code on your table.",
+    );
+    this.name = "TableCodeRefused";
+    this.hadCode = hadCode;
+  }
 }
 
 export class OrderRejected extends Error {
@@ -40,6 +60,7 @@ export async function placeOrder({
   menu,
   notes,
   paymentMethod = "counter",
+  tableKey,
 }: PlaceOrderArgs): Promise<Order> {
   if (!Number.isInteger(tableNumber) || tableNumber < 1) {
     throw new Error("We lost track of your table. Please scan again.");
@@ -56,6 +77,9 @@ export async function placeOrder({
   if (check.blocking.length > 0) {
     throw new OrderRejected(check.blocking);
   }
+  // The rules refuse these too, with nothing but "permission-denied".
+  const tooBig = orderCapProblems(check.lines, check.total);
+  if (tooBig.length > 0) throw new OrderRejected(tooBig);
 
   // One order per customer per ORDER_GAP_SECONDS (issue #32). The rules enforce
   // it; this just tells an honest customer how long to wait, instead of letting
@@ -72,11 +96,20 @@ export async function placeOrder({
       total: check.total,
       notes: notes?.trim() || undefined,
       paymentMethod,
+      ...(tableKey ? { tableKey } : {}),
     });
     recordOrderPlaced(Date.now());
     return order;
   } catch (err) {
     if (err instanceof OrderThrottled) throw err;
+    // By now the throttle has been ruled out (the repository checks the
+    // customer's stamp on any refusal), and the basket's shape and size were
+    // checked above against the same limits as the rules. What is left that a
+    // customer's phone can get wrong is the table code, which the phone cannot
+    // check for itself: codes are unreadable to customers by design.
+    if (codeOf(err) === "permission-denied") {
+      throw new TableCodeRefused(Boolean(tableKey));
+    }
     throw new Error(friendlyError(err));
   }
 }
@@ -90,6 +123,11 @@ export async function placeOrder({
  * lost. The one that matters most here is the not-configured case, because it
  * looks like a broken app rather than a half-finished setup step.
  */
+function codeOf(err: unknown): string {
+  const own = (err as { code?: unknown } | null)?.code;
+  return typeof own === "string" ? own : "";
+}
+
 export function friendlyError(err: unknown): string {
   const raw =
     err instanceof Error ? err.message : typeof err === "string" ? err : "";

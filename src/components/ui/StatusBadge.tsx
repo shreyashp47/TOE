@@ -31,6 +31,11 @@ const LOOK: Record<
     emoji: "✓",
     className: "bg-tan-deep text-primary-dark border-tan-deep",
   },
+  rejected: {
+    label: "Rejected",
+    emoji: "✕",
+    className: "bg-paper text-berry-deep border-berry-deep",
+  },
 };
 
 export function StatusBadge({

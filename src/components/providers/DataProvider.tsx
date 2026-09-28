@@ -30,6 +30,7 @@ import type {
   OrderRepository,
   StaffUser,
 } from "@/lib/data/types";
+import type { TableKeys } from "@/lib/table-keys";
 import type { MenuItem, Order, SpecialOffer } from "@/lib/types";
 
 interface DataContextValue {
@@ -270,6 +271,40 @@ export function useTables(): {
   const fallback = useMemo(() => getTableNumbers(), []);
   return { tables: saved ?? fallback, saved, loading: !loaded };
 }
+
+/**
+ * The owner's per-table QR codes, live. Owner-only: the rules refuse anyone
+ * else, so only /admin/qr (behind the owner gate) calls this.
+ */
+export function useTableKeys(): {
+  keys: TableKeys;
+  loading: boolean;
+  error: Error | null;
+} {
+  const repo = useConfigRepo();
+  const [snapshot, setSnapshot] = useState<{
+    repo: ConfigRepository;
+    keys: TableKeys;
+    error: Error | null;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!repo) return;
+    return repo.subscribeTableKeys(
+      (keys) => setSnapshot({ repo, keys, error: null }),
+      (error) => setSnapshot({ repo, keys: {}, error }),
+    );
+  }, [repo]);
+
+  const loaded = snapshot !== null && snapshot.repo === repo;
+  return {
+    keys: loaded ? snapshot.keys : EMPTY_KEYS,
+    loading: !loaded,
+    error: loaded ? snapshot.error : null,
+  };
+}
+
+const EMPTY_KEYS: TableKeys = {};
 
 export function useStaffSession(): {
   user: StaffUser | null;

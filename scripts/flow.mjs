@@ -1,7 +1,9 @@
 /**
- * Dev-only end-to-end walkthrough of the two flows that matter:
- * customer places an order -> staff board receives it live -> staff advances the
- * status -> the customer's screen reflects it without a refresh.
+ * Dev-only end-to-end walkthrough of the flows that matter:
+ * owner creates table codes -> a typed-in address is turned away -> customer
+ * places an order from the QR link -> staff board receives it live -> staff
+ * advances the status -> the customer's screen reflects it without a refresh ->
+ * staff reject a second order and the customer is told.
  *
  * Runs against `next dev` (or BASE_URL) in demo mode, where "live" is
  * localStorage + BroadcastChannel. Also fails on any console error.
@@ -89,9 +91,57 @@ function watch(page, tag) {
 const customer = watch(await context.newPage(), "customer");
 const staff = watch(await context.newPage(), "staff");
 
+// --- 0. the owner turns on table codes ---------------------------------------
+step(0, "Owner creates table codes on /admin/qr");
+const owner = watch(await context.newPage(), "owner");
+await owner.goto(`${BASE}/staff`, { waitUntil: "networkidle" });
+await owner.getByRole("button", { name: "Fill owner" }).click();
+await owner.getByRole("button", { name: "Sign in" }).click();
+await owner.waitForURL(/\/admin/, { timeout: 20_000 });
+await owner.goto(`${BASE}/admin/qr`, { waitUntil: "networkidle" });
+await owner
+  .getByRole("button", { name: "Create codes for all tables" })
+  .click();
+await owner.getByText(/Every table has a code/).waitFor({ timeout: 10_000 });
+const qrLink = (
+  await owner
+    .getByText(/\/order\?table=3&k=/)
+    .first()
+    .innerText()
+).trim();
+check(
+  "table 3's card carries a code",
+  /\/order\?table=3&k=[A-Za-z0-9]{12}$/.test(qrLink),
+  qrLink,
+);
+await owner.screenshot({ path: `${OUT}/00-owner-qr-codes.png` });
+const keyedPath = qrLink.replace(/^https?:\/\/[^/]+/, "");
+// Sign out, so the staff page below starts from its own sign-in.
+await owner.getByRole("button", { name: "Sign out" }).click();
+await owner.close();
+
 // --- 1. customer browses and adds items -------------------------------------
-step(1, "Customer opens the table QR link");
+step("1a", "A typed-in address, without the code, is turned away at checkout");
 await customer.goto(`${BASE}/order?table=3`, { waitUntil: "networkidle" });
+await customer.waitForSelector("li", { timeout: 30_000 });
+await customer
+  .locator("li", { hasText: "Cappuccino" })
+  .getByRole("button", { name: /^Add$/ })
+  .first()
+  .click();
+await customer.getByRole("button", { name: /View order/ }).click();
+await customer.getByRole("checkbox").check();
+await customer.getByRole("button", { name: /Place order/ }).click();
+await customer
+  .getByText("To order, please scan the QR code on your table.")
+  .waitFor({ timeout: 10_000 });
+check("told to scan the QR code instead", true);
+await customer.screenshot({ path: `${OUT}/01a-keyless-refused.png` });
+// Empty the basket again so the counts below start from nothing.
+await customer.getByRole("button", { name: "Remove", exact: true }).click();
+
+step(1, "Customer opens the table QR link");
+await customer.goto(`${BASE}${keyedPath}`, { waitUntil: "networkidle" });
 check(
   "table number shown in header",
   await customer.getByText("3", { exact: true }).first().isVisible(),
@@ -235,7 +285,48 @@ check(
 );
 
 // --- 4. cart persistence -----------------------------------------------------
-step(10, "Cart survives a reload");
+step(10, "Staff reject a second order; the customer is told plainly");
+// The phone's own 30-second throttle note, not the thing under test here.
+await customer.evaluate(() => localStorage.removeItem("toe.lastOrderAt"));
+// Keyless address this time: the phone remembers the code from the scan.
+await customer.goto(`${BASE}/order?table=3`, { waitUntil: "networkidle" });
+await addByName(customer, "Masala Chai");
+await customer.getByRole("button", { name: /View order/ }).click();
+await customer.getByRole("checkbox").check();
+await customer.getByRole("button", { name: /Place order/ }).click();
+await customer.waitForURL(/\/order\/confirmation/, { timeout: 20_000 });
+check(
+  "a remembered code lets a second order through",
+  /\/order\/confirmation/.test(customer.url()),
+);
+await staff.getByRole("button", { name: /^Reject order #/ }).click();
+check(
+  "reject asks on the ticket first",
+  await staff.getByText(/^Reject order #\d+ from table 3\?$/).isVisible(),
+);
+await staff.getByRole("button", { name: "No one at this table" }).click();
+await staff.screenshot({ path: `${OUT}/07-staff-reject-confirm.png` });
+await staff.getByRole("button", { name: "Reject order" }).click();
+await staff.waitForTimeout(900);
+check(
+  "rejected ticket leaves the board",
+  (await staff.locator("main").innerText()).includes("All caught up"),
+);
+await customer.waitForFunction(
+  () => document.body.innerText.includes("couldn't accept this order"),
+  undefined,
+  { timeout: 20_000 },
+);
+check(
+  "customer sees the reason",
+  (await customer.locator("main").innerText()).includes("No one at this table"),
+);
+await customer.screenshot({
+  path: `${OUT}/08-customer-rejected.png`,
+  fullPage: true,
+});
+
+step(11, "Cart survives a reload");
 await customer.goto(`${BASE}/order?table=3`, { waitUntil: "networkidle" });
 await addByName(customer, "Masala Chai");
 await customer.reload({ waitUntil: "networkidle" });

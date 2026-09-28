@@ -1,7 +1,6 @@
 "use client";
 
-import Link from "next/link";
-import { Suspense, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 
 import { Doodles } from "@/components/Doodles";
 import {
@@ -26,7 +25,8 @@ import { useCart } from "@/hooks/useCart";
 import { useTableQuery } from "@/hooks/useTableQuery";
 import { getCafeName, getCafeTagline } from "@/lib/config";
 import { formatINR, lineSubtotal, priceCart } from "@/lib/money";
-import { orderHref } from "@/lib/tables";
+import { orderCapProblems } from "@/lib/order-caps";
+import { readTableKey, rememberTableKey } from "@/lib/table-keys";
 import type { MenuItem } from "@/lib/types";
 
 export default function OrderPage() {
@@ -46,7 +46,7 @@ export default function OrderPage() {
 }
 
 function OrderScreen() {
-  const { ready, tableNumber, raw } = useTableQuery();
+  const { ready, tableNumber, raw, tableKey } = useTableQuery();
   // The owner's live table list (config/tables), or the env default until one
   // is saved. Wait for it rather than judging the URL against the default: a
   // QR code for table 9 is valid in a cafe that saved 1..12, and must not be
@@ -54,53 +54,67 @@ function OrderScreen() {
   const { tables: known, loading } = useTables();
 
   if (!ready || loading) return <Loading label="Finding your table…" />;
-  if (tableNumber === null) return <TablePicker query={raw} tables={known} />;
+  if (tableNumber === null) return <ScanPrompt odd={raw !== null} />;
   // A number that parses but is not a table this cafe has. Reachable by editing
   // the URL, or by scanning a QR code left over from a table that has since been
   // removed. Worth catching here rather than at checkout: the rules accept
   // tableNumber 1..50 while the parser accepts 1..999, so without this the
   // customer builds a whole basket and is refused by Firestore at the last step,
   // with an error about a number they never chose.
-  if (!known.includes(tableNumber))
-    return <TablePicker query={raw} tables={known} />;
+  if (!known.includes(tableNumber)) return <ScanPrompt odd />;
 
-  return <MenuScreen tableNumber={tableNumber} />;
+  return <MenuScreen tableNumber={tableNumber} urlKey={tableKey} />;
 }
 
-function TablePicker({
-  query,
-  tables,
-}: {
-  query: string | null;
-  tables: number[];
-}) {
+/**
+ * Where a customer lands without a usable table in the address.
+ *
+ * This used to be a grid of table numbers to tap. It had to go: a table's QR
+ * code carries a secret code (src/lib/table-keys.ts), and a tapped number
+ * cannot, so once the owner switches codes on every one of those buttons would
+ * lead to a menu that refuses the order at the very last step. The phone cannot
+ * tell which tables have codes either — they are unreadable to customers on
+ * purpose. So the honest answer is the only one that always works: scan.
+ */
+function ScanPrompt({ odd }: { odd: boolean }) {
   return (
     <main className="relative mx-auto flex min-h-svh max-w-md flex-col items-center justify-center gap-5 px-5 py-10 text-center">
       <Doodles />
       <Mascot mood="worry" size={140} />
       <h1 className="font-hand text-primary-dark text-4xl">
-        {query ? "That table number looks odd" : "Which table are you at?"}
+        {odd ? "That table number looks odd" : "Scan the QR code on your table"}
       </h1>
-      <p className="text-muted max-w-xs">
-        Scan the QR code on your table, or tap yours below.
-      </p>
-      <div className="grid w-full grid-cols-3 gap-3">
-        {tables.map((n) => (
-          <Link
-            key={n}
-            href={orderHref(n)}
-            className="border-line bg-paper font-round text-ink shadow-card flex min-h-16 items-center justify-center rounded-lg border-2 text-2xl transition-transform active:scale-95"
-          >
-            {n}
-          </Link>
-        ))}
+      <div className="border-line bg-paper shadow-card flex w-full items-center gap-3 rounded-lg border-2 p-4 text-left">
+        <span className="bg-highlight-soft text-primary grid size-12 shrink-0 place-items-center rounded-md">
+          <Icon name="qr" size={28} />
+        </span>
+        <p className="text-body text-sm leading-snug">
+          {odd
+            ? "Scan the QR code on your table again — it opens the menu for that table."
+            : "Point your phone's camera at the card on your table. It opens the menu for that table."}
+        </p>
       </div>
+      <p className="text-muted max-w-xs text-sm">
+        No card on your table? Ask at the counter and we&apos;ll take your order
+        there.
+      </p>
     </main>
   );
 }
 
-function MenuScreen({ tableNumber }: { tableNumber: number }) {
+function MenuScreen({
+  tableNumber,
+  urlKey,
+}: {
+  tableNumber: number;
+  urlKey: string | null;
+}) {
   const { items, loading, error } = useMenu();
+  // A fresh scan wins over whatever this phone remembered, which is how a
+  // renewed card reaches a phone that still holds the old code.
+  useEffect(() => {
+    if (urlKey) rememberTableKey(tableNumber, urlKey);
+  }, [tableNumber, urlKey]);
   const offer = useSpecialOffer();
   const isDemo = useIsDemo();
   const cart = useCart(tableNumber, items);
@@ -288,6 +302,7 @@ function MenuScreen({ tableNumber }: { tableNumber: number }) {
         open={sheetOpen}
         onClose={() => setSheetOpen(false)}
         tableNumber={tableNumber}
+        urlKey={urlKey}
         cart={cart}
         priceCheck={priceCheck}
         menu={items}
@@ -469,6 +484,7 @@ function CartSheet({
   open,
   onClose,
   tableNumber,
+  urlKey,
   cart,
   priceCheck,
   menu,
@@ -476,6 +492,7 @@ function CartSheet({
   open: boolean;
   onClose: () => void;
   tableNumber: number;
+  urlKey: string | null;
   cart: ReturnType<typeof useCart>;
   priceCheck: ReturnType<typeof priceCart>;
   menu: MenuItem[];
@@ -486,22 +503,30 @@ function CartSheet({
 
   // A price change is fine (the button below shows the live total); a sold-out or
   // deleted item is not, and must be resolved before the order can go through.
-  const blocked = priceCheck.blocking.length > 0;
+  // Over the size limits the rules enforce: say so before the tap, not after.
+  const caps = orderCapProblems(priceCheck.lines, priceCheck.total);
+  const blocked = priceCheck.blocking.length > 0 || caps.length > 0;
 
   async function place() {
     setPlacing(true);
     setError(null);
     try {
       const { placeOrder } = await import("@/lib/place-order");
+      const tableKey = urlKey ?? readTableKey(tableNumber);
       const order = await placeOrder({
         tableNumber,
         cartLines: cart.lines,
         menu,
         notes: undefined,
+        tableKey,
       });
       cart.clear();
+      // The code rides along so "Back to the menu" works even on a phone that
+      // refuses to store it.
       window.location.assign(
-        `/order/confirmation?table=${tableNumber}&id=${order.id}`,
+        `/order/confirmation?table=${tableNumber}&id=${order.id}${
+          tableKey ? `&k=${encodeURIComponent(tableKey)}` : ""
+        }`,
       );
     } catch (err) {
       setError(
@@ -526,7 +551,8 @@ function CartSheet({
                 role="alert"
                 className="border-berry/40 bg-berry/10 text-berry-deep rounded-sm border-2 px-3 py-2 text-sm"
               >
-                {priceCheck.blocking.join(" ")} Please adjust your order.
+                {[...priceCheck.blocking, ...caps].join(" ")} Please adjust your
+                order.
               </p>
             ) : priceCheck.changes.length > 0 ? (
               <p

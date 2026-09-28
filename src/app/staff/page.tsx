@@ -28,7 +28,13 @@ import {
 } from "@/lib/friendly-errors";
 import { formatINR, formatWait, lineSubtotal } from "@/lib/money";
 import { checkOrderIntegrity } from "@/lib/order-integrity";
-import { actionsFor, transition, type OrderStatus } from "@/lib/order-status";
+import {
+  REJECT_REASONS,
+  actionsFor,
+  canReject,
+  transition,
+  type OrderStatus,
+} from "@/lib/order-status";
 import type { MenuItem, Order } from "@/lib/types";
 import { DEMO_CREDENTIALS } from "@/lib/data/seed";
 
@@ -145,6 +151,28 @@ function StaffScreen() {
       const { loadBundle } = await import("@/lib/data");
       const bundle = await loadBundle();
       await bundle.orders.setStatus(order.id, to);
+    } catch (err) {
+      setActionError({ orderId: order.id, message: friendlyStatusError(err) });
+    } finally {
+      setBusyId(null);
+    }
+  }, []);
+
+  const reject = useCallback(async (order: Order, reason?: string) => {
+    setBusyId(order.id);
+    setActionError(null);
+    try {
+      if (!transition(order.status, "rejected")) {
+        setActionError({
+          orderId: order.id,
+          message:
+            "This order can't be rejected any more — it has already been served.",
+        });
+        return;
+      }
+      const { loadBundle } = await import("@/lib/data");
+      const bundle = await loadBundle();
+      await bundle.orders.reject(order.id, reason);
     } catch (err) {
       setActionError({ orderId: order.id, message: friendlyStatusError(err) });
     } finally {
@@ -282,6 +310,7 @@ function StaffScreen() {
                   actionError?.orderId === order.id ? actionError.message : null
                 }
                 onAdvance={(to) => void advance(order, to)}
+                onReject={(reason) => void reject(order, reason)}
               />
             ))}
           </ul>
@@ -324,6 +353,7 @@ function OrderTicket({
   busy,
   error,
   onAdvance,
+  onReject,
 }: {
   order: Order;
   menu: MenuItem[];
@@ -332,7 +362,14 @@ function OrderTicket({
   /** Why the last status change on this ticket failed, if it did. */
   error: string | null;
   onAdvance: (to: OrderStatus) => void;
+  onReject: (reason?: string) => void;
 }) {
+  // Rejecting is a two-step action on the ticket itself, not a browser
+  // confirm(): the counter tablet is often an installed app where the native
+  // dialog looks like a system error, and the second step is also where the
+  // reason is picked.
+  const [confirming, setConfirming] = useState(false);
+  const [reason, setReason] = useState<string | null>(null);
   // 1s tick keeps the wait timer live without a Firestore read.
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -424,6 +461,20 @@ function OrderTicket({
         </p>
       ) : null}
 
+      {confirming ? (
+        <RejectConfirm
+          order={order}
+          reason={reason}
+          busy={busy}
+          onReason={setReason}
+          onConfirm={() => onReject(reason ?? undefined)}
+          onKeep={() => {
+            setConfirming(false);
+            setReason(null);
+          }}
+        />
+      ) : null}
+
       <div className="border-line-soft flex items-center justify-between gap-2 border-t-2 px-3 py-2">
         <TicketTotal check={check} />
         <div className="flex flex-wrap justify-end gap-2">
@@ -445,9 +496,82 @@ function OrderTicket({
                 </Button>
               ))
           )}
+          {canReject(order.status) && !confirming ? (
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={busy}
+              onClick={() => setConfirming(true)}
+              aria-label={`Reject order #${order.orderNumber}`}
+            >
+              Reject
+            </Button>
+          ) : null}
         </div>
       </div>
     </Card>
+  );
+}
+
+function RejectConfirm({
+  order,
+  reason,
+  busy,
+  onReason,
+  onConfirm,
+  onKeep,
+}: {
+  order: Order;
+  reason: string | null;
+  busy: boolean;
+  onReason: (reason: string | null) => void;
+  onConfirm: () => void;
+  onKeep: () => void;
+}) {
+  const headingId = `reject-${order.id}`;
+  return (
+    <div
+      role="group"
+      aria-labelledby={headingId}
+      className="border-berry-deep bg-berry/5 mx-3 mb-2 rounded-md border-2 p-3"
+    >
+      <p id={headingId} className="text-berry-deep font-semibold">
+        Reject order #{order.orderNumber} from table {order.tableNumber}?
+      </p>
+      <p className="text-muted mt-0.5 text-sm">
+        It leaves the board and the customer&apos;s phone says the counter
+        couldn&apos;t accept it. This can&apos;t be undone.
+      </p>
+      <p className="text-2xs text-muted mt-2.5 font-semibold tracking-[0.12em] uppercase">
+        Reason (optional, shown to the customer)
+      </p>
+      <div className="mt-1.5 flex flex-wrap gap-1.5">
+        {REJECT_REASONS.map((r) => (
+          <button
+            key={r}
+            type="button"
+            aria-pressed={reason === r}
+            onClick={() => onReason(reason === r ? null : r)}
+            className={[
+              "rounded-pill min-h-11 border-2 px-3 text-sm font-semibold transition-colors",
+              reason === r
+                ? "border-berry-deep bg-berry-deep text-on-dark"
+                : "border-line bg-paper text-ink",
+            ].join(" ")}
+          >
+            {r}
+          </button>
+        ))}
+      </div>
+      <div className="mt-3 flex flex-wrap justify-end gap-2">
+        <Button size="sm" variant="ghost" disabled={busy} onClick={onKeep}>
+          Keep order
+        </Button>
+        <Button size="sm" variant="danger" disabled={busy} onClick={onConfirm}>
+          {busy ? "Rejecting…" : "Reject order"}
+        </Button>
+      </div>
+    </div>
   );
 }
 

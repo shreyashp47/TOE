@@ -11,6 +11,7 @@ import type {
   SpecialOffer,
   Unsubscribe,
 } from "../types";
+import type { TableKeys } from "../table-keys";
 
 export type Listener<T> = (value: T) => void;
 export type ErrorListener = (error: Error) => void;
@@ -21,6 +22,12 @@ export interface NewOrderInput {
   total: number;
   notes?: string;
   paymentMethod?: Order["paymentMethod"];
+  /**
+   * The table's QR code (src/lib/table-keys.ts), when the customer arrived with
+   * one. Sent only when present, so a table with no code yet orders exactly as
+   * before.
+   */
+  tableKey?: string;
 }
 
 export interface MenuWriteInput {
@@ -62,6 +69,8 @@ export interface OrderRepository {
   ): Unsubscribe;
   create(input: NewOrderInput): Promise<Order>;
   setStatus(id: string, status: Order["status"]): Promise<void>;
+  /** Staff turn an order away. `reason` is optional and shown to the customer. */
+  reject(id: string, reason?: string): Promise<void>;
   /** Bounded range query — keeps Firestore reads inside the free tier. */
   listRange(fromMs: number, toMs: number): Promise<Order[]>;
 }
@@ -100,6 +109,16 @@ export interface ConfigRepository {
   subscribeTables(listener: Listener<number[] | null>): Unsubscribe;
   /** Rejects a list with no usable table rather than saving an empty cafe. */
   saveTables(tables: number[]): Promise<void>;
+  /**
+   * Owner only: the per-table QR codes, live. Staff and customers are refused by
+   * the rules, so only /admin/qr subscribes.
+   */
+  subscribeTableKeys(
+    listener: Listener<TableKeys>,
+    onError?: ErrorListener,
+  ): Unsubscribe;
+  /** Owner only: write codes for these tables, replacing any they had. */
+  saveTableKeys(keys: TableKeys): Promise<void>;
 }
 
 export interface DataBundle {

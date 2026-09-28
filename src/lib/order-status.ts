@@ -11,6 +11,13 @@
  * `completed` is terminal. It is never deleted from storage (§5.3: "keeps it in
  * the database for history — not deleted"), it only leaves the staff's active
  * board.
+ *
+ * `rejected` is the other way out. Ordering is pay-at-the-counter from a QR code,
+ * so a prank or duplicate order costs nothing to place and would otherwise sit on
+ * the board until someone "completed" it — and then count as takings. Staff can
+ * reject an order that is still `preparing` or `ready`, optionally with a short
+ * reason the customer sees. It is terminal, like `completed`, and it is left out
+ * of the reports' revenue. firestore.rules allows exactly the same hops.
  */
 
 export const ORDER_STATUSES = [
@@ -19,6 +26,7 @@ export const ORDER_STATUSES = [
   "ready",
   "served",
   "completed",
+  "rejected",
 ] as const;
 
 export type OrderStatus = (typeof ORDER_STATUSES)[number];
@@ -40,7 +48,37 @@ const NEXT: Record<OrderStatus, OrderStatus | null> = {
   ready: "served",
   served: "completed",
   completed: null,
+  rejected: null,
 };
+
+/**
+ * Statuses an order can be rejected from. Not `served`: once it is on the table
+ * the counter settles it in person. Must match the `rejected` branch of the
+ * order update rule in firestore.rules.
+ */
+export const REJECTABLE_STATUSES = [
+  "preparing",
+  "ready",
+] as const satisfies readonly OrderStatus[];
+
+/** Longest reject reason firestore.rules accepts. */
+export const MAX_REJECT_REASON = 80;
+
+/** One-tap reasons on the staff board. Free text is not offered on purpose. */
+export const REJECT_REASONS = [
+  "No one at this table",
+  "Item unavailable",
+  "Duplicate order",
+] as const;
+
+export function canReject(from: OrderStatus): boolean {
+  return (REJECTABLE_STATUSES as readonly OrderStatus[]).includes(from);
+}
+
+/** Terminal: nothing more can happen to the order. */
+export function isClosedStatus(status: OrderStatus): boolean {
+  return status === "completed" || status === "rejected";
+}
 
 export const DEFAULT_STATUS: OrderStatus = "preparing";
 
@@ -72,6 +110,7 @@ export function transition(
   from: OrderStatus,
   to: OrderStatus,
 ): OrderStatus | null {
+  if (to === "rejected") return canReject(from) ? to : null;
   return canAdvance(from, to) ? to : null;
 }
 
@@ -125,6 +164,7 @@ export function actionsFor(status: OrderStatus): StatusAction[] {
         },
       ];
     case "completed":
+    case "rejected":
       return [];
   }
 }
@@ -139,7 +179,8 @@ export const CUSTOMER_STEPS = [
 
 export function stepIndex(status: OrderStatus): number {
   const i = (CUSTOMER_STEPS as readonly OrderStatus[]).indexOf(status);
-  // `completed` means every customer-visible step happened
+  // `completed` means every customer-visible step happened. `rejected` never
+  // reaches the timeline: the confirmation screen shows its own notice.
   return i === -1 ? CUSTOMER_STEPS.length - 1 : i;
 }
 

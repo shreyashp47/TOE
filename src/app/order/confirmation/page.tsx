@@ -38,6 +38,7 @@ import {
 import { orderHref } from "@/lib/tables";
 import type { OrderLine } from "@/lib/types";
 import { readSessionOrderId, rememberSessionOrder } from "@/lib/order-session";
+import { readTableKey, rememberTableKey } from "@/lib/table-keys";
 
 export default function ConfirmationPage() {
   return (
@@ -57,6 +58,7 @@ function ConfirmationScreen() {
     tableNumber,
     orderId: idFromUrl,
     hasOrderId,
+    tableKey: keyFromUrl,
   } = useTableQuery();
   const [orderId, setOrderId] = useState<string | null>(null);
 
@@ -66,7 +68,8 @@ function ConfirmationScreen() {
     if (!ready) return;
     const remembered = tableNumber ? readSessionOrderId(tableNumber) : null;
     setOrderId(idFromUrl || remembered);
-  }, [ready, tableNumber, idFromUrl]);
+    if (tableNumber && keyFromUrl) rememberTableKey(tableNumber, keyFromUrl);
+  }, [ready, tableNumber, idFromUrl, keyFromUrl]);
 
   if (!ready) return <Loading label="Finding your table…" />;
 
@@ -85,13 +88,21 @@ function ConfirmationScreen() {
     );
   }
 
+  // Every way back to the menu carries the table's code, so a customer on a
+  // phone that would not store it can still order again.
+  const menuHref = orderHref(
+    tableNumber,
+    keyFromUrl ?? readTableKey(tableNumber),
+  );
+
   if (!orderId) {
-    return <OrderNotFound tableNumber={tableNumber} hadId={hasOrderId} />;
+    return <OrderNotFound menuHref={menuHref} hadId={hasOrderId} />;
   }
 
   return (
     <StatusScreen
       tableNumber={tableNumber}
+      menuHref={menuHref}
       orderId={orderId}
       onRemember={() => rememberSessionOrder(tableNumber, orderId)}
     />
@@ -104,28 +115,30 @@ function ConfirmationScreen() {
  * a dead end.
  */
 function OrderNotFound({
-  tableNumber,
+  menuHref,
   hadId,
 }: {
-  tableNumber: number;
+  menuHref: string;
   hadId: boolean;
 }) {
   const router = useRouter();
 
   useEffect(() => {
     if (hadId) return;
-    router.replace(orderHref(tableNumber));
-  }, [hadId, router, tableNumber]);
+    router.replace(menuHref);
+  }, [hadId, router, menuHref]);
 
   return <Loading label="Finding your order…" />;
 }
 
 function StatusScreen({
   tableNumber,
+  menuHref,
   orderId,
   onRemember,
 }: {
   tableNumber: number;
+  menuHref: string;
   orderId: string;
   onRemember: () => void;
 }) {
@@ -175,12 +188,23 @@ function StatusScreen({
           title="We can't find that order"
           body="It may have been cleared from this device. Ask the counter and we'll take another one."
           action={
-            <Link href={orderHref(tableNumber)}>
+            <Link href={menuHref}>
               <Button>Start a new order</Button>
             </Link>
           }
         />
       </main>
+    );
+  }
+
+  if (order.status === "rejected") {
+    return (
+      <RejectedNotice
+        tableNumber={tableNumber}
+        orderNumber={order.orderNumber}
+        reason={order.rejectReason}
+        menuHref={menuHref}
+      />
     );
   }
 
@@ -280,7 +304,7 @@ function StatusScreen({
             disabled={previous.length === 0}
             onClick={() => {
               cart.reAdd(previous);
-              window.location.assign(orderHref(tableNumber));
+              window.location.assign(menuHref);
             }}
           >
             Order again
@@ -288,11 +312,78 @@ function StatusScreen({
           <Button
             variant="ghost"
             fullWidth
-            onClick={() => window.location.assign(orderHref(tableNumber))}
+            onClick={() => window.location.assign(menuHref)}
           >
             Back to the menu
           </Button>
         </div>
+      </main>
+    </div>
+  );
+}
+
+/**
+ * Staff turned the order away (src/lib/order-status.ts, "rejected"). Said
+ * plainly, with the reason if they gave one, and pointed at the one place that
+ * can sort it out. No "Order again" here: re-sending the same basket is not
+ * the fix for an order the counter just refused.
+ */
+function RejectedNotice({
+  tableNumber,
+  orderNumber,
+  reason,
+  menuHref,
+}: {
+  tableNumber: number;
+  orderNumber: number;
+  reason?: string;
+  menuHref: string;
+}) {
+  return (
+    <div className="relative min-h-svh pb-8">
+      <header className="safe-t border-line-soft bg-cream/85 relative z-10 border-b-2 px-4 py-3 backdrop-blur-sm">
+        <div className="shell text-muted flex items-center gap-2 text-sm font-semibold">
+          <Icon name="pin" size={16} />
+          Table {tableNumber}
+          <span className="tnum rounded-pill bg-paper text-primary ml-auto px-2.5 py-0.5">
+            Order #{orderNumber || "—"}
+          </span>
+        </div>
+      </header>
+
+      <main className="shell relative z-10 flex flex-col items-center gap-5 pt-8 text-center">
+        <Mascot mood="worry" size={132} />
+        <div role="status" aria-live="polite">
+          <h1 className="font-hand text-berry-deep text-4xl leading-tight">
+            The counter couldn&apos;t accept this order
+          </h1>
+          <p className="text-muted mt-2">
+            Order{" "}
+            <span className="tnum font-round text-ink">#{orderNumber}</span>{" "}
+            won&apos;t be made, and there&apos;s nothing to pay for it.
+          </p>
+        </div>
+
+        {reason ? (
+          <Card className="w-full px-4 py-3">
+            <p className="text-2xs text-muted font-semibold tracking-[0.12em] uppercase">
+              Reason
+            </p>
+            <p className="text-ink mt-0.5 text-lg">{reason}</p>
+          </Card>
+        ) : null}
+
+        <p className="border-line bg-tan/50 text-body w-full rounded-md border-2 border-dashed px-4 py-3 text-sm">
+          Please speak to the counter — they&apos;ll sort it out with you.
+        </p>
+
+        <Button
+          variant="ghost"
+          fullWidth
+          onClick={() => window.location.assign(menuHref)}
+        >
+          Back to the menu
+        </Button>
       </main>
     </div>
   );

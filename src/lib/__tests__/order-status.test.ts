@@ -1,11 +1,18 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
 import { describe, expect, it } from "vitest";
 
 import {
   ACTIVE_STATUSES,
   CUSTOMER_STEPS,
   ORDER_STATUSES,
+  REJECT_REASONS,
+  MAX_REJECT_REASON,
   actionsFor,
   canAdvance,
+  canReject,
+  isClosedStatus,
   isActiveStatus,
   isOrderStatus,
   nextStatus,
@@ -21,6 +28,7 @@ describe("order status machine", () => {
       "ready",
       "served",
       "completed",
+      "rejected",
     ]);
   });
 
@@ -76,7 +84,7 @@ describe("order status machine", () => {
   it("always offers exactly one primary action, except when closed", () => {
     for (const status of ORDER_STATUSES) {
       const primaries = actionsFor(status).filter((a) => a.primary);
-      if (status === "completed") expect(primaries).toHaveLength(0);
+      if (isClosedStatus(status)) expect(primaries).toHaveLength(0);
       else expect(primaries).toHaveLength(1);
     }
   });
@@ -103,5 +111,61 @@ describe("order status machine", () => {
     expect(stepIndex("served")).toBe(3);
     // completed means every customer step happened
     expect(stepIndex("completed")).toBe(CUSTOMER_STEPS.length - 1);
+  });
+});
+
+describe("rejecting an order", () => {
+  it("is allowed from preparing and ready, exactly as firestore.rules says", () => {
+    expect(transition("preparing", "rejected")).toBe("rejected");
+    expect(transition("ready", "rejected")).toBe("rejected");
+    for (const from of ORDER_STATUSES) {
+      expect(canReject(from), from).toBe(
+        from === "preparing" || from === "ready",
+      );
+    }
+  });
+
+  it("is refused once the order is served, completed or already rejected", () => {
+    expect(transition("served", "rejected")).toBeNull();
+    expect(transition("completed", "rejected")).toBeNull();
+    expect(transition("rejected", "rejected")).toBeNull();
+  });
+
+  it("is terminal: nothing leaves rejected", () => {
+    expect(nextStatus("rejected")).toBeNull();
+    expect(actionsFor("rejected")).toEqual([]);
+    for (const to of ORDER_STATUSES) {
+      expect(transition("rejected", to), to).toBeNull();
+    }
+  });
+
+  it("takes the order off the staff board", () => {
+    expect(isActiveStatus("rejected")).toBe(false);
+    expect(ACTIVE_STATUSES).not.toContain("rejected");
+    expect(isClosedStatus("rejected")).toBe(true);
+  });
+
+  it("is never offered as a forward step, only as its own action", () => {
+    for (const status of ORDER_STATUSES) {
+      expect(actionsFor(status).map((a) => a.to)).not.toContain("rejected");
+    }
+  });
+
+  it("offers quick reasons that fit the rules' 80-character limit", () => {
+    expect(REJECT_REASONS.length).toBeGreaterThan(0);
+    for (const r of REJECT_REASONS) {
+      expect(r.length).toBeLessThanOrEqual(MAX_REJECT_REASON);
+    }
+  });
+
+  it("uses the same reason limit and reject states as firestore.rules", () => {
+    const rules = readFileSync(
+      resolve(process.cwd(), "firestore.rules"),
+      "utf8",
+    );
+    expect(rules).toContain(
+      `request.resource.data.rejectReason.size() <= ${MAX_REJECT_REASON}`,
+    );
+    expect(rules).toContain('resource.data.status in ["preparing", "ready"]');
   });
 });

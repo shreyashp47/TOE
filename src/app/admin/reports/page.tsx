@@ -25,6 +25,7 @@ import { formatINR } from "@/lib/money";
 import { summariseIntegrity } from "@/lib/order-integrity";
 import {
   buildReport,
+  countsAsSale,
   currentMonth,
   monthRange,
   ordersToCsv,
@@ -111,8 +112,10 @@ export default function ReportsPage() {
   // order whose stored total disagrees with its own items is one the counter may
   // have charged wrongly, so it is listed for the owner to reconcile.
   const { items: menu } = useMenu();
+  // Rejected orders were never charged, so a doctored total on one is not
+  // something the counter needs to reconcile.
   const integrity = useMemo(
-    () => summariseIntegrity(orders, menu),
+    () => summariseIntegrity(orders.filter(countsAsSale), menu),
     [orders, menu],
   );
 
@@ -255,6 +258,14 @@ export default function ReportsPage() {
           </ul>
 
           <IntegrityNotice {...integrity} />
+
+          {report.rejectedCount > 0 ? (
+            <p className="border-line bg-paper text-muted rounded-md border-2 border-dashed px-3 py-2 text-sm">
+              {report.rejectedCount} rejected order
+              {report.rejectedCount === 1 ? " is" : "s are"} left out of these
+              figures. They are in the CSV, marked &ldquo;rejected&rdquo;.
+            </p>
+          ) : null}
 
           <Card className="p-4">
             <h2 className="text-lg">Revenue by day</h2>

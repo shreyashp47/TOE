@@ -7,6 +7,7 @@
  *   /menu/{itemId}     name, description?, price, category, available
  *   /config/special   the "today's special" board
  *   /config/tables    { tables: number[] }, the owner's table list
+ *   /tableKeys/{n}    { key }, table n's QR code; owner-only (table-keys.ts)
  *
  * There is no /meta/counters any more: the order's display number is derived
  * from its document id on read (src/lib/order-number.ts, issue #30).
@@ -18,7 +19,8 @@
 
 import { getDemoStaffPin } from "../config";
 import { orderTotal } from "../money";
-import { ACTIVE_STATUSES } from "../order-status";
+import { ACTIVE_STATUSES, MAX_REJECT_REASON } from "../order-status";
+import { isTableKey } from "../table-keys";
 import { OrderThrottled, throttleFromServerStamp } from "../order-throttle";
 import { checkTablesForSave, normalizeTables } from "../tables";
 import { roleFromStaffDoc, staffDisplayName } from "./roles";
@@ -54,6 +56,7 @@ const SPECIAL_DOC = "special";
 const TABLES_DOC = "tables";
 const STAFF = "staff";
 const THROTTLE = "orderThrottle";
+const TABLE_KEYS = "tableKeys";
 
 let bundle: Promise<{
   app: import("firebase/app").FirebaseApp;
@@ -338,6 +341,11 @@ export const firestoreOrderRepo: OrderRepository = {
       notes: input.notes ?? "",
       paymentMethod: input.paymentMethod ?? "counter",
       customerUid: uid,
+      // Only when there is one. The rules check it against tableKeys/{table},
+      // and a table with no code yet must keep taking orders without it. It
+      // stays on the order document afterwards, where staff can read it; see
+      // docs/decisions.md for why that is acceptable.
+      ...(input.tableKey ? { tableKey: input.tableKey } : {}),
     });
     batch.set(fs.doc(db, THROTTLE, uid), {
       lastOrderAt: fs.serverTimestamp(),
@@ -365,6 +373,15 @@ export const firestoreOrderRepo: OrderRepository = {
     const patch: Record<string, unknown> = { status };
     if (status === "completed") patch.completedAt = fs.serverTimestamp();
     await fs.updateDoc(fs.doc(db, ORDERS, id), patch);
+  },
+
+  async reject(id, reason) {
+    const { db, fs } = await dbAndFs();
+    const clean = reason?.trim().slice(0, MAX_REJECT_REASON);
+    await fs.updateDoc(fs.doc(db, ORDERS, id), {
+      status: "rejected",
+      ...(clean ? { rejectReason: clean } : {}),
+    });
   },
 
   async listRange(fromMs, toMs) {
@@ -431,6 +448,34 @@ export const firestoreConfigRepo: ConfigRepository = {
     await fs.setDoc(fs.doc(db, CONFIG, TABLES_DOC), {
       tables: checkTablesForSave(tables),
     });
+  },
+  subscribeTableKeys(listener, onError) {
+    return deferred(async () => {
+      const { db, fs } = await dbAndFs();
+      return fs.onSnapshot(
+        fs.collection(db, TABLE_KEYS),
+        (snap) => {
+          const keys: Record<number, string> = {};
+          for (const d of snap.docs) {
+            const n = Number(d.id);
+            const key = d.data().key;
+            if (Number.isInteger(n) && isTableKey(key)) keys[n] = key;
+          }
+          listener(keys);
+        },
+        (error) => onError?.(error),
+      );
+    });
+  },
+  async saveTableKeys(keys) {
+    const { db, fs } = await dbAndFs();
+    // One batch, so "Create codes for all tables" either gives every table a
+    // code or none — never a half-coded cafe from a dropped connection.
+    const batch = fs.writeBatch(db);
+    for (const [table, key] of Object.entries(keys)) {
+      batch.set(fs.doc(db, TABLE_KEYS, String(table)), { key });
+    }
+    await batch.commit();
   },
 };
 

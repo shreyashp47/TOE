@@ -44,6 +44,17 @@ export interface Report {
   byDay: DayBucket[];
   /** Per-status counts, so the owner can see how many closed out. */
   statusCounts: Record<string, number>;
+  /**
+   * Orders staff rejected in the range. Counted here and nowhere else: they
+   * were never made or paid for, so they are left out of revenue, the order
+   * count, best sellers and the daily chart.
+   */
+  rejectedCount: number;
+}
+
+/** Whether an order counts towards takings. Rejected orders never do. */
+export function countsAsSale(order: Pick<Order, "status">): boolean {
+  return order.status !== "rejected";
 }
 
 function startOfDay(ms: number): number {
@@ -102,8 +113,9 @@ export function buildReport(orders: Order[], range: Range): Report {
     .filter((o) => o.createdAt >= range.from && o.createdAt < range.to)
     .sort((a, b) => a.createdAt - b.createdAt);
 
-  const revenue = inRange.reduce((sum, o) => sum + orderTotal(o.items), 0);
-  const orderCount = inRange.length;
+  const sales = inRange.filter(countsAsSale);
+  const revenue = sales.reduce((sum, o) => sum + orderTotal(o.items), 0);
+  const orderCount = sales.length;
 
   const byName = new Map<string, { qty: number; revenue: number }>();
   const dayMap = new Map<string, { revenue: number; orders: number }>();
@@ -111,7 +123,9 @@ export function buildReport(orders: Order[], range: Range): Report {
 
   for (const order of inRange) {
     statusCounts[order.status] = (statusCounts[order.status] ?? 0) + 1;
+  }
 
+  for (const order of sales) {
     const key = dayKey(order.createdAt);
     const bucket = dayMap.get(key) ?? { revenue: 0, orders: 0 };
     bucket.revenue += orderTotal(order.items);
@@ -156,6 +170,7 @@ export function buildReport(orders: Order[], range: Range): Report {
     topItems,
     byDay,
     statusCounts,
+    rejectedCount: inRange.length - sales.length,
   };
 }
 
@@ -175,6 +190,10 @@ function csvCell(value: unknown): string {
  * "Order ID" is the database id, and it is the column to group lines by. The
  * "Order #" is the short number printed for the customer, and it is not unique:
  * two orders in a month can share one, so grouping on it would merge them.
+ *
+ * Rejected orders stay in the export, with "rejected" in the Status column and
+ * the staff's reason, so the file is a complete record. Anyone summing it for
+ * takings must filter on Status, the way the dashboard does.
  */
 export function ordersToCsv(orders: Order[]): string {
   const header = [
@@ -191,6 +210,7 @@ export function ordersToCsv(orders: Order[]): string {
     "Order total",
     "Payment",
     "Notes",
+    "Reject reason",
   ];
 
   const rows: string[] = [];
@@ -214,6 +234,7 @@ export function ordersToCsv(orders: Order[]): string {
           total,
           order.paymentMethod,
           order.notes ?? "",
+          order.rejectReason ?? "",
         ]
           .map(csvCell)
           .join(","),
