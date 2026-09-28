@@ -54,6 +54,10 @@ Work that is built but not yet merged is tracked in
 
 ### Changed
 
+- A scanned table code now lasts 3 hours on the phone (scanning again restarts
+  it) and is taken out of the address bar at once, so it is never left in
+  history, bookmarks or a shared confirmation link. After that the menu asks
+  the customer to scan again before they build a basket
 - `/order` without a usable table asks the customer to scan the QR code on
   their table instead of offering a grid of table numbers, which could not
   carry a table's code

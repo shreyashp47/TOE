@@ -534,6 +534,11 @@ one.** Plus order size caps in the rules, and a staff **Reject** (a terminal
   phone cannot know which tables have codes, so a refused order is reported as
   an expired link once the throttle and size caps are ruled out. One extra
   document read per order.
+- **Expiry (added later):** the phone keeps a scanned code for 3 hours
+  (`TABLE_CODE_TTL_MS`) and `/order` removes `k` from the address at once, so
+  a past visit, a bookmark or a shared link no longer orders from home. A photo
+  of the card still works until _New code_. Part 2, staff confirming new guests
+  at a table marked closed, is coming separately.
 - **Caps** (20 lines, 20 of each, ₹10,000) check the first and last line only:
   the rules cannot loop. The total cap, the board's re-derived totals and
   Reject cover a doctored middle line.

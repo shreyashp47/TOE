@@ -588,7 +588,9 @@ on the free plan:
   gives each table a random code in `tableKeys/{table}`, which only the owner
   can read or write. The printed QR card carries it
   (`/order?table=2&k=CODE`) and the phone remembers it for that table, so
-  _Order again_ and reloads keep working. An order for a table that has a code
+  _Order again_ and reloads keep working. The phone keeps it for 3 hours from
+  the scan and takes it out of the address bar at once, so it never sits in
+  history, a bookmark or a shared link; after that the menu asks for a new scan. An order for a table that has a code
   must carry that code; a typed-in address or an old card gets _"This link has
   expired — please scan the QR code on your table."_ If a card is photographed
   or goes missing, press **New code** on that table's card and reprint it; the
