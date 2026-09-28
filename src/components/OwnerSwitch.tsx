@@ -1,8 +1,8 @@
 /**
  * The owner's way between the order board and the owner dashboard.
  *
- * The owner signs in on /staff like everyone else and lands on the board. The
- * way across used to be an unlabelled chart icon (and an unlabelled cart icon
+ * The owner signs in on /staff like everyone else and is sent to the dashboard;
+ * the board is one tap away. The way across used to be an unlabelled chart icon (and an unlabelled cart icon
  * back), and the owner did not realise the dashboard was there. This is a
  * labelled two-part switch instead — "Orders | Owner" — shown only to the owner.
  * They are links, not tabs: each side is its own page.

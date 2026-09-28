@@ -167,7 +167,7 @@ have charged wrongly — and, as a softer hint, orders whose items differ from
 today's menu, which for old orders is usually just a price change since. Until
 the Blaze fix, reconcile those against the till.
 
-`scripts/rules-test.mjs` pins the behaviour that _is_ enforceable: 82 assertions
+`scripts/rules-test.mjs` pins the behaviour that _is_ enforceable: 81 assertions
 covering the anonymous customer, a signed-out caller, a signed-in barista and a
 signed-in owner, including that a barista cannot touch the menu and cannot skip a
 status.
