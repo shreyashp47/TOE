@@ -47,11 +47,12 @@ and every account also needs a role record — see
 For the owner and the people at the counter. Nothing here needs a developer
 except adding a new barista's account.
 
-- **The counter phone** — open `/staff` and sign in. New orders appear on their
+- **The counter phone** — open **toe-cafe.web.app/staff** and sign in. New orders appear on their
   own, oldest first, with a wait timer, a chime and a vibration. Browsers only
   allow sound after a tap, so tap the screen once at the start of a shift (the
-  board says so until you do). Move each ticket along with its button: _Start
-  preparing → Mark ready → Mark served → Complete_. A ticket whose total does not
+  board says so until you do). New orders arrive already marked
+  _Preparing_; move each one along with its button: _Mark ready → Mark served →
+  Complete_. A ticket whose total does not
   match the menu is flagged in red — check it before taking payment.
 - **The owner** signs in on the same `/staff` page and goes straight to the owner
   dashboard. An **Orders | Owner** switch at the top moves between the dashboard
@@ -370,7 +371,8 @@ and `toi-cafe` is still deployed by hand as above. To switch it on, set up once:
    gh variable set -f .env.local
    ```
 
-   If any are missing, the deploy stops before building. Otherwise the site
+   If any of the six Firebase values or `NEXT_PUBLIC_BASE_URL` is missing, the
+   deploy stops before building. Otherwise the site
    would quietly fall back to demo mode.
 
 #### Check the live site, not just the deploy output

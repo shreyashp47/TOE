@@ -2,7 +2,9 @@
 
 TOE Cafe runs at <https://toe-cafe.web.app>, a Firebase Hosting site in the
 Firebase project `toi-cafe`. <https://toi-cafe.web.app> only redirects there.
-There is one supported version: whatever is on `main`, which is what is live.
+There is one supported version: whatever is on `main`. It is deployed by hand
+until automatic deploys are switched on (README, _Automatic deploys from
+`main`_).
 
 ## Reporting a vulnerability
 
@@ -103,6 +105,7 @@ requests against it.
   rules, so whoever holds it can effectively rewrite the rules and open the
   whole database. It is only used by the deploy workflow, which runs on `main`
   after CI passes (never for a pull request), in the `production` environment.
+  The secret is not set yet, so today the workflow does not deploy.
   Never commit it or keep a local copy. Rotate it by adding a new key in the
   Google Cloud console, setting the secret again, and deleting the old key.
 - **The owner's `firebase login`.** `npm run seed:staff` and
@@ -118,7 +121,8 @@ requests against it.
 
 - CI attacks the rules on every pull request (`scripts/rules-test.mjs` against
   the emulators), alongside lint, typecheck, unit tests and a production build.
-  Nothing deploys unless the whole CI workflow passed on `main`.
+  Once automatic deploys are on, nothing deploys unless the whole CI workflow
+  passed on `main`; until then the owner deploys by hand from a green `main`.
 - Dependabot opens weekly dependency updates, and GitHub raises security
   updates regardless.
 - Rules and hosting deploy in one command, so the app and the rules it was
@@ -129,7 +133,8 @@ requests against it.
 The one thing that is easy to get wrong: **deploy the rules**. A Firestore
 database left in test mode lets anyone who knows the project id read and write
 everything, which for this app means reading other people's orders and writing
-their own at any price. The automatic deploy includes the rules; by hand it is:
+their own at any price. The automatic deploy (not switched on yet) includes the rules; by hand, which
+is how it is done today, it is:
 
 ```bash
 npm run build && firebase deploy --only firestore:rules,hosting
