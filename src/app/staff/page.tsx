@@ -135,16 +135,19 @@ function StaffScreen() {
     return () => clearTimeout(timer);
   }, [orders, ordersLoading, chime, buzz]);
 
-  // Browsers only allow audio after a gesture; arm on the first interaction.
+  // Browsers only allow audio after a gesture; try on every interaction until
+  // the sound is really on. pointerdown alone is not enough: in Chrome a touch
+  // pointerdown is not a user activation for audio, but pointerup and click
+  // are. Listeners are passive and never stop the tap itself.
   useEffect(() => {
-    const onFirst = () => unlock();
-    window.addEventListener("pointerdown", onFirst, { once: true });
-    window.addEventListener("keydown", onFirst, { once: true });
+    if (armed) return;
+    const events = ["pointerdown", "pointerup", "click", "keydown"] as const;
+    const onGesture = () => unlock();
+    for (const type of events) window.addEventListener(type, onGesture);
     return () => {
-      window.removeEventListener("pointerdown", onFirst);
-      window.removeEventListener("keydown", onFirst);
+      for (const type of events) window.removeEventListener(type, onGesture);
     };
-  }, [unlock]);
+  }, [armed, unlock]);
 
   const tables = useMemo(
     () => [...new Set(orders.map((o) => o.tableNumber))].sort((a, b) => a - b),
@@ -349,15 +352,32 @@ function StaffScreen() {
           className="shell-wide pb-2.5"
         />
 
-        {/* The line stays once the sound is armed, with new words: the first
-            tap anywhere arms it, and if the line disappeared the board would
-            jump up under the finger and that tap (often Accept) would land on
-            nothing. */}
+        {/* The first tap anywhere switches the sound on, so this line must
+            not change height when it does: if it shrank or disappeared, the
+            board would jump up under the finger and that tap (often Accept)
+            would land on nothing. Both wordings share one grid cell, which is
+            always as tall as the longer one, at any text size. */}
         {!muted ? (
-          <p className="shell-wide text-2xs text-secondary pb-2 font-semibold">
-            {armed
-              ? "Order sound on."
-              : "Tap anywhere to switch the order sound on."}
+          <p
+            data-sound-hint={armed ? "on" : "ask"}
+            className="shell-wide text-2xs text-secondary grid pb-2 font-semibold"
+          >
+            <span
+              aria-hidden={armed ? undefined : true}
+              className={
+                armed ? "[grid-area:1/1]" : "invisible [grid-area:1/1]"
+              }
+            >
+              Order sound on.
+            </span>
+            <span
+              aria-hidden={armed ? true : undefined}
+              className={
+                armed ? "invisible [grid-area:1/1]" : "[grid-area:1/1]"
+              }
+            >
+              Tap anywhere to switch the order sound on.
+            </span>
           </p>
         ) : null}
       </header>

@@ -15,7 +15,10 @@ const STORAGE_KEY = "cafe-qr-order.staff.muted.v1";
 
 export function useOrderChime() {
   const [muted, setMuted] = useState(false);
+  // The sound is actually playable (the AudioContext is running).
   const [armed, setArmed] = useState(false);
+  // The page has had a user gesture, which is all vibration needs.
+  const [touched, setTouched] = useState(false);
   const ctxRef = useRef<AudioContext | null>(null);
 
   useEffect(() => {
@@ -42,15 +45,40 @@ export function useOrderChime() {
       (window as unknown as { webkitAudioContext?: typeof AudioContext })
         .webkitAudioContext;
     if (!Ctor) return null;
-    ctxRef.current ??= new Ctor();
+    if (!ctxRef.current) {
+      const ctx = new Ctor();
+      // A context can also start (or be suspended again) outside unlock(),
+      // for example when the tab comes back to the foreground.
+      ctx.addEventListener?.("statechange", () =>
+        setArmed(ctx.state === "running"),
+      );
+      ctxRef.current = ctx;
+    }
     return ctxRef.current;
   }, []);
 
+  /**
+   * Try to switch the sound on from a user gesture. `armed` only turns true
+   * once the context is actually running: in Chrome a touch pointerdown is not
+   * a user activation for audio (pointerup, touchend and click are), so a
+   * resume() from it can quietly do nothing, and the board must not claim the
+   * sound is on while it is blocked. Callers may call this on every gesture
+   * until `armed` is true.
+   */
   const unlock = useCallback(() => {
+    setTouched(true);
     const ctx = context();
     if (!ctx) return;
-    if (ctx.state === "suspended") void ctx.resume();
-    setArmed(true);
+    if (ctx.state === "running") {
+      setArmed(true);
+      return;
+    }
+    const check = () => setArmed(ctx.state === "running");
+    try {
+      void Promise.resolve(ctx.resume()).then(check, () => {});
+    } catch {
+      /* resume refused */
+    }
   }, [context]);
 
   /** Two-note bell: bright, short, and unmistakably a new order. */
@@ -80,7 +108,7 @@ export function useOrderChime() {
   const buzz = useCallback(() => {
     // Only vibrate once the page has been interacted with — otherwise the
     // browser blocks the call and logs a console error for no benefit.
-    if (muted || !armed) return;
+    if (muted || !touched) return;
     if (typeof navigator !== "undefined" && "vibrate" in navigator) {
       try {
         navigator.vibrate([120, 60, 120]);
@@ -88,7 +116,7 @@ export function useOrderChime() {
         /* unsupported */
       }
     }
-  }, [muted, armed]);
+  }, [muted, touched]);
 
   return { muted, setMuted, armed, unlock, chime, buzz };
 }

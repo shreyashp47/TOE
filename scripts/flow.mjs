@@ -414,9 +414,13 @@ check(
 );
 
 step("10a", "On a freshly opened board, the very first tap still works");
-// The first tap anywhere arms the order sound. It used to also remove the
-// "Tap anywhere…" line, which moved the board up under the finger between
-// press and release, so the first Accept or Mark ready did nothing.
+// The first tap anywhere switches the order sound on. It used to also change
+// the height of the "Tap anywhere…" line (removed, and later a shorter line
+// that wrapped less at large text sizes), which moved the board up under the
+// finger between press and release, so the first Accept or Mark ready did
+// nothing.
+const ASK = "Tap anywhere to switch the order sound on.";
+const ON = "Order sound on.";
 {
   const fresh = watch(await context.newPage(), "fresh-board");
   await fresh.goto(`${BASE}/staff`, { waitUntil: "networkidle" });
@@ -424,9 +428,7 @@ step("10a", "On a freshly opened board, the very first tap still works");
   await ready.waitFor({ timeout: 20_000 });
   check(
     "the fresh board asks for a tap to switch the sound on",
-    await fresh
-      .getByText("Tap anywhere to switch the order sound on.")
-      .isVisible(),
+    await fresh.getByText(ASK, { exact: true }).isVisible(),
   );
   await ready.click(); // once, and never again
   const took = await fresh
@@ -435,17 +437,88 @@ step("10a", "On a freshly opened board, the very first tap still works");
     .then(() => true)
     .catch(() => false);
   check("one tap on Mark ready marked it ready", took);
+  await fresh
+    .getByText(ON, { exact: true })
+    .waitFor({ timeout: 5_000 })
+    .catch(() => {});
   check(
     "and the sound line stayed, now saying it is on",
-    await fresh.getByText("Order sound on.").isVisible(),
+    (await fresh.getByText(ON, { exact: true }).isVisible()) &&
+      !(await fresh.getByText(ASK, { exact: true }).isVisible()),
   );
   await fresh.close();
 }
+
+step(
+  "10a2",
+  "At 390px and 200% text, a slow first tap does not move the ticket",
+);
+// Large text wraps the longer wording onto more lines than the shorter one,
+// so this is where a height change would show. The finger rests for a moment
+// before lifting, which gives the page time to re-render mid-tap, and it lands
+// near the bottom edge of the button, where a jump would miss it.
+{
+  const big = watch(await context.newPage(), "fresh-board-200");
+  await big.setViewportSize({ width: 390, height: 2000 });
+  await big.goto(`${BASE}/staff`, { waitUntil: "networkidle" });
+  await big.addStyleTag({ content: "html { font-size: 200% !important; }" });
+  const served = big.getByRole("button", { name: "Mark served" });
+  await served.waitFor({ timeout: 20_000 });
+  check(
+    "the fresh board asks for a tap to switch the sound on",
+    await big.getByText(ASK, { exact: true }).isVisible(),
+  );
+  await served.evaluate((el) => {
+    // Tap from the top of the page, with no scrolling: once scrolled, the
+    // browser's scroll anchoring can hide a jump that a board opened at the
+    // top (the usual case) would show. The tall viewport keeps the ticket on
+    // screen at 200% text.
+    window.scrollTo({ top: 0, behavior: "instant" });
+    const ticket = el.closest("[role=listitem]");
+    const top = () => ticket.getBoundingClientRect().top;
+    window.__tapTops = [];
+    window.addEventListener("pointerdown", () => window.__tapTops.push(top()), {
+      capture: true,
+      once: true,
+    });
+    window.addEventListener("pointerup", () => window.__tapTops.push(top()), {
+      capture: true,
+      once: true,
+    });
+  });
+  await big.waitForTimeout(300);
+  const box = await served.boundingBox();
+  check(
+    "the ticket is on screen with the page at the top",
+    (await big.evaluate(() => window.scrollY)) === 0 &&
+      box.y + box.height <= 2000,
+    JSON.stringify(box),
+  );
+  await big.mouse.move(box.x + box.width / 2, box.y + box.height - 3);
+  await big.mouse.down();
+  await big.waitForTimeout(400); // the sound switches on here, mid-tap
+  await big.mouse.up();
+  const tops = await big.evaluate(() => window.__tapTops);
+  check(
+    "the ticket did not move between press and release",
+    tops.length === 2 && tops[0] === tops[1],
+    JSON.stringify(tops),
+  );
+  const took = await big
+    .getByRole("button", { name: "Complete" })
+    .waitFor({ timeout: 5_000 })
+    .then(() => true)
+    .catch(() => false);
+  check("one tap on Mark served marked it served", took);
+  check(
+    "and the line now says the sound is on",
+    await big.getByText(ON, { exact: true }).isVisible(),
+  );
+  await big.close();
+}
 await staff
-  .getByRole("button", { name: "Mark served" })
+  .getByRole("button", { name: "Complete" })
   .waitFor({ timeout: 10_000 });
-await staff.getByRole("button", { name: "Mark served" }).click();
-await staff.waitForTimeout(400);
 await staff.getByRole("button", { name: "Complete" }).click();
 await staff.waitForTimeout(600);
 

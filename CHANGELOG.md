@@ -110,7 +110,11 @@ Work that is built but not yet merged is tracked in
 - The first tap on a freshly opened staff board did nothing: it switched the
   order sound on and removed the _Tap anywhere to switch the order sound on_
   line, which moved the board up under the finger, so that first **Accept** or
-  **Mark ready** was lost. The line now stays and reads _Order sound on._
+  **Mark ready** was lost. The line now keeps the same height at any text size
+  and reads _Order sound on._ once the sound is on
+- The staff board could say the order sound was on while the browser still
+  blocked it (in Chrome a touch press alone does not unlock audio). It now
+  tries again on release and click, and says so only once sound can play
 - Tapping between owner screens after a deploy could land on raw text at
   `/admin.txt`. A tab already stranded on a `.txt` address is sent back to its
   page
