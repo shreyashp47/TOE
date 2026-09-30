@@ -50,7 +50,8 @@ except adding a new barista's account.
 - **The counter phone** — open **toe-cafe.web.app/staff** and sign in. New orders appear on their
   own, oldest first, with a wait timer, a chime and a vibration. Browsers only
   allow sound after a tap, so tap the screen once at the start of a shift (the
-  board says so until you do). A table's **first order** lands in **New guests
+  board says so until you do). If the owner has turned on **Approve new
+  tables**, a table's **first order** lands in **New guests
   — check the table** at the top of the board: look at that table, and if
   someone is sitting there tap **Accept** (it goes to the kitchen), otherwise
   **Reject** (_No one at this table_ is already picked). Accepting opens the
@@ -89,8 +90,11 @@ except adding a new barista's account.
   carries its table's secret code, and orders without it are turned away (see
   [Orders from outside the cafe](#orders-from-outside-the-cafe)). A card never
   needs reprinting after a menu or price change; only after **New code** for
-  that table. The same page has **Confirm new guests before orders reach the
-  kitchen**, on unless you switch it off; see
+  that table.
+- **Approve new tables** — a switch near the top of the owner dashboard
+  (`/admin`). Off (the default): every order goes straight to the kitchen. On:
+  a table's first order waits for staff to tap **Accept**, and then its orders
+  go straight through for 3 hours. See
   [Orders from outside the cafe](#orders-from-outside-the-cafe).
 - **Reports** — _Reports_ (`/admin/reports`) shows revenue, order count, average
   order, revenue by day and best sellers for a month or a custom range, with a
@@ -605,7 +609,8 @@ on the free plan:
   expired — please scan the QR code on your table."_ If a card is photographed
   or goes missing, press **New code** on that table's card and reprint it; the
   old card stops working at once.
-- **Staff confirm new guests.** A table's first order arrives as _Waiting for
+- **Staff confirm new guests** (**Approve new tables**, off unless the owner
+  turns it on). A table's first order arrives as _Waiting for
   the counter_ (`pending`) in its own section of the board, and the customer's
   phone says _"Waiting for the counter to confirm your table"_. Staff glance at
   the table and tap **Accept** — the order goes to the kitchen and the table
@@ -613,12 +618,12 @@ on the free plan:
   orders skip the wait; it closes by itself 3 hours after staff last accepted
   or moved on one of its orders, or at once with **Close** on the board. The
   rules refuse a straight-to-the-kitchen order on a closed table, so a phone
-  cannot skip the step. The cost is one tap per new group. The owner can switch
-  it off on `/admin/qr` (**Confirm new guests before orders reach the
-  kitchen**); it is **on by default**, including straight after the deploy
-  that introduces it, when every table starts closed. After that deploy,
-  reload the counter tablet: a page from before it cannot accept guests, and
-  an old customer page is refused on a closed table until it reloads.
+  cannot skip the step. The cost is one tap per new group. The owner turns it
+  on with **Approve new tables** on the dashboard (`/admin`); it is **off by
+  default**, so deploying it changes nothing until then. Before turning it on,
+  reload the counter tablet (a page from before the deploy cannot accept
+  guests); a customer page from before the deploy is refused on a closed table
+  once it is on, until it reloads.
 - **Size caps:** at most 20 different items, 20 of each, and ₹10,000 per order.
 - **Reject** on the staff board, for whatever still gets through.
 
@@ -628,7 +633,9 @@ put the new cards out straight away — the old ones stop working. A table added
 later gets a code automatically once codes are in use.
 
 What it does not stop: someone who photographs a card can still send an order
-for that table from anywhere — but while the table is closed it only reaches
+for that table from anywhere. With **Approve new tables** off (the default) it
+goes to the kitchen like any other; with it on, while the table is closed it
+only reaches
 the counter's _New guests_ list, where nobody at the table means **Reject**; and
 while it is open (a group is sitting there) it goes to the kitchen, until the
 table is closed or its code renewed. Waiting orders are not counted in the

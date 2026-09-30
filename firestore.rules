@@ -59,17 +59,22 @@ service cloud.firestore {
         || request.resource.data.get("tableKey", "") == get(path).data.key;
     }
 
-    // The order may skip the "check the table" step: the table is open, or
-    // the owner has switched confirmation off. See /tableSessions below.
+    // The order may skip the "check the table" step: the owner has not
+    // switched confirmation on, or the table is open. See /tableSessions below.
+    //
+    // Confirmation is OFF unless config/ordering says confirmNewGuests: true
+    // (a missing document or field means off), so by default every order goes
+    // straight to the kitchen, as it did before this step existed.
     //
     // Called only for a `preparing` order, and last, so a `pending` order and
-    // a malformed one cost no extra read. Two reads when it runs (the table's
-    // session, and config/ordering only if the table is closed).
+    // a malformed one cost no extra read. One read when confirmation is off
+    // (config/ordering), two when it is on (and the table's session).
     function tableOpenOrUnconfirmed() {
       let session = /databases/$(database)/documents/tableSessions/$(string(request.resource.data.tableNumber));
       let ordering = /databases/$(database)/documents/config/ordering;
-      return (exists(session) && get(session).data.openUntil > request.time)
-        || (exists(ordering) && get(ordering).data.get("confirmNewGuests", true) == false);
+      return !exists(ordering)
+        || get(ordering).data.get("confirmNewGuests", false) != true
+        || (exists(session) && get(session).data.openUntil > request.time);
     }
 
     // -- menu: public read, owner write ------------------------------------
@@ -115,8 +120,9 @@ service cloud.firestore {
       //   - the exact set of fields, so nothing extra can be injected
       //   - status, which a customer could otherwise set to "completed" and
       //     make an unpaid order look settled. An order starts `pending`
-      //     (waiting for staff to confirm the table) or, only on a table staff
-      //     have opened, `preparing` (tableOpenOrUnconfirmed above)
+      //     (waiting for staff to confirm the table) or `preparing`; with the
+      //     owner's "Approve new tables" on, `preparing` only on a table staff
+      //     have opened (tableOpenOrUnconfirmed above)
       //   - createdAt == request.time, so a phone with a wrong clock cannot
       //     backdate an order out of today's takings
       //   - customerUid, which must equal the caller's own anonymous uid, so a
@@ -422,8 +428,8 @@ service cloud.firestore {
     // -- tableSessions: which tables staff have confirmed --------------------
     // { openUntil: timestamp } at tableSessions/{tableNumber}. While openUntil
     // is in the future the table is open and its orders go straight to the
-    // kitchen; otherwise they arrive `pending` for staff to check the table
-    // (src/lib/table-open.ts). This is what stops an order from someone who
+    // kitchen; otherwise, while the owner has "Approve new tables" on, they
+    // arrive `pending` for staff to check the table (src/lib/table-open.ts). This is what stops an order from someone who
     // once had the QR link but is not in the cafe.
     //
     // Public read: whether a table is open says nothing worth hiding, and the
@@ -466,11 +472,11 @@ service cloud.firestore {
       allow write: if isOwner() && !(docId in ["tables", "ordering"]);
     }
 
-    // The owner's "Confirm new guests before orders reach the kitchen" switch,
-    // { confirmNewGuests: bool }. A missing document means ON (see
-    // tableOpenOrUnconfirmed above), so the protection is the default. Public
-    // read, like the rest of config: the customer's phone reads it to choose
-    // the order's status.
+    // The owner's "Approve new tables" switch, { confirmNewGuests: bool }. A
+    // missing document means OFF (see tableOpenOrUnconfirmed above): the owner
+    // chose auto-accept as the default and turns approval on when staff are
+    // ready for it. Public read, like the rest of config: the customer's phone
+    // reads it to choose the order's status.
     match /config/ordering {
       allow create, update: if isOwner()
         && request.resource.data.keys().hasOnly(["confirmNewGuests"])

@@ -256,8 +256,8 @@ describe("customer: waiting for the counter", () => {
   });
 });
 
-describe("owner: the confirm-new-guests switch", () => {
-  it("is on by default and the owner can switch it off and on", async () => {
+describe("owner: the 'Approve new tables' switch", () => {
+  it("is off by default and the owner can switch it on and off", async () => {
     const user = userEvent.setup();
     await demoAuthRepo.signIn(
       DEMO_CREDENTIALS.owner.email,
@@ -269,22 +269,26 @@ describe("owner: the confirm-new-guests switch", () => {
       </DataProvider>,
     );
 
+    expect(
+      screen.getByRole("heading", { name: "Approve new tables" }),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Off: every order goes straight to the kitchen/),
+    ).toBeVisible();
     const toggle = await screen.findByRole("switch");
-    expect(toggle).toHaveAttribute("aria-checked", "true");
-    expect(toggle).toHaveAccessibleName(
-      /Confirm new guests before orders reach the kitchen/,
-    );
-
-    await user.click(toggle);
-    await waitFor(() =>
-      expect(loadDemoState().ordering.confirmNewGuests).toBe(false),
-    );
+    await waitFor(() => expect(toggle).toBeEnabled());
     expect(toggle).toHaveAttribute("aria-checked", "false");
-    expect(screen.getByText(/straight to\s+the kitchen/)).toBeVisible();
+    expect(toggle).toHaveAccessibleName(/Approve new tables/);
 
     await user.click(toggle);
     await waitFor(() =>
       expect(loadDemoState().ordering.confirmNewGuests).toBe(true),
+    );
+    expect(toggle).toHaveAttribute("aria-checked", "true");
+
+    await user.click(toggle);
+    await waitFor(() =>
+      expect(loadDemoState().ordering.confirmNewGuests).toBe(false),
     );
   });
 
@@ -300,6 +304,6 @@ describe("owner: the confirm-new-guests switch", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "That didn't save",
     );
-    expect(loadDemoState().ordering.confirmNewGuests).toBe(true);
+    expect(loadDemoState().ordering.confirmNewGuests).toBe(false);
   });
 });

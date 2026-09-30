@@ -402,7 +402,7 @@ export function useTableSessions(enabled = true): {
 
 const EMPTY_SESSIONS: TableSessions = {};
 
-/** The owner's "confirm new guests" switch, live. ON until known otherwise. */
+/** The owner's "Approve new tables" switch, live. OFF until known otherwise. */
 export function useOrderingSettings(): {
   settings: OrderingSettings;
   loading: boolean;

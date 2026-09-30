@@ -1,5 +1,7 @@
 /**
- * Open tables: staff confirm new guests before their order reaches the kitchen.
+ * Open tables: staff confirm new guests before their order reaches the kitchen
+ * ("Approve new tables" on the owner's dashboard). OFF unless the owner turns
+ * it on; with it off every order goes straight to the kitchen, as before.
  *
  * The problem. A table's QR link (with its code) works for anyone who has it:
  * a guest from last week, someone who photographed the card. Nothing about a
@@ -22,9 +24,10 @@
  * the group paying and leaving), and neither does anything on a table that has
  * already closed, so "Close table" really closes it. Staff can close one early.
  *
- * firestore.rules enforces the split: `pending` is always allowed, `preparing`
- * only while tableSessions/{n}.openUntil > request.time (or when the owner has
- * switched confirmation off in config/ordering). The phone reads both first
+ * firestore.rules enforces the split when the owner has switched it on in
+ * config/ordering: `pending` is always allowed, `preparing` only while
+ * tableSessions/{n}.openUntil > request.time. With it off (or no document)
+ * `preparing` is always allowed. The phone reads both first
  * and picks the status the rules will take; see chooseOrderStatus.
  */
 
@@ -46,23 +49,23 @@ export type TableSessions = Record<number, number>;
 
 export interface OrderingSettings {
   /**
-   * Orders from a table staff have not confirmed wait as `pending`. ON unless
-   * the owner has switched it off: the protection is the default, and a cafe
-   * that has never visited the setting has it.
+   * Orders from a table staff have not confirmed wait as `pending`. OFF unless
+   * the owner has switched it on: the owner chose auto-accept as the default,
+   * so nothing changes for the cafe until staff are ready to approve tables.
    */
   confirmNewGuests: boolean;
 }
 
-export const DEFAULT_ORDERING: OrderingSettings = { confirmNewGuests: true };
+export const DEFAULT_ORDERING: OrderingSettings = { confirmNewGuests: false };
 
-/** config/ordering as stored. Anything unreadable means the default (ON). */
+/** config/ordering as stored. Anything unreadable means the default (OFF). */
 export function parseOrderingSettings(raw: unknown): OrderingSettings {
   const value =
     raw && typeof raw === "object"
       ? (raw as { confirmNewGuests?: unknown }).confirmNewGuests
       : undefined;
   return {
-    confirmNewGuests: typeof value === "boolean" ? value : true,
+    confirmNewGuests: typeof value === "boolean" ? value : false,
   };
 }
 

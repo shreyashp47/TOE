@@ -180,8 +180,8 @@ describe("placeOrder", () => {
       ],
       menu,
     });
-    // Table 5 has not been confirmed by staff, so the order waits for them.
-    expect(order.status).toBe("pending");
+    // "Approve new tables" is off by default, so it goes to the kitchen.
+    expect(order.status).toBe("preparing");
     expect(order.tableNumber).toBe(5);
     expect(order.total).toBe(first.price * 2);
   });
@@ -257,7 +257,7 @@ describe("placeOrder", () => {
     });
   });
 
-  describe("waiting for the counter (open tables)", () => {
+  describe("new guests: approval off by default", () => {
     const place = (tableNumber = 4, tableKey?: string) =>
       placeOrder({
         tableNumber,
@@ -268,6 +268,28 @@ describe("placeOrder", () => {
     beforeEach(() => {
       forgetLastOrder();
       vi.restoreAllMocks();
+    });
+
+    it("by default (approval off) sends a closed table's order straight to preparing", async () => {
+      expect(loadDemoState().ordering.confirmNewGuests).toBe(false);
+      const create = vi.spyOn(demoOrderRepo, "create");
+      expect((await place()).status).toBe("preparing");
+      expect(create).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("waiting for the counter (owner has 'Approve new tables' on)", () => {
+    const place = (tableNumber = 4, tableKey?: string) =>
+      placeOrder({
+        tableNumber,
+        cartLines: [line()],
+        menu: [item()],
+        tableKey,
+      });
+    beforeEach(() => {
+      forgetLastOrder();
+      vi.restoreAllMocks();
+      demoSaveOrdering({ confirmNewGuests: true });
     });
 
     it("sends an order from a closed table as pending", async () => {
@@ -337,12 +359,25 @@ describe("placeOrder", () => {
       expect(loadDemoState().orders).toHaveLength(0);
     });
 
-    it("sends pending when it cannot check the table", async () => {
+    it("when it cannot check, tries preparing and falls back to pending", async () => {
+      vi.spyOn(demoSessionRepo, "readSettings").mockRejectedValue(
+        new Error("offline"),
+      );
+      const create = vi.spyOn(demoOrderRepo, "create");
+      expect((await place()).status).toBe("pending");
+      expect(create.mock.calls.map(([input]) => input.status)).toEqual([
+        "preparing",
+        "pending",
+      ]);
+      expect(loadDemoState().orders).toHaveLength(1);
+    });
+
+    it("when it cannot check but the table is open, goes straight through", async () => {
       vi.spyOn(demoSessionRepo, "readSettings").mockRejectedValue(
         new Error("offline"),
       );
       demoSetTableOpenUntil(4, Date.now() + 3600_000);
-      expect((await place()).status).toBe("pending");
+      expect((await place()).status).toBe("preparing");
     });
 
     it("still reports a wrong table code after the retry", async () => {

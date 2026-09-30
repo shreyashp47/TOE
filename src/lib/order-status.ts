@@ -102,8 +102,8 @@ export const DEFAULT_STATUS: OrderStatus = "preparing";
 
 /**
  * The two statuses a customer's phone may create an order in. firestore.rules
- * allows `pending` always and `preparing` only on an open table (or with the
- * owner's "confirm new guests" switch off).
+ * allows `pending` always, and `preparing` unless the owner has switched
+ * "Approve new tables" on, in which case only on an open table.
  */
 export type NewOrderStatus = "pending" | "preparing";
 

@@ -29,7 +29,6 @@ import {
   useTableKeys,
   useTables,
 } from "@/components/providers/DataProvider";
-import { NewGuestsSetting } from "@/components/NewGuestsSetting";
 import { TableCodes } from "@/components/TableCodes";
 import { TableListEditor } from "@/components/TableListEditor";
 import { Button } from "@/components/ui/Button";
@@ -100,8 +99,6 @@ export default function QrPage() {
           onSave={saveTables}
         />
       </Card>
-
-      <NewGuestsSetting />
 
       <TableCodes
         tables={tables}

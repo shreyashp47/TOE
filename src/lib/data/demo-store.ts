@@ -64,7 +64,7 @@ interface DemoState {
   dayCounters: Record<string, number>;
   /** tableSessions/{n}.openUntil in Firestore: when each table closes. */
   tableSessions: TableSessions;
-  /** config/ordering. Missing means confirmation ON, as in Firestore. */
+  /** config/ordering. Missing means confirmation OFF, as in Firestore. */
   ordering: OrderingSettings;
 }
 
@@ -151,7 +151,7 @@ function load(): DemoState {
       tableKeys: parseTableKeys((parsed as DemoState)?.tableKeys),
       dayCounters: parseDayCounters((parsed as DemoState)?.dayCounters),
       // States from before open tables have neither: every table is closed
-      // and confirmation is on, exactly like a fresh Firestore project.
+      // and confirmation is off, exactly like a fresh Firestore project.
       tableSessions: parseTableSessions((parsed as DemoState)?.tableSessions),
       ordering: parseOrderingSettings((parsed as DemoState)?.ordering),
       // Older saved states also carry a `seq` counter from the original public
@@ -340,8 +340,8 @@ export function demoCreateOrder(input: NewOrderInput): Order {
   if (orderCapProblems(input.items, orderTotal(input.items)).length > 0) {
     throw new DemoRulesRefusal("order over the size limits");
   }
-  // Mirrors the status check: `pending` always, `preparing` only on an open
-  // table or with confirmation switched off (src/lib/table-open.ts).
+  // Mirrors the status check: `pending` always, `preparing` unless approval
+  // is switched on, and then only on an open table (src/lib/table-open.ts).
   const status = input.status ?? "pending";
   if (status !== "pending" && status !== DEFAULT_STATUS) {
     throw new DemoRulesRefusal("an order starts pending or preparing");

@@ -299,9 +299,10 @@ await adminDoc("tableKeys/42", { method: "DELETE" });
 // Open tables (tableSessions/{n}). The ordinary order tests above and below
 // place `preparing` orders on tables 3, 41 and 42, which the rules only take on
 // an open table, so those are opened here (a month ahead, over REST, which the
-// rules do not govern). Confirmation is left at its default, ON, by deleting
-// any config/ordering a previous run left. The open-tables section at the end
-// uses tables 10-14 and resets them itself.
+// rules do not govern). Confirmation ("Approve new tables") is OFF by default;
+// it is switched ON here, over REST, so those tests exercise the stricter
+// case. The open-tables section at the end checks the default (no document)
+// first, uses tables 10-14 and resets them itself.
 const sessionField = (ms) => ({
   fields: { openUntil: { timestampValue: new Date(ms).toISOString() } },
 });
@@ -313,7 +314,15 @@ const seedSession = async (table, ms) => {
   });
   if (!r.ok) throw new Error(`could not seed a table session: ${r.status}`);
 };
-await adminDoc("config/ordering", { method: "DELETE" });
+const seedOrdering = async (fields) => {
+  const r = await adminDoc("config/ordering", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ fields }),
+  });
+  if (!r.ok) throw new Error(`could not seed config/ordering: ${r.status}`);
+};
+await seedOrdering({ confirmNewGuests: { booleanValue: true } });
 for (const table of [3, 41, 42])
   await seedSession(table, Date.now() + 30 * 24 * 3600_000);
 for (const table of [10, 11, 13, 14])
@@ -1629,6 +1638,32 @@ const sessionDoc = (c, n) => doc(c.db, "tableSessions", String(n));
 const openFor = (ms) => ({ openUntil: Timestamp.fromMillis(Date.now() + ms) });
 const pending = (o = {}) => ({ status: "pending", ...o });
 
+// The default: no config/ordering at all means approval is OFF, so a
+// `preparing` order from a closed table goes straight to the kitchen.
+await adminDoc("config/ordering", { method: "DELETE" });
+await t(
+  "with no config/ordering (the default), a preparing order from a closed table is taken",
+  allowed(() => placeAs(publicC, { tableNumber: 10 })),
+);
+await t(
+  "and a pending one is still taken too",
+  allowed(() => placeAs(publicC, pending({ tableNumber: 10 }))),
+);
+await seedOrdering({});
+await t(
+  "a config/ordering without confirmNewGuests also means off",
+  allowed(() => placeAs(publicC, { tableNumber: 10 })),
+);
+await seedOrdering({ confirmNewGuests: { booleanValue: true } });
+await t(
+  "with confirmNewGuests = true, a preparing order from a closed table is refused",
+  denied(() => placeAs(publicC, { tableNumber: 10 })),
+);
+await t(
+  "and it must come in as pending",
+  allowed(() => placeAs(publicC, pending({ tableNumber: 10 }))),
+);
+
 await t(
   "a customer can place a pending order on a closed table",
   allowed(() => placeAs(publicC, pending({ tableNumber: 10 }))),
@@ -1856,15 +1891,12 @@ await t(
   denied(() => placeAs(publicC, { tableNumber: 10 })),
 );
 await t(
-  "the owner can delete the switch (back to the default, ON)",
-  allowed(async () => {
-    await deleteDoc(orderingDoc(ownerC));
-    await placeAs(publicC, pending({ tableNumber: 10 }));
-  }),
+  "the owner can delete the switch (back to the default, OFF)",
+  allowed(() => deleteDoc(orderingDoc(ownerC))),
 );
 await t(
-  "and a preparing order on a closed table is still refused",
-  denied(() => placeAs(publicC, { tableNumber: 10 })),
+  "and then a preparing order on a closed table is taken again",
+  allowed(() => placeAs(publicC, { tableNumber: 10 })),
 );
 
 console.log(`\n${pass} passed, ${failures.length} failed`);

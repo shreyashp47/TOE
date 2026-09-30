@@ -552,7 +552,8 @@ photographed a card: the link works from home. Nothing a static site on the
 free plan can check tells "at table 4" from "has table 4's link". A person at
 the counter can, by looking.
 
-**Decision: a table's first order waits (`pending`) until staff accept it.
+**Decision: when the owner turns it on, a table's first order waits
+(`pending`) until staff accept it.
 Accept opens the table (`tableSessions/{n} = { openUntil }`); the rules take a
 `preparing` order only while `openUntil > request.time`.** `pending` is always
 allowed, with every other check (code, caps, throttle). The phone reads the
@@ -560,9 +561,10 @@ table and the setting (both public: whether a table is open is harmless) and
 picks the status the rules will take; if `preparing` is refused because the
 table closed a moment earlier, it retries once as `pending`.
 
-- **Cost:** one tap per new group, and two extra document reads per order
-  (the table's session, and `config/ordering` when the table is closed). The
-  board listens to `tableSessions`, at most one small document per table.
+- **Cost:** one tap per new group, and extra document reads per order: one
+  (`config/ordering`) while approval is off, two (that and the table's session)
+  while it is on. The board listens to `tableSessions`, at most one small
+  document per table.
 - **Closing:** by time, with no writes: `openUntil` passes. Accept sets it to
   now + 3h. Staff moving an open table's order to preparing, ready or served
   push it to now + 3h in the same commit — so a table closes 3 hours after the
@@ -577,20 +579,25 @@ table closed a moment earlier, it retries once as `pending`.
 - **Not a sale:** `pending` is on the board but not kitchen work, and reports
   leave it out of revenue like `rejected`. It has one way on (Accept →
   `preparing`) and can be rejected; nothing goes back to it.
-- **Switch:** `config/ordering { confirmNewGuests }`, owner-only, shape-checked.
-  **A missing document means ON**, so the protection is the default — which
-  also means the deploy that introduces it changes behaviour at once: every
-  table starts closed, and the first order from each table after the deploy
-  waits for Accept. That is intended; the owner can switch it off.
-- **Deploying it:** the new pages work with the old rules (a refused
-  `pending` is retried once as `preparing`, which the old rules take and the
-  new ones refuse on a closed table), so rules and Hosting can go out in either
-  order. An **old page** still open on a phone always sends `preparing`, which
-  the new rules refuse on a closed table, and it then says the link has
-  expired. There is no way to let it through in the rules without reopening
-  the hole, so the answer is a reload: the counter tablet should reload after
-  the deploy (the app offers _Reload_), and a customer rescanning gets the new
-  page anyway (pages are served `no-cache`).
+- **Switch:** "Approve new tables" on the owner's dashboard (`/admin`),
+  stored as `config/ordering { confirmNewGuests }`, owner-only,
+  shape-checked. **A missing document (or field, or anything but `true`)
+  means OFF**: every order goes straight to the kitchen, exactly as before
+  this existed. It was first built ON by default, so the protection would be
+  the default; the owner chose auto-accept instead and turns approval on when
+  the staff are ready for it. So the deploy that introduces it changes
+  nothing for the cafe.
+- **Deploying it:** with approval off, the new rules take `preparing` from
+  anyone, so an **old page** still open on a phone (it always sends
+  `preparing`) keeps working, and rules and Hosting can go out in either
+  order. The new page, if it cannot read the setting, sends `preparing` too
+  and falls back to `pending` if refused; against the old rules (which only
+  know `preparing`) a refused `pending` is retried once as `preparing`. Once
+  the owner turns approval **on**, an old page is refused on a closed table and
+  says the link has expired; there is no way to let it through without
+  reopening the hole, so reload the counter tablet before turning it on (a
+  board from before the deploy cannot Accept), and customers rescanning get
+  the new page anyway (pages are served `no-cache`).
 - **Day numbers wait for Accept.** The board numbers every order it sees
   except a `pending` one, and the rules refuse to number an order while it is
   `pending`. So a waiting order has no number, and gets the next one the

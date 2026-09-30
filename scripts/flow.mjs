@@ -1,12 +1,13 @@
 /**
  * Dev-only end-to-end walkthrough of the flows that matter:
- * owner creates table codes -> a typed-in address is turned away -> customer
+ * owner creates table codes and turns "Approve new tables" on (it is off by
+ * default) -> a typed-in address is turned away -> customer
  * places an order from the QR link -> it waits for the counter (a new guest)
  * -> staff accept it on the board, which opens the table -> staff advance the
  * status -> the customer's screen reflects it without a refresh -> a second
  * order from the open table goes straight to the kitchen -> staff close the
  * table -> the next order waits again and staff reject it -> with the owner's
- * "confirm new guests" switch off, orders skip the wait.
+ * "Approve new tables" switch off again, orders skip the wait.
  *
  * Runs against `next dev` (or BASE_URL) in demo mode, where "live" is
  * localStorage + BroadcastChannel. Also fails on any console error.
@@ -119,6 +120,29 @@ check(
 );
 await owner.screenshot({ path: `${OUT}/00-owner-qr-codes.png` });
 const keyedPath = qrLink.replace(/^https?:\/\/[^/]+/, "");
+// "Approve new tables" is off by default (every order goes straight to the
+// kitchen). The owner turns it on from the dashboard for the steps below.
+await owner.goto(`${BASE}/admin`, { waitUntil: "networkidle" });
+const approveSwitch = owner.getByRole("switch", {
+  name: /Approve new tables/,
+});
+await approveSwitch.waitFor({ timeout: 10_000 });
+check(
+  "'Approve new tables' is on the dashboard, off by default",
+  (await approveSwitch.getAttribute("aria-checked")) === "false",
+);
+await approveSwitch.click();
+await owner.waitForFunction(
+  () =>
+    [...document.querySelectorAll("[role=switch]")].some(
+      (el) =>
+        /Approve new tables/.test(el.textContent ?? "") &&
+        el.getAttribute("aria-checked") === "true",
+    ),
+  undefined,
+  { timeout: 10_000 },
+);
+await owner.screenshot({ path: `${OUT}/00b-owner-approve-on.png` });
 // Sign out, so the staff page below starts from its own sign-in.
 await owner.getByRole("button", { name: "Sign out" }).click();
 await owner.close();
@@ -445,7 +469,7 @@ await customer.screenshot({
   fullPage: true,
 });
 
-step("10d", "The owner switches confirmation off; orders skip the wait");
+step("10d", "The owner switches approval off; orders skip the wait");
 // Demo sessions are shared by every tab, so the barista signs out first.
 await staff.getByRole("button", { name: "Sign out" }).click();
 const owner2 = watch(await context.newPage(), "owner");
@@ -453,20 +477,23 @@ await owner2.goto(`${BASE}/staff`, { waitUntil: "networkidle" });
 await owner2.getByRole("button", { name: "Fill owner" }).click();
 await owner2.getByRole("button", { name: "Sign in" }).click();
 await owner2.waitForURL(/\/admin/, { timeout: 20_000 });
-await owner2.goto(`${BASE}/admin/qr`, { waitUntil: "networkidle" });
+await owner2.goto(`${BASE}/admin`, { waitUntil: "networkidle" });
 const guestSwitch = owner2.getByRole("switch", {
-  name: /Confirm new guests before orders reach the kitchen/,
+  name: /Approve new tables/,
 });
 await guestSwitch.waitFor({ timeout: 10_000 });
 check(
-  "the switch is on by default",
+  "the switch is still on from step 0",
   (await guestSwitch.getAttribute("aria-checked")) === "true",
 );
 await guestSwitch.click();
 await owner2.waitForFunction(
   () =>
-    document.querySelector("[role=switch]")?.getAttribute("aria-checked") ===
-    "false",
+    [...document.querySelectorAll("[role=switch]")].some(
+      (el) =>
+        /Approve new tables/.test(el.textContent ?? "") &&
+        el.getAttribute("aria-checked") === "false",
+    ),
   undefined,
   { timeout: 10_000 },
 );
@@ -474,8 +501,7 @@ await owner2.screenshot({ path: `${OUT}/09-owner-switch-off.png` });
 await orderOne("Butter Scone");
 await customer.getByText("Got it!").waitFor({ timeout: 10_000 });
 check("with the switch off, a closed table's order skips the wait", true);
-// Back on, and signed out, so the demo store is left as it was found.
-await guestSwitch.click();
+// Left off: that is the default, and each run starts a fresh browser context.
 await owner2.close();
 
 step("10e", "A code scanned over 3 hours ago asks for a new scan");

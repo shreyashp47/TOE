@@ -118,15 +118,18 @@ export async function placeOrder({
 }
 
 /**
- * Sends the order as `preparing` when the table is open (or the owner has
- * switched confirmation off), otherwise as `pending` for staff to accept
- * (src/lib/table-open.ts). The phone checks first so the rules are not asked
- * for something they will refuse; if it cannot check, it sends `pending`,
- * which the rules always take.
+ * Sends the order as `preparing` when the owner has not switched "Approve new
+ * tables" on (the default) or the table is open, otherwise as `pending` for
+ * staff to accept (src/lib/table-open.ts). The phone checks first so the
+ * rules are not asked for something they will refuse. If it cannot check, it
+ * sends `preparing`, the default: with approval on and the table closed the
+ * rules refuse that, and the retry below sends `pending`. Sending `pending`
+ * blind instead would make an order wait for Accept that the owner never
+ * asked staff to approve.
  *
  * A refusal gets one retry with the other status:
- *   - `preparing` refused: the table closed in the moment between the check
- *     and the order. `pending` goes through.
+ *   - `preparing` refused: approval is on and the table is closed (or closed
+ *     in the moment between the check and the order). `pending` goes through.
  *   - `pending` refused: the rules may be the ones from before this change,
  *     which only knew `preparing` (a deploy puts new pages and new rules out
  *     a moment apart). With the current rules the retry is refused too, so it
@@ -138,7 +141,7 @@ async function createWithStatus(
   bundle: DataBundle,
   input: Omit<NewOrderInput, "status">,
 ): Promise<Order> {
-  let status: NewOrderStatus = "pending";
+  let status: NewOrderStatus = "preparing";
   try {
     const [settings, tableOpen] = await Promise.all([
       bundle.sessions.readSettings(),
@@ -149,7 +152,7 @@ async function createWithStatus(
       tableOpen,
     });
   } catch {
-    /* offline or refused: `pending` is the one the rules always accept */
+    /* could not check: try the default; a refusal is retried as pending */
   }
 
   try {

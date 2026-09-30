@@ -41,22 +41,27 @@ describe("choosing a new order's status", () => {
 });
 
 describe("the owner's switch", () => {
-  it("is ON when nothing has been saved", () => {
+  it("is OFF when nothing has been saved (the owner's chosen default)", () => {
     expect(parseOrderingSettings(undefined)).toEqual({
-      confirmNewGuests: true,
+      confirmNewGuests: false,
     });
-    expect(parseOrderingSettings({})).toEqual({ confirmNewGuests: true });
+    expect(parseOrderingSettings({})).toEqual({ confirmNewGuests: false });
   });
 
   it("reads a saved value", () => {
     expect(parseOrderingSettings({ confirmNewGuests: false })).toEqual({
       confirmNewGuests: false,
     });
+    expect(parseOrderingSettings({ confirmNewGuests: true })).toEqual({
+      confirmNewGuests: true,
+    });
   });
 
-  it("treats anything unreadable as ON, the safe side", () => {
-    expect(parseOrderingSettings({ confirmNewGuests: "no" })).toEqual({
-      confirmNewGuests: true,
+  it("treats anything unreadable as OFF, as the rules do", () => {
+    // firestore.rules only confirms on a stored `true`, so anything else
+    // would make the phone send `pending` for no reason.
+    expect(parseOrderingSettings({ confirmNewGuests: "yes" })).toEqual({
+      confirmNewGuests: false,
     });
   });
 });
@@ -120,8 +125,10 @@ describe("open tables", () => {
       `request.resource.data.openUntil <= request.time + duration.value(${MAX_OPEN_HOURS}, 'h')`,
     );
     expect(TABLE_OPEN_HOURS).toBeLessThan(MAX_OPEN_HOURS);
+    // Missing document or field = OFF, as parseOrderingSettings says.
+    expect(rules).toContain("return !exists(ordering)");
     expect(rules).toContain(
-      'get(ordering).data.get("confirmNewGuests", true) == false',
+      'get(ordering).data.get("confirmNewGuests", false) != true',
     );
   });
 });
