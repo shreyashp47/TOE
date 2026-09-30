@@ -65,26 +65,17 @@ one machine.
 
 ## Next
 
-1. **Switch on automatic deploys**: add the `FIREBASE_SERVICE_ACCOUNT` secret
-   and the `NEXT_PUBLIC_*` repository variables (`gh variable set -f .env.local`).
-   Until then every run of the Deploy workflow stops at "Check the Firebase
-   config is set"
-2. Dependabot majors ([#34](https://github.com/shreyashp47/TOE/issues/34)) —
-   Next 16, TypeScript 7, ESLint 10, jsdom 30, Vitest coverage 5 — one at a
-   time, each through the full checks
-3. The rest of Phase 2 that fits the free tier:
-   - Report print layout that saves as PDF
-   - Keep the staff phone's screen awake while the board is open (Wake Lock)
-4. UPI pay-at-table, once the cafe's UPI ID arrives
-5. Small: at a 380–389px viewport, on items priced ₹200 or more, the − 1 +
-   stepper wraps onto a line under the price instead of sitting beside it
-6. **Check the table cards with real phones.** A tester found that ZXing (the
-   decoder in many Android scanner apps), when it has to locate the code in a
-   photo, fails on some of this encoder's codes — including a real table-card
-   URL — while jsQR and ZXing's grid mode read them. Likely cause: the
-   mask-penalty rule 3 in `src/lib/qr.ts` (around line 408) doesn't follow the
-   spec, so a poor mask can be picked. Scan every printed card with a few
-   phones' camera apps before printing more; fix rule 3 if any fail
+**v0.3.0 is the current finished version.** New work goes into the next
+version, tracked as GitHub issues rather than here:
+
+- [**v0.4.0**](https://github.com/shreyashp47/TOE/milestone/1) — fits the free
+  plan: UPI pay-at-table (#36, needs the cafe's UPI ID), checking the table
+  cards with real phones (#37), report print/PDF (#38), keeping the staff
+  screen awake (#39), automatic deploys (#40), dependency upgrades (#34), and
+  small fixes (#41–#44)
+- [**Needs Blaze plan**](https://github.com/shreyashp47/TOE/milestone/2) — push
+  notifications (#45), monthly report email (#46), dish photos (#47), App Check
+  (#48), automatic retention (#49), server-side order totals (#27)
 
 ## Waiting on the owner
 
