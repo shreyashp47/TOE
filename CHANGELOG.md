@@ -9,6 +9,20 @@ Work that is built but not yet merged is tracked in
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-09-30
+
+The owner's release: order history, a redesigned menu screen, the cafe's own
+table list, daily order numbers, table codes on the QR cards and **Approve new
+tables**, plus the move to toe-cafe.web.app.
+
+### Upgrading
+
+- Deploy rules and hosting together:
+  `firebase deploy --only firestore,hosting:app`
+- Nothing changes for customers until the owner acts. **Approve new tables** is
+  off by default, and table codes protect nothing until the owner presses
+  **Create codes for all tables** on _/admin/qr_ and reprints every card
+
 ### Added
 
 - Daily order numbers: every day starts again at **#0001** (midnight India
@@ -107,6 +121,9 @@ Work that is built but not yet merged is tracked in
 
 ### Fixed
 
+- QR codes of version 7 and up (111 bytes or more) never scanned: the encoder
+  did not write the version information those versions require. Table cards
+  (version 3–4) were never affected; a UPI payment link would have been
 - The first tap on a freshly opened staff board did nothing: it switched the
   order sound on and removed the _Tap anywhere to switch the order sound on_
   line, which moved the board up under the finger, so that first **Accept** or
@@ -255,6 +272,7 @@ customer, staff and owner flows verified end to end on the live site.
   ([#30](https://github.com/shreyashp47/TOE/issues/30))
 - _Complete_ on a _Ready_ ticket does nothing
 
-[Unreleased]: https://github.com/shreyashp47/TOE/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/shreyashp47/TOE/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/shreyashp47/TOE/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/shreyashp47/TOE/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/shreyashp47/TOE/releases/tag/v0.1.0

@@ -15,8 +15,7 @@ toe-cafe.web.app, so old bookmarks and any QR card printed with the old address
 still land on the right table. See [decisions](./decisions.md#a-second-hosting-site-not-a-new-project)
 for why it is a second site rather than a rename.
 
-`main` is live: v0.2.0 plus everything under _Unreleased_ in the
-[changelog](../CHANGELOG.md), last deployed on 2026-09-30 by hand with
+`main` is live: **v0.3.0** (see the [changelog](../CHANGELOG.md)), last deployed on 2026-09-30 by hand with
 `firebase deploy --only firestore,hosting:app`. The automatic deploy workflow
 exists but is not switched on yet (its secret and variables are not set).
 
@@ -79,8 +78,13 @@ one machine.
 4. UPI pay-at-table, once the cafe's UPI ID arrives
 5. Small: at a 380–389px viewport, on items priced ₹200 or more, the − 1 +
    stepper wraps onto a line under the price instead of sitting beside it
-6. Once the above settles, tag **v0.3.0** from `main` and move _Unreleased_ in
-   the changelog under it — a suggestion, not yet decided
+6. **Check the table cards with real phones.** A tester found that ZXing (the
+   decoder in many Android scanner apps), when it has to locate the code in a
+   photo, fails on some of this encoder's codes — including a real table-card
+   URL — while jsQR and ZXing's grid mode read them. Likely cause: the
+   mask-penalty rule 3 in `src/lib/qr.ts` (around line 408) doesn't follow the
+   spec, so a poor mask can be picked. Scan every printed card with a few
+   phones' camera apps before printing more; fix rule 3 if any fail
 
 ## Waiting on the owner
 
@@ -121,6 +125,8 @@ relying on the September report.
 
 ## Done
 
+- 2026-09-30 — **v0.3.0** tagged and live. QR codes of version 7 and up now
+  scan (needed for UPI links)
 - 2026-09-30 — The first tap on a freshly opened staff board acts (the sound
   hint no longer shifts the board under the finger, at any text size), and
   _Order sound on_ shows only once sound really plays
