@@ -12,6 +12,8 @@
  * throws in the browser.
  */
 
+import { readUpiPayee, type UpiPayee } from "./upi";
+
 const read = (value: string | undefined) => (value ?? "").trim();
 
 const firebaseKeysFilled = [
@@ -71,4 +73,17 @@ export function getTableNumbers(): number[] {
 /** Absolute base URL baked into printed QR codes, if the owner pinned one. */
 export function getBaseUrl(): string {
   return read(process.env.NEXT_PUBLIC_BASE_URL);
+}
+
+/**
+ * The cafe's UPI payee, or `null` when UPI pay-at-table is switched off. Off is
+ * the default: with `NEXT_PUBLIC_UPI_ID` unset (or not a valid UPI ID) nothing
+ * UPI-related renders anywhere. See src/lib/upi.ts.
+ */
+export function getUpiPayee(): UpiPayee | null {
+  return readUpiPayee(
+    process.env.NEXT_PUBLIC_UPI_ID,
+    process.env.NEXT_PUBLIC_UPI_PAYEE_NAME,
+    getCafeName(),
+  );
 }

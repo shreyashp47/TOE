@@ -31,6 +31,27 @@ export interface ButtonProps extends ComponentProps<"button"> {
   children?: ReactNode;
 }
 
+/**
+ * The button look, for the rare element that has to be something else — a
+ * `upi://` link must be a real `<a>` for the phone to hand it to a UPI app.
+ */
+export function buttonClassName({
+  variant = "primary",
+  size = "md",
+  fullWidth = false,
+  className,
+}: Pick<ButtonProps, "variant" | "size" | "fullWidth" | "className"> = {}) {
+  return cn(
+    "rounded-pill font-round inline-flex items-center justify-center font-semibold",
+    "transition-[transform,background-color,filter] duration-150",
+    "active:scale-[.97] disabled:pointer-events-none disabled:opacity-45",
+    VARIANTS[variant],
+    SIZES[size],
+    fullWidth && "w-full",
+    className,
+  );
+}
+
 export function Button({
   variant = "primary",
   size = "md",
@@ -43,15 +64,7 @@ export function Button({
   return (
     <button
       type={type}
-      className={cn(
-        "rounded-pill font-round inline-flex items-center justify-center font-semibold",
-        "transition-[transform,background-color,filter] duration-150",
-        "active:scale-[.97] disabled:pointer-events-none disabled:opacity-45",
-        VARIANTS[variant],
-        SIZES[size],
-        fullWidth && "w-full",
-        className,
-      )}
+      className={buttonClassName({ variant, size, fullWidth, className })}
       {...rest}
     >
       {children}

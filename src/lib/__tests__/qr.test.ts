@@ -153,4 +153,13 @@ describe("qr encoder", () => {
     expect(svg).toContain("viewBox");
     expect(svg).toContain("<rect");
   });
+
+  it("labels the SVG for a screen reader, escaping the label", () => {
+    expect(qrToSvg("https://cafe.web.app/order?table=2")).toContain(
+      'aria-label="Table QR code"',
+    );
+    expect(
+      qrToSvg("upi://pay?pa=a@b", { label: 'Pay "Mochi & Beans" <3' }),
+    ).toContain('aria-label="Pay &quot;Mochi &amp; Beans&quot; &lt;3"');
+  });
 });

@@ -15,6 +15,7 @@ import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { SparkleBurst } from "@/components/Doodles";
 import { Icon } from "@/components/icons";
 import { Mascot } from "@/components/Mascot";
+import { UpiPay } from "@/components/UpiPay";
 import {
   DataProvider,
   useMenu,
@@ -28,6 +29,7 @@ import { SpeechBubble } from "@/components/ui/SpeechBubble";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { useCart } from "@/hooks/useCart";
 import { useTableQuery } from "@/hooks/useTableQuery";
+import { getUpiPayee } from "@/lib/config";
 import { formatINR, lineSubtotal } from "@/lib/money";
 import {
   CUSTOMER_STEPS,
@@ -186,6 +188,10 @@ function StatusScreen({
 
   const done = isFinalForCustomer(order.status);
   const activeStep = stepIndex(order.status);
+  // Off unless the owner set NEXT_PUBLIC_UPI_ID. A completed order has been
+  // closed at the counter, which is where it was paid, so stop offering it.
+  const upiPayee = getUpiPayee();
+  const offerUpi = upiPayee !== null && order.status !== "completed";
 
   return (
     <div className="relative min-h-svh pb-8">
@@ -264,14 +270,24 @@ function StatusScreen({
           </ul>
         </Card>
 
-        <p className="border-line bg-tan/50 text-body rounded-md border-2 border-dashed px-4 py-3 text-center text-sm">
-          <Icon
-            name="leaf"
-            size={16}
-            className="mr-1 inline-block align-[-2px]"
+        {offerUpi ? (
+          <UpiPay
+            payee={upiPayee}
+            amount={order.total}
+            tableNumber={tableNumber}
+            orderNumber={order.orderNumber}
           />
-          Pay at the counter when you&apos;re done. Nothing to install, no OTP.
-        </p>
+        ) : (
+          <p className="border-line bg-tan/50 text-body rounded-md border-2 border-dashed px-4 py-3 text-center text-sm">
+            <Icon
+              name="leaf"
+              size={16}
+              className="mr-1 inline-block align-[-2px]"
+            />
+            Pay at the counter when you&apos;re done. Nothing to install, no
+            OTP.
+          </p>
+        )}
 
         <div className="flex flex-col gap-2 pb-6 sm:flex-row">
           <Button

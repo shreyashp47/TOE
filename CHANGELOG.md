@@ -14,6 +14,15 @@ Work that is built but not yet merged is tracked in
 - `docs/progress.md` — what is live, what is in flight, and what is waiting on a
   decision
 - This changelog, issue and pull request templates
+- Optional UPI pay-at-table: with `NEXT_PUBLIC_UPI_ID` set, the order
+  confirmation shows a _Pay by UPI_ button and QR code with the amount and table
+  filled in, and tells the customer to show the payment at the counter. Off by
+  default; nothing UPI-related renders without it
+
+### Fixed
+
+- QR codes of version 7 and up (111+ bytes) did not scan: the encoder never
+  wrote the version block. Table cards were too short to be affected
 
 ## [0.1.0] — 2026-09-27
 

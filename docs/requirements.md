@@ -148,7 +148,9 @@ A minimal-infrastructure web-based ordering system for a small cafe (6–10 tabl
 - Background push notifications (screen-off alerts)
 - Owner admin dashboard for menu management
 - Automated scheduled monthly reports (email/PDF)
-- Online payment integration
+- Online payment integration — _partly: an optional UPI pay-at-table link and QR
+  with the amount filled in, off until a UPI ID is set. No gateway, so payment
+  is still confirmed at the counter._
 - Custom domain
 
 ## 11. Open Questions

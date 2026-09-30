@@ -530,11 +530,16 @@ export function encodeQr(text: string): Matrix {
  */
 export function qrToSvg(
   text: string,
-  options?: { moduleSize?: number; quiet?: number },
+  options?: { moduleSize?: number; quiet?: number; label?: string },
 ): string {
   const matrix = encodeQr(text);
   const quiet = options?.quiet ?? 4;
   const size = matrix.length + quiet * 2;
+  // the label ends up inside an attribute, so escape what would break out of it
+  const label = (options?.label ?? "Table QR code")
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;");
 
   let path = "";
   for (let r = 0; r < matrix.length; r += 1) {
@@ -545,7 +550,7 @@ export function qrToSvg(
 
   return [
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${size}"`,
-    ` shape-rendering="crispEdges" role="img" aria-label="Table QR code">`,
+    ` shape-rendering="crispEdges" role="img" aria-label="${label}">`,
     `<rect width="${size}" height="${size}" fill="#fff"/>`,
     `<path d="${path}" fill="#000"/>`,
     `</svg>`,

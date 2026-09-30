@@ -102,15 +102,15 @@ Everything below is a real screenshot at phone width, from the demo build.
 
 ### Routes
 
-| Route                              | Who      | What it does                                                  |
-| ---------------------------------- | -------- | ------------------------------------------------------------- |
-| `/order?table=N`                   | Customer | Menu with category rail, cart bottom sheet, place order       |
-| `/order/confirmation?table=N&id=…` | Customer | Order number and live `Received → Preparing → Ready → Served` |
-| `/staff`                           | Staff    | Live order board, status actions, sound + vibration alert     |
-| `/admin`                           | Owner    | Menu management, availability toggles, today's special        |
-| `/admin/reports`                   | Owner    | Monthly / custom-range revenue, AOV, best sellers, CSV        |
-| `/admin/qr`                        | Owner    | Printable QR tent card per table                              |
-| `/offline`                         | Anyone   | Service-worker fallback when the wifi drops                   |
+| Route                              | Who      | What it does                                                                      |
+| ---------------------------------- | -------- | --------------------------------------------------------------------------------- |
+| `/order?table=N`                   | Customer | Menu with category rail, cart bottom sheet, place order                           |
+| `/order/confirmation?table=N&id=…` | Customer | Order number, live `Received → Preparing → Ready → Served`, optional _Pay by UPI_ |
+| `/staff`                           | Staff    | Live order board, status actions, sound + vibration alert                         |
+| `/admin`                           | Owner    | Menu management, availability toggles, today's special                            |
+| `/admin/reports`                   | Owner    | Monthly / custom-range revenue, AOV, best sellers, CSV                            |
+| `/admin/qr`                        | Owner    | Printable QR tent card per table                                                  |
+| `/offline`                         | Anyone   | Service-worker fallback when the wifi drops                                       |
 
 ---
 
@@ -167,6 +167,14 @@ NEXT_PUBLIC_BASE_URL=https://yourcafe.web.app
 ```
 
 Restart `npm run dev`. The demo banner disappears and the app talks to Firestore.
+
+Optionally let customers pay by UPI from the confirmation screen (see
+[UPI pay-at-table](#upi-pay-at-table-optional)):
+
+```ini
+NEXT_PUBLIC_UPI_ID=yourcafe@okaxis
+NEXT_PUBLIC_UPI_PAYEE_NAME="Mochi and Beans Cafe"   # defaults to NEXT_PUBLIC_CAFE_NAME
+```
 
 > **Why this is safe:** the Firebase SDK is behind a dynamic `import()`, so it is
 > never downloaded unless these variables are present. A demo-mode visitor gets a
@@ -410,6 +418,48 @@ The number lives in two places — `firestore.rules` and `ORDER_GAP_SECONDS` in
 [`src/lib/order-throttle.ts`](./src/lib/order-throttle.ts) — and a unit test
 fails if they disagree.
 
+### UPI pay-at-table (optional)
+
+Off unless `NEXT_PUBLIC_UPI_ID` is set, and **off on the live site today** — the
+owner has not supplied a UPI ID yet. With it set, the order confirmation shows a
+_Pay by UPI_ card:
+
+- a **Pay ₹240 with a UPI app** button — a
+  `upi://pay?pa=…&pn=…&am=240.00&cu=INR&tn=Table 3 - Order 417` link, which a
+  phone hands to GPay, PhonePe, Paytm or BHIM with the amount already filled in
+- a **QR code of the same link**, for paying from a different phone at the table
+  (drawn on the phone by the same encoder as the table cards — no QR service
+  sees the UPI ID or the amount)
+- the sentence that matters most: _"Show the payment screen at the counter. We
+  don't get told when a UPI payment goes through."_
+
+That last line is the whole limitation. This is a pre-filled link, not a
+payment integration: there is no gateway, no merchant account and no callback,
+so nothing in the app ever learns that money moved, and no order is marked paid.
+Staff confirm UPI payments the way they would for a UPI sticker by the till — by
+looking at the customer's screen or the cafe's UPI app. A real integration needs
+a payment provider and a server to receive its callback (a Blaze-plan function
+at minimum), and is not planned.
+
+Things worth knowing before you switch it on:
+
+- **Place and pay one real order yourself first.** The app checks the ID is
+  _shaped_ like a UPI ID (`name@bank`) and ignores one that isn't, but it cannot
+  tell whether the ID belongs to the cafe.
+- **A business UPI ID works better than a personal one.** Some UPI apps limit or
+  warn on payments opened from a link to a personal ID. A merchant ID from the
+  cafe's bank, or a business app (GPay for Business, PhonePe Business, Paytm for
+  Business), avoids that.
+- **The amount is the order's stored total,** which comes from the customer's
+  phone (see [the limits section](#what-the-rules-cannot-do)). The staff board's
+  mismatch warning applies here too: check a flagged ticket before accepting a
+  UPI payment for it.
+- A completed order stops offering UPI: it was closed at the counter, which is
+  where it was settled.
+
+The link is built in [`src/lib/upi.ts`](./src/lib/upi.ts), and its tests pin the
+exact URI, the encoding of every parameter and a scan of the QR code.
+
 ### Old orders
 
 Nothing deletes orders automatically: the requirement is to keep _at least_ six
@@ -575,7 +625,10 @@ node scripts/flow.mjs                  # customer → staff → customer, end to
   sums, per-day buckets, half-open range boundaries (so months never double
   count), year roll-over, CSV escaping.
 - **QR encoder** — round-tripped through a real decoder for every plausible table
-  URL, plus finder-pattern and quiet-zone structure checks.
+  URL and for the longest payload of every version 1–10, plus finder-pattern,
+  version-block and quiet-zone structure checks.
+- **UPI link** — the exact `upi://pay` URI, percent-encoding of every value,
+  two-decimal amounts, UPI ID validation, and the QR scanned back to the link.
 - **Storage contract** — the behaviours both backends must satisfy, asserted
   against the demo store: live emission, ordering, no deletes, bounded ranges.
 - **UI** — cart stepper maths, sold-out items, staff status buttons, sheet
@@ -634,8 +687,11 @@ management, reporting, QR generation, PWA, security rules, tests, CI.
 
 Not built, and the requirements already scope it out:
 
-- **Payments.** Pay-at-counter for v1. `paymentMethod` is on the order document
-  so adding UPI is a UI change, not a migration.
+- **Payment integration.** Pay-at-counter is the default, and an optional UPI
+  link and QR now fill in the amount for the customer (see
+  [UPI pay-at-table](#upi-pay-at-table-optional)). What is not built is a
+  gateway that tells the app a payment succeeded — that needs a provider and a
+  server-side callback. `paymentMethod` is on the order document for when it is.
 - **Background push.** FCM/Web Push for when the staff phone is locked — needs a
   service worker + VAPID keys, and a real device to be worth testing on.
 - **Scheduled monthly reports** by email/PDF. The aggregation is already a pure

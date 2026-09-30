@@ -54,6 +54,16 @@ back of the same tent card that `/admin/qr` already produces.
 What v1 does include: `paymentMethod` on the order document, `upi` accepted as a
 value, so enabling it later is a UI change and not a migration.
 
+**Phase 2 update: a pre-filled UPI link on the confirmation screen, off by
+default.** A `upi://pay` link needs no PSP when all it does is open the
+customer's own UPI app with the payee and amount filled in — the payment itself
+happens between the customer's bank and the cafe's, and nobody tells us. That is
+more useful than the static QR on the tent card, because the amount and the table
+come pre-filled, and it costs nothing to run. It is still not a payment
+integration: the app never learns whether money moved, so the screen tells the
+customer to show the payment at the counter, and `paymentMethod` stays `counter`.
+It is switched on by setting `NEXT_PUBLIC_UPI_ID`; the README has the caveats.
+
 ## 2. Deciding questions the specs left open
 
 ### Demo mode vs. "no app installs"
