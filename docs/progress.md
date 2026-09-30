@@ -15,13 +15,10 @@ toe-cafe.web.app, so old bookmarks and any QR card printed with the old address
 still land on the right table. See [decisions](./decisions.md#a-second-hosting-site-not-a-new-project)
 for why it is a second site rather than a rename.
 
-**Live is behind `main`.** Deployed on 2026-09-30 up to `f2b87e4` (daily order
-numbers, with their rules). Not yet deployed: table codes expiring after 3 hours,
-and **Approve new tables** (rules and hosting), both merged and tester-checked;
-the next `firebase deploy --only firestore,hosting:app` ships them. Everything
-is listed under _Unreleased_ in the [changelog](../CHANGELOG.md). The automatic deploy workflow exists but is not
-switched on yet (its secret and variables are not set), so deploys are still run
-by hand with `firebase deploy`.
+`main` is live: v0.2.0 plus everything under _Unreleased_ in the
+[changelog](../CHANGELOG.md), last deployed on 2026-09-30 by hand with
+`firebase deploy --only firestore,hosting:app`. The automatic deploy workflow
+exists but is not switched on yet (its secret and variables are not set).
 
 ### What has been checked live, and how
 
@@ -63,10 +60,9 @@ Work is built on a branch, checked by a separate tester, and only then merged
 to `main`. Branches are pushed to GitHub as they go, so nothing lives only on
 one machine.
 
-| Branch                | Covers                                                                                                                                             | State                                                                                               |
-| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| `feat/stage-2`        | UPI pay-at-table                                                                                                                                   | Built, mostly uncommitted in a worktree (one pushed commit, a QR fix). Waiting on the cafe's UPI ID |
-| `wip/staff-first-tap` | Bug: the first tap on a freshly opened staff board is lost (the sound hint disappears under the finger), so a first **Accept** seems to do nothing | Building                                                                                            |
+| Branch         | Covers           | State                                                                                               |
+| -------------- | ---------------- | --------------------------------------------------------------------------------------------------- |
+| `feat/stage-2` | UPI pay-at-table | Built, mostly uncommitted in a worktree (one pushed commit, a QR fix). Waiting on the cafe's UPI ID |
 
 ## Next
 
@@ -125,14 +121,15 @@ relying on the September report.
 
 ## Done
 
+- 2026-09-30 — The first tap on a freshly opened staff board acts (the sound
+  hint no longer shifts the board under the finger, at any text size), and
+  _Order sound on_ shows only once sound really plays
 - 2026-09-30 — **Approve new tables**, off by default, on the owner dashboard:
   with it on, a table's first order waits for staff to Accept, then the table
   is open for 3 hours. Enforced by the rules; 243 rules tests plus 49
-  adversarial ones by the tester. Merged, not yet deployed
-- 2026-09-30 — Table codes last 3 hours on the phone and leave the address bar.
-  Merged, not yet deployed
+  adversarial ones by the tester
+- 2026-09-30 — Table codes last 3 hours on the phone and leave the address bar
 - 2026-09-30 — Daily order numbers (#0001 each day) deployed with their rules
-
 - 2026-09-28 — Table codes in the QR cards, order caps (20 lines, 20 of an item,
   ₹10,000) and a staff **Reject** with a reason; security-tested with 109
   bypass attempts against the rules, then deployed with the rules
