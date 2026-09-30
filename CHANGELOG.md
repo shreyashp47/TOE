@@ -107,6 +107,10 @@ Work that is built but not yet merged is tracked in
 
 ### Fixed
 
+- The first tap on a freshly opened staff board did nothing: it switched the
+  order sound on and removed the _Tap anywhere to switch the order sound on_
+  line, which moved the board up under the finger, so that first **Accept** or
+  **Mark ready** was lost. The line now stays and reads _Order sound on._
 - Tapping between owner screens after a deploy could land on raw text at
   `/admin.txt`. A tab already stranded on a `.txt` address is sent back to its
   page

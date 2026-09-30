@@ -349,9 +349,15 @@ function StaffScreen() {
           className="shell-wide pb-2.5"
         />
 
-        {!armed && !muted ? (
+        {/* The line stays once the sound is armed, with new words: the first
+            tap anywhere arms it, and if the line disappeared the board would
+            jump up under the finger and that tap (often Accept) would land on
+            nothing. */}
+        {!muted ? (
           <p className="shell-wide text-2xs text-secondary pb-2 font-semibold">
-            Tap anywhere to switch the order sound on.
+            {armed
+              ? "Order sound on."
+              : "Tap anywhere to switch the order sound on."}
           </p>
         ) : null}
       </header>

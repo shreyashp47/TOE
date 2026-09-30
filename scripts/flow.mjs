@@ -412,8 +412,38 @@ check(
   "with the board open, the next order is #0002 straight away",
   (await customer.locator("body").innerText()).includes("Order #0002"),
 );
-await staff.getByRole("button", { name: "Mark ready" }).click();
-await staff.waitForTimeout(400);
+
+step("10a", "On a freshly opened board, the very first tap still works");
+// The first tap anywhere arms the order sound. It used to also remove the
+// "Tap anywhere…" line, which moved the board up under the finger between
+// press and release, so the first Accept or Mark ready did nothing.
+{
+  const fresh = watch(await context.newPage(), "fresh-board");
+  await fresh.goto(`${BASE}/staff`, { waitUntil: "networkidle" });
+  const ready = fresh.getByRole("button", { name: "Mark ready" });
+  await ready.waitFor({ timeout: 20_000 });
+  check(
+    "the fresh board asks for a tap to switch the sound on",
+    await fresh
+      .getByText("Tap anywhere to switch the order sound on.")
+      .isVisible(),
+  );
+  await ready.click(); // once, and never again
+  const took = await fresh
+    .getByRole("button", { name: "Mark served" })
+    .waitFor({ timeout: 5_000 })
+    .then(() => true)
+    .catch(() => false);
+  check("one tap on Mark ready marked it ready", took);
+  check(
+    "and the sound line stayed, now saying it is on",
+    await fresh.getByText("Order sound on.").isVisible(),
+  );
+  await fresh.close();
+}
+await staff
+  .getByRole("button", { name: "Mark served" })
+  .waitFor({ timeout: 10_000 });
 await staff.getByRole("button", { name: "Mark served" }).click();
 await staff.waitForTimeout(400);
 await staff.getByRole("button", { name: "Complete" }).click();
