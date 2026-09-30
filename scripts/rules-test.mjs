@@ -1705,8 +1705,24 @@ await t(
   allowed(() => getDoc(sessionDoc(nobodyC, 3))),
 );
 await t(
-  "anyone can list the open tables",
-  allowed(() => getDocs(collection(nobodyC.db, "tableSessions"))),
+  "a customer can read their own table's session (a get)",
+  allowed(() => getDoc(sessionDoc(publicC, 3))),
+);
+await t(
+  "a signed-out caller cannot list the open tables",
+  denied(() => getDocs(collection(nobodyC.db, "tableSessions"))),
+);
+await t(
+  "a customer cannot list the open tables either",
+  denied(() => getDocs(collection(publicC.db, "tableSessions"))),
+);
+await t(
+  "staff can list the open tables (the board's listener)",
+  allowed(() => getDocs(collection(staffC.db, "tableSessions"))),
+);
+await t(
+  "and so can the owner",
+  allowed(() => getDocs(collection(ownerC.db, "tableSessions"))),
 );
 await t(
   "anyone can read the confirm-new-guests setting",
@@ -1832,6 +1848,54 @@ await t(
   "the owner can accept too",
   allowed(() => accept(ownerC, 14)),
 );
+{
+  // Two phones at one table, both before Accept: the board accepts every
+  // waiting order of that table in the same commit as opening it, and the
+  // board then numbers each of them (src/app/staff/page.tsx, advance()).
+  const a = await placeAs(publicC, pending({ tableNumber: 11 }));
+  const b = await placeAs(publicC, pending({ tableNumber: 11 }));
+  await t(
+    "staff accept two waiting orders of one table and open it, in one commit",
+    allowed(async () => {
+      const batch = writeBatch(staffC.db);
+      batch.update(doc(staffC.db, "orders", a.id), { status: "preparing" });
+      batch.update(doc(staffC.db, "orders", b.id), { status: "preparing" });
+      batch.set(sessionDoc(staffC, 11), openFor(3 * HOUR));
+      await batch.commit();
+    }),
+  );
+  await t(
+    "and the board can then number both",
+    allowed(async () => {
+      const na = await assignTx(staffC, a.id);
+      const nb = await assignTx(staffC, b.id);
+      if (!(Number.isInteger(na) && nb === na + 1))
+        throw new Error(`numbers came out ${na}, ${nb}`);
+    }),
+  );
+  // A tablet whose clock runs more than an hour fast: moving an open table's
+  // order on together with keeping the table open is refused (openUntil too
+  // far ahead), and the board retries the plain status change, which works.
+  await t(
+    "a status change bundled with an openUntil beyond 4h is refused",
+    denied(async () => {
+      const batch = writeBatch(staffC.db);
+      batch.update(doc(staffC.db, "orders", a.id), { status: "ready" });
+      batch.set(sessionDoc(staffC, 11), openFor(4 * HOUR + 30 * 60_000));
+      await batch.commit();
+    }),
+  );
+  await t(
+    "while the plain status change on its own is taken",
+    allowed(() =>
+      setDoc(
+        doc(staffC.db, "orders", a.id),
+        { status: "ready" },
+        { merge: true },
+      ),
+    ),
+  );
+}
 await t(
   "staff can reject a pending order, with a reason",
   allowed(async () => {

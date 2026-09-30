@@ -31,6 +31,7 @@ import { assignInTransaction, counterNext } from "../day-number";
 import { isTableKey } from "../table-keys";
 import {
   parseOrderingSettings,
+  looksOpen,
   parseTableSessionsDoc,
   type TableSessions,
 } from "../table-open";
@@ -405,12 +406,14 @@ export const firestoreOrderRepo: OrderRepository = {
     await batch.commit();
   },
 
-  async accept(id, table, openUntil) {
+  async accept(ids, table, openUntil) {
     const { db, fs } = await dbAndFs();
-    // The order and the table in one commit: an accepted order on a table
+    // The orders and the table in one commit: an accepted order on a table
     // that failed to open would make the group's next order wait again.
     const batch = fs.writeBatch(db);
-    batch.update(fs.doc(db, ORDERS, id), { status: "preparing" });
+    for (const id of ids) {
+      batch.update(fs.doc(db, ORDERS, id), { status: "preparing" });
+    }
     batch.set(fs.doc(db, SESSIONS, String(table)), {
       openUntil: fs.Timestamp.fromMillis(openUntil),
     });
@@ -621,7 +624,9 @@ export const firestoreSessionRepo: SessionRepository = {
     const { db, fs } = await dbAndFs();
     const snap = await fs.getDoc(fs.doc(db, SESSIONS, String(table)));
     const entry = parseTableSessionsDoc(table, snap.data());
-    return entry !== null && entry[1] > Date.now();
+    // The phone's clock against the server's time: lean towards "open" and
+    // let the rules decide (see looksOpen).
+    return entry !== null && looksOpen(entry[1], Date.now());
   },
   async close(table) {
     const { db, fs } = await dbAndFs();

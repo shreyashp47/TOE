@@ -15,6 +15,7 @@ import { DataProvider } from "@/components/providers/DataProvider";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { demoAuthRepo, demoOrderRepo } from "@/lib/data/demo";
 import {
+  DemoRulesRefusal,
   demoAcceptOrder,
   demoAssignDayNumber,
   demoSetTableOpenUntil,
@@ -37,6 +38,7 @@ beforeEach(async () => {
 });
 
 const HOUR = 3600_000;
+const byIdOf = (id: string) => loadDemoState().orders.find((o) => o.id === id);
 const newGuestOrder = (tableNumber = 2) =>
   demoOrderRepo.create({
     tableNumber,
@@ -171,13 +173,89 @@ describe("staff board: new guests", () => {
     expect(within(strip).getByText("T4")).toBeVisible();
     expect(within(strip).getByText(/^2h (29|30)m left$/)).toBeVisible();
 
+    // Close asks first, and "Keep open" leaves the table alone.
     await user.click(
       within(strip).getByRole("button", { name: "Close table 4" }),
+    );
+    expect(within(strip).getByText("Close table 4?")).toBeVisible();
+    await user.click(within(strip).getByRole("button", { name: "Keep open" }));
+    expect(within(strip).queryByText("Close table 4?")).toBeNull();
+    expect(loadDemoState().tableSessions[4]).toBeGreaterThan(Date.now());
+
+    await user.click(
+      within(strip).getByRole("button", { name: "Close table 4" }),
+    );
+    await user.click(
+      within(strip).getByRole("button", { name: "Close table" }),
     );
     await waitFor(() =>
       expect(loadDemoState().tableSessions[4]).toBeLessThanOrEqual(Date.now()),
     );
     expect(await within(strip).findByText(/^None\./)).toBeVisible();
+  });
+
+  it("Accept takes every waiting order from that table, and all get numbers", async () => {
+    const user = userEvent.setup();
+    const first = await newGuestOrder(6);
+    const second = await newGuestOrder(6); // a second phone at the same table
+    const elsewhere = await newGuestOrder(8);
+    await demoAuthRepo.signInWithPin("1122");
+    render(<StaffPage />);
+
+    const section = await screen.findByRole("region", {
+      name: "New guests — check the table",
+    });
+    // Table 6's tickets, not table 8's (all three can share a millisecond).
+    const ticket = within(section)
+      .getAllByText("6")[0]
+      .closest<HTMLElement>("[role=listitem]")!;
+    await user.click(within(ticket).getByRole("button", { name: "Accept" }));
+    await waitFor(() => {
+      const byId = new Map(loadDemoState().orders.map((o) => [o.id, o]));
+      expect(byId.get(first.id)?.status).toBe("preparing");
+      expect(byId.get(second.id)?.status).toBe("preparing");
+      expect(byId.get(elsewhere.id)?.status).toBe("pending");
+    });
+    await waitFor(
+      () => {
+        const byId = new Map(loadDemoState().orders.map((o) => [o.id, o]));
+        expect(
+          [
+            byId.get(first.id)?.dayNumber,
+            byId.get(second.id)?.dayNumber,
+          ].sort(),
+        ).toEqual([1, 2]);
+      },
+      { timeout: 5000 },
+    );
+    expect(byIdOf(elsewhere.id)?.dayNumber).toBeUndefined();
+  });
+
+  it("on a tablet whose clock is over an hour fast, Mark ready still works", async () => {
+    const user = userEvent.setup();
+    const order = await newGuestOrder(3);
+    demoAcceptOrder(order.id, Date.now() + HOUR);
+    const before = loadDemoState().tableSessions[3];
+    // The rules refuse the combined commit (openUntil past the 4-hour
+    // limit by the server's clock); the plain status change is fine.
+    const real = demoOrderRepo.setStatus.bind(demoOrderRepo);
+    const setStatus = vi
+      .spyOn(demoOrderRepo, "setStatus")
+      .mockImplementation(async (id, status, keep) => {
+        if (keep)
+          throw new DemoRulesRefusal("a table can open for at most 4 hours");
+        return real(id, status);
+      });
+    await demoAuthRepo.signInWithPin("1122");
+    render(<StaffPage />);
+
+    await user.click(await screen.findByRole("button", { name: "Mark ready" }));
+    await waitFor(() => expect(loadDemoState().orders[0].status).toBe("ready"));
+    expect(setStatus).toHaveBeenCalledTimes(2);
+    expect(setStatus.mock.calls[1][2]).toBeUndefined();
+    expect(loadDemoState().tableSessions[3]).toBe(before);
+    expect(screen.queryByText(/permission|4 hours/i)).toBeNull();
+    setStatus.mockRestore();
   });
 
   it("keeps an open table open while staff work on its orders", async () => {

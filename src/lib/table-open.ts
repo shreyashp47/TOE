@@ -41,8 +41,32 @@ export const TABLE_OPEN_MS = TABLE_OPEN_HOURS * 60 * 60_000;
  * The furthest ahead firestore.rules lets staff set `openUntil`, measured from
  * the server's clock. One hour more than TABLE_OPEN_HOURS, so a counter tablet
  * whose clock runs a little fast can still open a table.
+ *
+ * That hour is all the slack there is. On a tablet more than an hour fast,
+ * `now + TABLE_OPEN_HOURS` by its clock is past the limit, so Accept is
+ * refused, and so is moving an open table's order on together with keeping
+ * the table open; the board then retries the order's step without the
+ * table write (src/app/staff/page.tsx), so Mark ready still works and the
+ * table just is not extended. Fix the tablet's clock to Accept again.
  */
 export const MAX_OPEN_HOURS = 4;
+
+/**
+ * How far past `openUntil` the customer's phone still treats a table as
+ * open. The phone compares the server's openUntil with its own clock, which
+ * can be a few minutes off either way. Guessing "open" costs nothing: if the
+ * rules disagree, the order is refused and retried as `pending`
+ * (src/lib/place-order.ts). Guessing "closed" on an open table would make a
+ * seated group wait for an Accept they do not need.
+ */
+export const PHONE_CLOCK_SLACK_MS = 5 * 60_000;
+
+/** The phone's guess: open, or closed within the last few minutes. */
+export function looksOpen(openUntil: number | undefined, now: number): boolean {
+  return (
+    typeof openUntil === "number" && openUntil + PHONE_CLOCK_SLACK_MS > now
+  );
+}
 
 /** table number -> openUntil (ms since epoch). Missing = closed. */
 export type TableSessions = Record<number, number>;

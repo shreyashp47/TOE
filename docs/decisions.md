@@ -557,9 +557,29 @@ the counter can, by looking.
 Accept opens the table (`tableSessions/{n} = { openUntil }`); the rules take a
 `preparing` order only while `openUntil > request.time`.** `pending` is always
 allowed, with every other check (code, caps, throttle). The phone reads the
-table and the setting (both public: whether a table is open is harmless) and
-picks the status the rules will take; if `preparing` is refused because the
-table closed a moment earlier, it retries once as `pending`.
+table's own session (a `get`, open to anyone) and the setting, and picks the
+status the rules will take; if `preparing` is refused because the table
+closed a moment earlier, it retries once as `pending`. The phone compares the
+server's `openUntil` with its own clock, so it treats a table as open until 5
+minutes after `openUntil` (`looksOpen`): a wrong guess of "open" costs one
+refused write and the retry, while a wrong guess of "closed" would make a
+seated group wait for an Accept.
+
+- **Who can see which tables are open:** anyone may `get` one table's
+  session, which is all the phone needs, but only staff may `list` them (the
+  board's "Open tables"). Open to all, the list would tell someone with a
+  leaked link exactly when an order skips the check.
+- **Only as strong as the table codes.** The rules check a table's code only
+  once it has one (`tableKeyOk` passes for a table with no `tableKeys` doc).
+  Until the owner presses _Create codes_, anyone can type any table number,
+  so approval then only guards tables nobody is sitting at; the two are meant
+  to be used together.
+- **Two phones at one table** both ordering before Accept: Accept takes every
+  waiting order from that table in the same commit as opening it, so no guest
+  is left on "Waiting for the counter" at a table that is already open. If
+  that commit is refused (another board rejected one of them a moment
+  earlier), the tapped order is accepted on its own. The board then numbers
+  each of them, oldest first.
 
 - **Cost:** one tap per new group, and extra document reads per order: one
   (`config/ordering`) while approval is off, two (that and the table's session)
@@ -576,6 +596,11 @@ table closed a moment earlier, it retries once as `pending`.
   the ceiling bounds how long a leaked link can skip the check without a
   person doing something. Staff-set times use the tablet's clock (only Close
   uses the server's), so a tablet more than an hour fast cannot open tables.
+  Moving an open table's order on while also keeping the table open is then
+  refused as one commit, so the board retries the order's step on its own:
+  _Mark ready_ still works, and the table is simply not extended.
+- **Close asks first**, like Reject: a mis-tap would make a seated group's
+  next order wait for the counter.
 - **Not a sale:** `pending` is on the board but not kitchen work, and reports
   leave it out of revenue like `rejected`. It has one way on (Accept →
   `preparing`) and can be rejected; nothing goes back to it.

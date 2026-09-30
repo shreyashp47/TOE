@@ -302,6 +302,32 @@ describe("placeOrder", () => {
       expect((await place()).status).toBe("preparing");
     });
 
+    it("tries preparing on a table that closed within the phone's clock slack, then waits", async () => {
+      // Closed two minutes ago by the server's time; the phone's clock may be
+      // behind, so it guesses open, the rules refuse, and it falls back.
+      const closedAt = Date.now();
+      demoSetTableOpenUntil(4, closedAt);
+      vi.useFakeTimers({ toFake: ["Date"], now: closedAt + 2 * 60_000 });
+      const create = vi.spyOn(demoOrderRepo, "create");
+      expect((await place()).status).toBe("pending");
+      expect(create.mock.calls.map(([input]) => input.status)).toEqual([
+        "preparing",
+        "pending",
+      ]);
+      expect(loadDemoState().orders).toHaveLength(1);
+    });
+
+    it("does not bother trying preparing on a table closed well before", async () => {
+      const closedAt = Date.now();
+      demoSetTableOpenUntil(4, closedAt);
+      vi.useFakeTimers({ toFake: ["Date"], now: closedAt + 10 * 60_000 });
+      const create = vi.spyOn(demoOrderRepo, "create");
+      expect((await place()).status).toBe("pending");
+      expect(create.mock.calls.map(([input]) => input.status)).toEqual([
+        "pending",
+      ]);
+    });
+
     it("waits again once the table's time has run out", async () => {
       demoSetTableOpenUntil(4, Date.now());
       expect((await place()).status).toBe("pending");

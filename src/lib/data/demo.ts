@@ -21,7 +21,7 @@ import type {
   SessionRepository,
   StaffUser,
 } from "./types";
-import { isTableOpen } from "../table-open";
+import { looksOpen } from "../table-open";
 
 const SESSION_KEY = "cafe-qr-order.session.v1";
 
@@ -139,9 +139,9 @@ export const demoOrderRepo: OrderRepository = {
     store.demoSetStatus(id, status, keepTableOpen);
   },
 
-  async accept(id, _table, openUntil) {
+  async accept(ids, _table, openUntil) {
     requireStaff();
-    store.demoAcceptOrder(id, openUntil);
+    store.demoAcceptOrders(ids, openUntil);
   },
 
   async reject(id, reason) {
@@ -222,9 +222,10 @@ export const demoSessionRepo: SessionRepository = {
     );
   },
   async isOpen(table) {
-    return isTableOpen(
-      store.selectTableSessions(store.loadDemoState()),
-      table,
+    // Same lean towards "open" as Firestore's; the store's own check (the
+    // rules' stand-in) uses the exact time.
+    return looksOpen(
+      store.selectTableSessions(store.loadDemoState())[table],
       Date.now(),
     );
   },

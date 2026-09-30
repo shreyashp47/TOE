@@ -432,8 +432,11 @@ service cloud.firestore {
     // arrive `pending` for staff to check the table (src/lib/table-open.ts). This is what stops an order from someone who
     // once had the QR link but is not in the cafe.
     //
-    // Public read: whether a table is open says nothing worth hiding, and the
-    // customer's phone reads it to choose the order's status.
+    // Public `get`, staff-only `list`. The customer's phone reads its own
+    // table's document (by id) to choose the order's status, which says
+    // nothing about any other table. Listing them all is only for the staff
+    // board: open to anyone, it would show which tables are open right now,
+    // and so when an order from a leaked link would skip the check.
     //
     // Staff (the owner included) write, and only this one field, to a time
     // from now to four hours ahead: Accept sets now + 3h, staff working on the
@@ -444,7 +447,8 @@ service cloud.firestore {
     // could skip the check. Tables close on their own when the time passes,
     // so nothing ever needs deleting.
     match /tableSessions/{table} {
-      allow read: if true;
+      allow get: if true;
+      allow list: if isStaff();
       allow create, update: if isStaff()
         && table.matches("^([1-9]|[1-4][0-9]|50)$")
         && request.resource.data.keys().hasOnly(["openUntil"])

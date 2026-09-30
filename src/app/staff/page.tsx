@@ -83,6 +83,9 @@ function StaffScreen() {
   // document — just guarantees a permission error.
   const canWork = Boolean(user) && user?.role !== "unassigned";
   const { orders, loading: ordersLoading, error } = useActiveOrders(canWork);
+  // Read in advance() below, which stays a stable callback.
+  const ordersRef = useRef(orders);
+  ordersRef.current = orders;
   // Today's numbers (#0001…) are handed out here, by whichever board sees the
   // order first. See src/lib/day-number.ts.
   const { stalled: numbering } = useDayNumbers(
@@ -188,8 +191,31 @@ function StaffScreen() {
       const openUntil = extendedOpenUntil(current, now);
       if (isAwaitingCounter(order.status)) {
         // Accept: the order goes to the kitchen and the table opens, so the
-        // group's next orders skip this step.
-        await bundle.orders.accept(order.id, order.tableNumber, openUntil);
+        // group's next orders skip this step. Every other order waiting from
+        // the same table goes with it (two phones at one table): the table
+        // is open now, so leaving one waiting would tell that guest
+        // something untrue.
+        const others = ordersRef.current
+          .filter(
+            (o) =>
+              o.id !== order.id &&
+              o.tableNumber === order.tableNumber &&
+              isAwaitingCounter(o.status),
+          )
+          .map((o) => o.id);
+        try {
+          await bundle.orders.accept(
+            [order.id, ...others],
+            order.tableNumber,
+            openUntil,
+          );
+        } catch (err) {
+          // One of the others moved on in the meantime (another board
+          // rejected it, say), which refuses the whole commit. The one staff
+          // tapped still goes through on its own.
+          if (others.length === 0 || !isRefusal(err)) throw err;
+          await bundle.orders.accept([order.id], order.tableNumber, openUntil);
+        }
       } else if (
         keepsTableOpen(to) &&
         isTableOpen(sessionsRef.current, order.tableNumber, now) &&
@@ -197,10 +223,19 @@ function StaffScreen() {
       ) {
         // Working on an open table's order keeps it open for another few
         // hours, in the same commit. A table already closed stays closed.
-        await bundle.orders.setStatus(order.id, to, {
-          table: order.tableNumber,
-          openUntil,
-        });
+        try {
+          await bundle.orders.setStatus(order.id, to, {
+            table: order.tableNumber,
+            openUntil,
+          });
+        } catch (err) {
+          // A tablet whose clock runs over an hour fast asks for an openUntil
+          // past what the rules allow (MAX_OPEN_HOURS), and the whole commit
+          // is refused. The order's step matters more than the table's
+          // time, so do that on its own.
+          if (!isRefusal(err)) throw err;
+          await bundle.orders.setStatus(order.id, to);
+        }
       } else {
         await bundle.orders.setStatus(order.id, to);
       }
@@ -926,4 +961,9 @@ function StaffLogin({
       </form>
     </main>
   );
+}
+
+/** The rules (or the demo store standing in for them) said no. */
+function isRefusal(err: unknown): boolean {
+  return (err as { code?: unknown } | null)?.code === "permission-denied";
 }

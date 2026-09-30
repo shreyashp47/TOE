@@ -421,6 +421,8 @@ await staff.waitForTimeout(600);
 
 step("10b", "Staff close table 3; the next order waits again");
 await staff.getByRole("button", { name: "Close table 3" }).click();
+check("Close asks first", await staff.getByText("Close table 3?").isVisible());
+await staff.getByRole("button", { name: "Close table", exact: true }).click();
 await staff
   .locator("[data-open-table='3']")
   .waitFor({ state: "detached", timeout: 10_000 });

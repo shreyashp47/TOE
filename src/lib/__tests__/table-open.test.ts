@@ -12,9 +12,11 @@ import {
   formatTimeLeft,
   isTableOpen,
   keepsTableOpen,
+  looksOpen,
   openTables,
   parseOrderingSettings,
   parseTableSessionsDoc,
+  PHONE_CLOCK_SLACK_MS,
 } from "@/lib/table-open";
 
 const NOW = Date.parse("2026-09-28T10:00:00Z");
@@ -63,6 +65,20 @@ describe("the owner's switch", () => {
     expect(parseOrderingSettings({ confirmNewGuests: "yes" })).toEqual({
       confirmNewGuests: false,
     });
+  });
+});
+
+describe("the phone's guess (looksOpen)", () => {
+  it("says open for an open table, and for a few minutes after it closed", () => {
+    expect(looksOpen(NOW + MIN, NOW)).toBe(true);
+    expect(looksOpen(NOW - MIN, NOW)).toBe(true);
+    expect(looksOpen(NOW - PHONE_CLOCK_SLACK_MS + 1, NOW)).toBe(true);
+    expect(PHONE_CLOCK_SLACK_MS).toBe(5 * MIN);
+  });
+
+  it("says closed once the slack has passed, or with no session", () => {
+    expect(looksOpen(NOW - PHONE_CLOCK_SLACK_MS, NOW)).toBe(false);
+    expect(looksOpen(undefined, NOW)).toBe(false);
   });
 });
 

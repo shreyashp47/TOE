@@ -88,9 +88,11 @@ export interface OrderRepository {
   ): Promise<void>;
   /**
    * Staff accept a new guest's order: pending -> preparing, and the table
-   * opens until `openUntil`, in one commit.
+   * opens until `openUntil`, in one commit. `ids` is every waiting order of
+   * that table (two phones at one table both waiting), so none is left
+   * behind saying it waits for a table that is already open.
    */
-  accept(id: string, table: number, openUntil: number): Promise<void>;
+  accept(ids: string[], table: number, openUntil: number): Promise<void>;
   /** Staff turn an order away. `reason` is optional and shown to the customer. */
   reject(id: string, reason?: string): Promise<void>;
   /**
@@ -160,12 +162,19 @@ export interface ConfigRepository {
  * status. Only staff (and the owner) write.
  */
 export interface SessionRepository {
-  /** Every table's openUntil, live. For the staff board's "Open tables". */
+  /**
+   * Every table's openUntil, live. For the staff board's "Open tables" only:
+   * the rules refuse to list tableSessions to anyone but staff.
+   */
   subscribe(
     listener: Listener<TableSessions>,
     onError?: ErrorListener,
   ): Unsubscribe;
-  /** One read, when a customer places an order. */
+  /**
+   * One read of that table's own document (a `get`, which anyone may do),
+   * when a customer places an order. Leans towards "open" by a few minutes
+   * for the phone's clock (looksOpen in src/lib/table-open.ts).
+   */
   isOpen(table: number): Promise<boolean>;
   /** Staff: the table closes now. */
   close(table: number): Promise<void>;

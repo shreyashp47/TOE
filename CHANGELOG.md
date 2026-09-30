@@ -34,7 +34,8 @@ Work that is built but not yet merged is tracked in
   says _"Waiting for the counter to confirm your table"_ and moves on by
   itself. While it is on, the rules only take a straight-to-the-kitchen order
   from an open table. Stored in `config/ordering`; a missing document means
-  off. Waiting orders are left out of report revenue, and get their day number
+  off. Accept takes every waiting order from that table at once; **Close** asks
+  first; only staff can list which tables are open. Waiting orders are left out of report revenue, and get their day number
   only once accepted, so a turned-away order never uses one up
 
 - A secret code per table, carried in its QR card (`/order?table=N&k=CODE`)

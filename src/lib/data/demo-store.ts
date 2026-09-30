@@ -413,21 +413,36 @@ function checkOpenUntil(openUntil: number, now: number) {
   }
 }
 
-/** Accept: pending -> preparing and the table opens, in one commit. */
-export function demoAcceptOrder(id: string, openUntil: number): void {
+/**
+ * Accept: pending -> preparing for each order and their table opens, in one
+ * commit. All or nothing, like a Firestore batch.
+ */
+export function demoAcceptOrders(ids: string[], openUntil: number): void {
   const now = Date.now();
-  const order = load().orders.find((o) => o.id === id);
-  if (!order || order.status !== "pending") {
+  const orders = load().orders;
+  const accepted = ids.map((id) => orders.find((o) => o.id === id));
+  if (
+    accepted.length === 0 ||
+    accepted.some((o) => !o || o.status !== "pending")
+  ) {
     throw new DemoRulesRefusal("that order is no longer waiting");
   }
   checkOpenUntil(openUntil, now);
+  const idSet = new Set(ids);
   mutate((state) => ({
     ...state,
     orders: state.orders.map((o) =>
-      o.id === id ? { ...o, status: "preparing" as const } : o,
+      idSet.has(o.id) ? { ...o, status: "preparing" as const } : o,
     ),
-    tableSessions: { ...state.tableSessions, [order.tableNumber]: openUntil },
+    tableSessions: {
+      ...state.tableSessions,
+      ...Object.fromEntries(accepted.map((o) => [o!.tableNumber, openUntil])),
+    },
   }));
+}
+
+export function demoAcceptOrder(id: string, openUntil: number): void {
+  demoAcceptOrders([id], openUntil);
 }
 
 /** Staff keep an open table open (or close one: openUntil = now). */
