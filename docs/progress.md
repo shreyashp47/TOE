@@ -4,7 +4,7 @@ Where the project stands, what is in flight, and what is waiting on a decision.
 Updated as work lands, so a fresh contributor — or a fresh session — can pick up
 from here without reading the git log.
 
-_Last updated: 2026-09-28_
+_Last updated: 2026-09-30_
 
 ## Live
 
@@ -15,8 +15,11 @@ toe-cafe.web.app, so old bookmarks and any QR card printed with the old address
 still land on the right table. See [decisions](./decisions.md#a-second-hosting-site-not-a-new-project)
 for why it is a second site rather than a rename.
 
-`main` is live: v0.2.0 plus everything under _Unreleased_ in the
-[changelog](../CHANGELOG.md). The automatic deploy workflow exists but is not
+**Live is behind `main`.** Deployed on 2026-09-30 up to `f2b87e4` (daily order
+numbers, with their rules). Not yet deployed: table codes expiring after 3 hours,
+and **Approve new tables** (rules and hosting), both merged and tester-checked;
+the next `firebase deploy --only firestore,hosting:app` ships them. Everything
+is listed under _Unreleased_ in the [changelog](../CHANGELOG.md). The automatic deploy workflow exists but is not
 switched on yet (its secret and variables are not set), so deploys are still run
 by hand with `firebase deploy`.
 
@@ -60,9 +63,10 @@ Work is built on a branch, checked by a separate tester, and only then merged
 to `main`. Branches are pushed to GitHub as they go, so nothing lives only on
 one machine.
 
-| Branch         | Covers           | State                                                                                               |
-| -------------- | ---------------- | --------------------------------------------------------------------------------------------------- |
-| `feat/stage-2` | UPI pay-at-table | Built, mostly uncommitted in a worktree (one pushed commit, a QR fix). Waiting on the cafe's UPI ID |
+| Branch                | Covers                                                                                                                                             | State                                                                                               |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `feat/stage-2`        | UPI pay-at-table                                                                                                                                   | Built, mostly uncommitted in a worktree (one pushed commit, a QR fix). Waiting on the cafe's UPI ID |
+| `wip/staff-first-tap` | Bug: the first tap on a freshly opened staff board is lost (the sound hint disappears under the finger), so a first **Accept** seems to do nothing | Building                                                                                            |
 
 ## Next
 
@@ -84,6 +88,10 @@ one machine.
 
 ## Waiting on the owner
 
+- **Approve new tables: on or off.** Off by default, so nothing changes until
+  the owner switches it on at the top of the dashboard. It only really protects
+  tables once table codes exist (below). With it on, the counter must watch the
+  board's **New guests** section.
 - **Turn on the table codes.** Deployed, but they protect nothing until the
   owner signs in, opens _Table QR codes_, presses **Create codes for all
   tables**, and replaces every card on the tables with a freshly printed one —
@@ -116,6 +124,14 @@ has since cleared them. Complete or delete them from the owner account before
 relying on the September report.
 
 ## Done
+
+- 2026-09-30 — **Approve new tables**, off by default, on the owner dashboard:
+  with it on, a table's first order waits for staff to Accept, then the table
+  is open for 3 hours. Enforced by the rules; 243 rules tests plus 49
+  adversarial ones by the tester. Merged, not yet deployed
+- 2026-09-30 — Table codes last 3 hours on the phone and leave the address bar.
+  Merged, not yet deployed
+- 2026-09-30 — Daily order numbers (#0001 each day) deployed with their rules
 
 - 2026-09-28 — Table codes in the QR cards, order caps (20 lines, 20 of an item,
   ₹10,000) and a staff **Reject** with a reason; security-tested with 109
