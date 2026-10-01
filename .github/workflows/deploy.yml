@@ -113,7 +113,7 @@ jobs:
           grep -rlq "toi-cafe" out/_next/static/chunks \
             || { echo "::error::built bundle does not reference toi-cafe"; exit 1; }
 
-      - uses: google-github-actions/auth@v2
+      - uses: google-github-actions/auth@v3
         if: steps.current.outputs.stale != 'true'
         with:
           credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
